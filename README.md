@@ -291,12 +291,14 @@ Suggested backend setup:
 1. create a Render PostgreSQL database
 2. create a Render web service from the repo
 3. set root directory to `backend`
-4. apply `backend/render.yaml`
+4. apply `backend/render.yaml` or use the same build/start commands manually
 5. set `DATABASE_URL` to the internal database URL from Render
 6. set `ALLOWED_ORIGINS` to your frontend URL, for example `https://your-app.vercel.app`
 7. set `FRONTEND_URL` to the public frontend URL, for example `https://your-app.vercel.app`
 8. set `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD` so the first admin user is created automatically
 9. configure SMTP variables if you want password reset emails to work in production
+
+For a brand-new empty database, the build step initializes the current schema before running Alembic, so first deploys on Render do not fail on legacy additive migrations.
 
 ### Database
 
