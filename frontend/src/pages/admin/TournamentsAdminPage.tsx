@@ -1,0 +1,3365 @@
+import { useState, useEffect } from 'react'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import {
+  useAdminTournaments, useCreateTournament, useUpdateTournament, useDeleteTournament,
+  useAdminTournamentAgeGroups, useCreateAgeGroup, useDeleteAgeGroup,
+  useAgeGroupParticipants, useStructureTemplates, useUpdateAgeGroupStructure,
+  useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate,
+} from '@/api/tournaments'
+import { useAdminOrganizations, useCreateOrganization } from '@/api/organizations'
+import { useAdminTeams, useCreateTeam, useEnrollTournamentTeam, useUnenrollTournamentTeam } from '@/api/teams'
+import { useOrganizationFields } from '@/api/fields'
+import ImageUpload from '@/components/shared/ImageUpload'
+import AgeGroupProgramView from '@/components/program/AgeGroupProgramView'
+import { Calendar, MapPin, Globe, Pencil, Trash2, X, Plus, Eye, EyeOff, Layers3, Users, Save, ArrowRight, ExternalLink, Sparkles } from 'lucide-react'
+import { format } from 'date-fns'
+import { it } from 'date-fns/locale'
+import { useAuth } from '@/context/AuthContext'
+
+function slugifyTournamentPart(value: string) {
+  return value.toLowerCase()
+    .replace(/[àáâ]/g, 'a').replace(/[èéê]/g, 'e').replace(/[ìí]/g, 'i')
+    .replace(/[òó]/g, 'o').replace(/[ùú]/g, 'u')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+function buildTournamentSlugPreview({
+  organizationSlug,
+  name,
+  eventType,
+  year,
+  startDate,
+}: {
+  organizationSlug?: string | null
+  name: string
+  eventType: 'TOURNAMENT' | 'GATHERING'
+  year: number
+  startDate?: string
+}) {
+  const orgPart = slugifyTournamentPart(organizationSlug || 'societa')
+  const namePart = slugifyTournamentPart(name || 'evento')
+  const suffix = eventType === 'GATHERING' && startDate ? startDate : String(year)
+  return [orgPart, namePart, suffix].filter(Boolean).join('-')
+}
+
+export default function TournamentsAdminPage() {
+  const { tournamentId, ageGroupId } = useParams()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const { data: tournaments, isLoading } = useAdminTournaments()
+  const { data: organizations } = useAdminOrganizations()
+  const [search, setSearch] = useState('')
+  const [organizationFilter, setOrganizationFilter] = useState('all')
+  const [eventTypeFilter, setEventTypeFilter] = useState<'all' | Tournament['event_type']>('all')
+  const [yearFilter, setYearFilter] = useState('all')
+  const [categoriesTarget, setCategoriesTarget] = useState<Tournament | null>(null)
+
+  function openCreate() { navigate('/admin/tornei/nuovo') }
+  function openEdit(t: Tournament) { navigate(`/admin/tornei/${t.id}/modifica`) }
+  function openOperations(t: Tournament) { navigate(`/admin/tornei/${t.id}/gestione`) }
+  const isScoreKeeper = user?.role === 'SCORE_KEEPER'
+  const filteredTournaments = (tournaments ?? []).filter((tournament) => {
+    const matchesSearch = search.trim().length === 0
+      || tournament.name.toLowerCase().includes(search.toLowerCase())
+      || (tournament.organization_name ?? '').toLowerCase().includes(search.toLowerCase())
+      || tournament.slug.toLowerCase().includes(search.toLowerCase())
+    const matchesOrg = organizationFilter === 'all' || tournament.organization_id === organizationFilter
+    const matchesType = eventTypeFilter === 'all' || tournament.event_type === eventTypeFilter
+    const matchesYear = yearFilter === 'all' || String(tournament.year) === yearFilter
+    return matchesSearch && matchesOrg && matchesType && matchesYear
+  })
+
+  if (tournamentId && ageGroupId && location.pathname.endsWith('/gestione')) {
+    const tournament = tournaments?.find((item) => item.id === tournamentId) ?? null
+
+    if (isLoading) {
+      return <div className="py-12 text-center text-sm text-slate-500">Caricamento gestione categoria...</div>
+    }
+
+    if (!tournament) {
+      return (
+        <div className="rounded-[1.8rem] border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm">
+          Evento non trovato.
+        </div>
+      )
+    }
+
+    return <AgeGroupOperationsScreen tournament={tournament} ageGroupId={ageGroupId} />
+  }
+
+  if (tournamentId && ageGroupId) {
+    const tournament = tournaments?.find((item) => item.id === tournamentId) ?? null
+
+    if (isLoading) {
+      return <div className="py-12 text-center text-sm text-slate-500">Caricamento configurazione categoria...</div>
+    }
+
+    if (!tournament) {
+      return (
+        <div className="rounded-[1.8rem] border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm">
+          Evento non trovato.
+        </div>
+      )
+    }
+
+    return <AgeGroupConfigurationScreen tournament={tournament} ageGroupId={ageGroupId} />
+  }
+
+  if (location.pathname.endsWith('/nuovo')) {
+    return <TournamentEditorScreen tournament={null} />
+  }
+
+  if (tournamentId && location.pathname.endsWith('/modifica')) {
+    const tournament = tournaments?.find((item) => item.id === tournamentId) ?? null
+
+    if (isLoading) {
+      return <div className="py-12 text-center text-sm text-slate-500">Caricamento evento...</div>
+    }
+
+    if (!tournament) {
+      return (
+        <div className="rounded-[1.8rem] border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm">
+          Evento non trovato.
+        </div>
+      )
+    }
+
+    return <TournamentEditorScreen tournament={tournament} />
+  }
+
+  if (tournamentId && location.pathname.endsWith('/gestione')) {
+    const tournament = tournaments?.find((item) => item.id === tournamentId) ?? null
+
+    if (isLoading) {
+      return <div className="py-12 text-center text-sm text-slate-500">Caricamento gestione evento...</div>
+    }
+
+    if (!tournament) {
+      return (
+        <div className="rounded-[1.8rem] border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm">
+          Evento non trovato.
+        </div>
+      )
+    }
+
+    return <TournamentOperationsScreen tournament={tournament} />
+  }
+
+  return (
+    <div className="max-w-6xl">
+      <div className="mb-6 flex flex-col gap-4 rounded-[2rem] border border-white/80 bg-white/80 p-6 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">Gestione eventi</p>
+          <h1 className="mt-2 text-3xl font-black text-slate-900">Tornei e raggruppamenti</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+            Gli eventi sono raggruppati per società organizzatrice. Ogni evento può essere un
+            torneo oppure un raggruppamento, con URL coerente per anno o data e configurazione
+            completa delle categorie.
+          </p>
+        </div>
+        {!isScoreKeeper && (
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 rounded-2xl bg-rugby-green px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-rugby-green-dark"
+          >
+            <Plus className="h-4 w-4" /> Nuovo evento
+          </button>
+        )}
+      </div>
+
+      <div className="mb-5 grid gap-3 rounded-[1.8rem] border border-white/80 bg-white/75 p-4 shadow-[0_20px_60px_-50px_rgba(15,23,42,0.4)] backdrop-blur md:grid-cols-4">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Cerca torneo, raggruppamento o società"
+          className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+        />
+        <select value={organizationFilter} onChange={(e) => setOrganizationFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
+          <option value="all">Tutte le società</option>
+          {(organizations ?? []).map((organization) => (
+            <option key={organization.id} value={organization.id}>{organization.name}</option>
+          ))}
+        </select>
+        <select value={eventTypeFilter} onChange={(e) => setEventTypeFilter(e.target.value as 'all' | Tournament['event_type'])} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
+          <option value="all">Tutti i tipi</option>
+          <option value="TOURNAMENT">Tornei</option>
+          <option value="GATHERING">Raggruppamenti</option>
+        </select>
+        <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
+          <option value="all">Tutti gli anni</option>
+          {Array.from(new Set((tournaments ?? []).map((tournament) => String(tournament.year)))).sort((left, right) => Number(right) - Number(left)).map((year) => (
+            <option key={year} value={year}>{year}</option>
+          ))}
+        </select>
+      </div>
+
+      {isLoading && <div className="text-gray-400 text-sm py-8 text-center">Caricamento...</div>}
+
+      {!isLoading && filteredTournaments.length === 0 && (
+        <div className="bg-white rounded-xl border border-dashed border-gray-200 p-12 text-center text-gray-400">
+          <p className="font-medium">{isScoreKeeper ? 'Nessun torneo assegnato' : 'Nessun evento trovato'}</p>
+          <p className="text-sm mt-1">{isScoreKeeper ? 'Chiedi a un amministratore di assegnarti uno o più tornei.' : 'Prova a cambiare i filtri o crea un nuovo evento.'}</p>
+        </div>
+      )}
+
+      {filteredTournaments.length > 0 && (
+        <div className="space-y-6">
+          {Object.entries(
+            filteredTournaments.reduce<Record<string, Tournament[]>>((acc, tournament) => {
+              const key = tournament.organization_id
+              acc[key] = acc[key] ?? []
+              acc[key].push(tournament)
+              return acc
+            }, {})
+          )
+            .sort((left, right) => {
+              const leftName = organizations?.find((org) => org.id === left[0])?.name ?? left[0]
+              const rightName = organizations?.find((org) => org.id === right[0])?.name ?? right[0]
+              return leftName.localeCompare(rightName)
+            })
+            .map(([organizationId, organizationTournaments]) => {
+              const organization = organizations?.find((org) => org.id === organizationId)
+              const label = organization?.name ?? organizationTournaments[0]?.organization_name ?? 'Società'
+              return (
+                <section key={organizationId} className="rounded-[1.8rem] border border-white/80 bg-white/70 p-4 shadow-[0_20px_60px_-50px_rgba(15,23,42,0.45)] backdrop-blur">
+                  <div className="mb-4 flex items-center gap-3 px-2">
+                    <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                      {organization?.logo_url ? (
+                        <img src={organization.logo_url} alt={label} className="h-9 w-9 object-contain" />
+                      ) : (
+                        <span className="text-xs font-black text-slate-600">{label.slice(0, 2).toUpperCase()}</span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-lg font-black text-slate-900">{label}</p>
+                      <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-400">
+                        {organizationTournaments.length} eventi
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid gap-4">
+                    {organizationTournaments.map(t => (
+                      <TournamentRow
+                        key={t.id}
+                        tournament={t}
+                        onEdit={() => openEdit(t)}
+                        onOperations={() => openOperations(t)}
+                        onCategories={() => setCategoriesTarget(t)}
+                        canEdit={!isScoreKeeper}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )
+            })}
+        </div>
+      )}
+      {categoriesTarget && (
+        <AgeGroupsDrawer tournament={categoriesTarget} onClose={() => setCategoriesTarget(null)} />
+      )}
+    </div>
+  )
+}
+
+function TournamentEditorScreen({ tournament }: { tournament: Tournament | null }) {
+  const navigate = useNavigate()
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-5">
+      <div className="rounded-[2rem] border border-white/80 bg-white/85 p-6 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <Link to="/admin/tornei" className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 transition-colors hover:text-slate-600">
+              Tornei
+            </Link>
+            <h1 className="mt-2 text-3xl font-black text-slate-950">
+              {tournament ? 'Modifica evento' : 'Nuovo evento'}
+            </h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Pagina completa per configurare dati base, branding, template, sponsor e impostazione pubblica dell&apos;evento.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/admin/tornei')}
+            className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+          >
+            Torna ai tornei
+          </button>
+        </div>
+      </div>
+
+      <TournamentFormDrawer tournament={tournament} onClose={() => navigate('/admin/tornei')} pageMode />
+
+      {tournament && (
+        <section className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
+          <div className="border-b border-slate-200 px-6 py-5">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Categorie dell&apos;evento</p>
+            <h2 className="mt-1 text-2xl font-black text-slate-950">Categorie, formula e gestione</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Da qui aggiungi le categorie dell&apos;evento e apri direttamente la configurazione oppure la gestione operativa di risultati, ritardi e cambi gironi.
+            </p>
+          </div>
+          <div className="p-6">
+            <AgeGroupsManagerPanel tournament={tournament} />
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}
+
+function TournamentRow({ tournament: t, onEdit, onOperations, onCategories, canEdit }: {
+  tournament: Tournament; onEdit: () => void; onOperations: () => void; onCategories: () => void; canEdit: boolean
+}) {
+  const deleteMutation = useDeleteTournament()
+  const updateMutation = useUpdateTournament()
+
+  function handleDelete() {
+    if (confirm(`Eliminare "${t.name}"?`)) deleteMutation.mutate(t.id)
+  }
+
+  function togglePublish() {
+    updateMutation.mutate({ id: t.id, data: { is_published: !t.is_published } })
+  }
+
+  return (
+    <div className="rounded-[1.8rem] border border-white/80 bg-white/85 px-6 py-5 shadow-[0_30px_80px_-60px_rgba(15,23,42,0.5)] backdrop-blur">
+      <div className="flex items-center gap-4">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="truncate text-lg font-bold text-slate-900">{t.name}</p>
+          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-600">
+            {EVENT_TYPE_LABELS[t.event_type]}
+          </span>
+          <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${
+            t.is_published ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+          }`}>
+            {t.is_published ? 'Pubblicato' : 'Bozza'}
+          </span>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-400">
+          <span>{t.year}</span>
+          {t.start_date && (
+            <span className="flex items-center gap-1">
+              <Calendar className="h-3 w-3" />
+              {format(new Date(t.start_date), 'd MMM yyyy', { locale: it })}
+            </span>
+          )}
+          {t.location && (
+            <span className="flex items-center gap-1">
+              <MapPin className="h-3 w-3" />{t.location}
+            </span>
+          )}
+          <span className="flex items-center gap-1">
+            <Globe className="h-3 w-3" />{t.slug}
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        {canEdit && (
+          <>
+            <button
+              onClick={togglePublish}
+              title={t.is_published ? 'Nascondi' : 'Pubblica'}
+              className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600"
+            >
+              {t.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+            <button
+              onClick={onEdit}
+              className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-blue-50 hover:text-blue-600"
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+            <button
+              onClick={handleDelete}
+              className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </>
+        )}
+      </div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {canEdit && (
+          <button
+            onClick={onCategories}
+            className="inline-flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+          >
+            <Layers3 className="h-4 w-4" />
+            Categorie e formula
+          </button>
+        )}
+        <button
+          onClick={onOperations}
+          className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+        >
+          <Calendar className="h-4 w-4" />
+          Risultati e ritardi
+        </button>
+        <Link
+          to={`/tornei/${t.slug}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-2 rounded-xl bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700 transition-colors hover:bg-sky-100"
+        >
+          <ExternalLink className="h-4 w-4" />
+          Apri evento
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) {
+  const navigate = useNavigate()
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-5">
+      <div className="rounded-[2rem] border border-white/80 bg-white/85 p-6 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <Link to="/admin/tornei" className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 transition-colors hover:text-slate-600">
+              Tornei
+            </Link>
+            <h1 className="mt-2 text-3xl font-black text-slate-950">Risultati e ritardi</h1>
+            <p className="mt-1 text-sm text-slate-500">{tournament.name}</p>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+              Pagina operativa dell&apos;evento. Apri una categoria per inserire risultati, applicare ritardi e correggere manualmente gironi e partite.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => navigate(`/admin/tornei/${tournament.id}/modifica`)}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Modifica evento
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/admin/tornei')}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Torna ai tornei
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <section className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
+        <div className="border-b border-slate-200 px-6 py-5">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Categorie operative</p>
+          <h2 className="mt-1 text-2xl font-black text-slate-950">Scegli una categoria</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            Ogni card apre direttamente la schermata corretta della categoria sulla scheda di gestione.
+          </p>
+        </div>
+        <div className="p-6">
+          <AgeGroupsOperationsPanel tournament={tournament} />
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function TournamentFormDrawer({
+  tournament,
+  onClose,
+  pageMode = false,
+}: {
+  tournament: Tournament | null
+  onClose: () => void
+  pageMode?: boolean
+}) {
+  const { data: orgs } = useAdminOrganizations()
+  const { data: currentAgeGroups } = useAdminTournamentAgeGroups(tournament?.id ?? '')
+  const createOrg = useCreateOrganization()
+  const createTournament = useCreateTournament()
+  const updateTournament = useUpdateTournament()
+  const createAgeGroup = useCreateAgeGroup()
+  const updateAgeGroupStructure = useUpdateAgeGroupStructure()
+  const createTournamentTemplate = useCreateTournamentTemplate()
+
+  const isEdit = !!tournament
+
+  const singleDay = tournament
+    ? (!tournament.end_date || tournament.end_date === tournament.start_date)
+    : false
+
+  const [form, setForm] = useState({
+    name: tournament?.name ?? '',
+    event_type: tournament?.event_type ?? 'TOURNAMENT' as 'TOURNAMENT' | 'GATHERING',
+    year: tournament?.year ?? new Date().getFullYear(),
+    edition: tournament?.edition ?? '',
+    start_date: tournament?.start_date ?? '',
+    end_date: tournament?.end_date ?? '',
+    location: tournament?.location ?? '',
+    description: tournament?.description ?? '',
+    is_published: tournament?.is_published ?? false,
+    organization_id: tournament?.organization_id ?? '',
+    single_day: singleDay,
+    logo_url: tournament?.logo_url ?? '',
+    venue_map_url: tournament?.venue_map_url ?? '',
+    theme_primary_color: tournament?.theme_primary_color ?? '#243748',
+    theme_accent_color: tournament?.theme_accent_color ?? '#22c55e',
+    sponsor_images: tournament?.sponsor_images ?? [],
+  })
+  const { data: allStructureTemplates } = useStructureTemplates(undefined, form.organization_id || tournament?.organization_id || undefined)
+
+  const [newOrgName, setNewOrgName] = useState('')
+  const [showNewOrg, setShowNewOrg] = useState(false)
+  const [error, setError] = useState('')
+  const [tournamentTemplateName, setTournamentTemplateName] = useState('')
+  const [tournamentTemplateDescription, setTournamentTemplateDescription] = useState('')
+  const [selectedTournamentTemplateId, setSelectedTournamentTemplateId] = useState('')
+  const [selectedTournamentTemplateName, setSelectedTournamentTemplateName] = useState('')
+  const [categoryTemplateSelections, setCategoryTemplateSelections] = useState<Partial<Record<'U6' | 'U8' | 'U10' | 'U12', string>>>({})
+  const [pendingTemplateAgeGroups, setPendingTemplateAgeGroups] = useState<Array<{
+    age_group: 'U6' | 'U8' | 'U10' | 'U12'
+    display_name?: string | null
+    structure_template_name?: string | null
+    structure_config?: Record<string, unknown> | null
+    scoring_rules?: Record<string, unknown>
+  }>>([])
+  const { data: tournamentTemplates } = useTournamentTemplates(form.organization_id || tournament?.organization_id || undefined)
+
+  const themePalettes = [
+    { id: 'livorno-default', name: 'Livorno Default', primary: '#243748', accent: '#22c55e' },
+    { id: 'mare-sole', name: 'Mare e sole', primary: '#0f766e', accent: '#f59e0b' },
+    { id: 'notte-rossa', name: 'Notte rossa', primary: '#0f172a', accent: '#dc2626' },
+    { id: 'stadio-sky', name: 'Stadio sky', primary: '#1d4ed8', accent: '#16a34a' },
+    { id: 'grinta-orange', name: 'Grinta orange', primary: '#7c2d12', accent: '#fb923c' },
+    { id: 'club-vintage', name: 'Club vintage', primary: '#4c1d95', accent: '#facc15' },
+  ] as const
+
+  function set(field: string, value: string | number | boolean) {
+    setForm(f => ({ ...f, [field]: value }))
+  }
+
+  async function handleCreateOrg() {
+    if (!newOrgName.trim()) return
+    const slug = slugifyTournamentPart(newOrgName)
+    const org = await createOrg.mutateAsync({ name: newOrgName.trim(), slug })
+    set('organization_id', org.id)
+    setNewOrgName('')
+    setShowNewOrg(false)
+  }
+
+  function upsertPendingAgeGroup(nextGroup: {
+    age_group: 'U6' | 'U8' | 'U10' | 'U12'
+    display_name?: string | null
+    structure_template_name?: string | null
+    structure_config?: Record<string, unknown> | null
+    scoring_rules?: Record<string, unknown>
+  }) {
+    setPendingTemplateAgeGroups((current) => {
+      const remaining = current.filter((item) => item.age_group !== nextGroup.age_group)
+      return [...remaining, nextGroup].sort((left, right) => left.age_group.localeCompare(right.age_group))
+    })
+  }
+
+  function removePendingAgeGroup(ageGroup: 'U6' | 'U8' | 'U10' | 'U12') {
+    setPendingTemplateAgeGroups((current) => current.filter((item) => item.age_group !== ageGroup))
+  }
+
+  function applyTournamentTemplate(template: TournamentTemplate) {
+    const config = template.config as {
+      tournament?: Partial<typeof form> & { organization_id?: string }
+      age_groups?: Array<{
+        age_group: string
+        display_name?: string | null
+        structure_template_name?: string | null
+        structure_config?: Record<string, unknown> | null
+        scoring_rules?: Record<string, unknown>
+      }>
+    }
+    const tournamentConfig = config.tournament ?? {}
+    const normalizedAgeGroups = (config.age_groups ?? []).filter((group): group is {
+      age_group: 'U6' | 'U8' | 'U10' | 'U12'
+      display_name?: string | null
+      structure_template_name?: string | null
+      structure_config?: Record<string, unknown> | null
+      scoring_rules?: Record<string, unknown>
+    } => AGE_GROUP_OPTIONS.some((option) => option.value === group.age_group))
+    setSelectedTournamentTemplateId(template.id)
+    setSelectedTournamentTemplateName(template.name)
+    setCategoryTemplateSelections({})
+    setPendingTemplateAgeGroups(normalizedAgeGroups)
+    setForm((current) => ({
+      ...current,
+      organization_id: tournamentConfig.organization_id ?? current.organization_id,
+      name: typeof tournamentConfig.name === 'string' ? tournamentConfig.name : current.name,
+      event_type: tournamentConfig.event_type === 'GATHERING' ? 'GATHERING' : (tournamentConfig.event_type === 'TOURNAMENT' ? 'TOURNAMENT' : current.event_type),
+      year: typeof tournamentConfig.year === 'number' ? tournamentConfig.year : current.year,
+      edition: typeof tournamentConfig.edition === 'string' ? tournamentConfig.edition : current.edition,
+      start_date: typeof tournamentConfig.start_date === 'string' ? tournamentConfig.start_date : current.start_date,
+      end_date: typeof tournamentConfig.end_date === 'string' ? tournamentConfig.end_date : current.end_date,
+      location: typeof tournamentConfig.location === 'string' ? tournamentConfig.location : current.location,
+      description: typeof tournamentConfig.description === 'string' ? tournamentConfig.description : current.description,
+      logo_url: typeof tournamentConfig.logo_url === 'string' ? tournamentConfig.logo_url : current.logo_url,
+      venue_map_url: typeof tournamentConfig.venue_map_url === 'string' ? tournamentConfig.venue_map_url : current.venue_map_url,
+      theme_primary_color: typeof tournamentConfig.theme_primary_color === 'string' ? tournamentConfig.theme_primary_color : current.theme_primary_color,
+      theme_accent_color: typeof tournamentConfig.theme_accent_color === 'string' ? tournamentConfig.theme_accent_color : current.theme_accent_color,
+      sponsor_images: Array.isArray(tournamentConfig.sponsor_images) ? tournamentConfig.sponsor_images as string[] : current.sponsor_images,
+      is_published: typeof tournamentConfig.is_published === 'boolean' ? tournamentConfig.is_published : current.is_published,
+    }))
+  }
+
+  async function handleSaveTournamentTemplate() {
+    if (!tournamentTemplateName.trim()) return
+    const ageGroupsForTemplate = (currentAgeGroups ?? []).map((ageGroup) => ({
+      age_group: ageGroup.age_group,
+      display_name: ageGroup.display_name,
+      structure_template_name: ageGroup.structure_template_name,
+      structure_config: ageGroup.structure_config,
+      scoring_rules: ageGroup.scoring_rules,
+    }))
+    await createTournamentTemplate.mutateAsync({
+      name: tournamentTemplateName.trim(),
+      description: tournamentTemplateDescription.trim() || undefined,
+      organization_id: form.organization_id || tournament?.organization_id || null,
+      config: {
+        tournament: {
+          organization_id: form.organization_id || tournament?.organization_id || null,
+          name: form.name,
+          year: Number(form.year),
+          edition: form.edition || null,
+          start_date: form.start_date || null,
+          end_date: form.single_day ? (form.start_date || null) : (form.end_date || null),
+          location: form.location || null,
+          description: form.description || null,
+          logo_url: form.logo_url || null,
+          venue_map_url: form.venue_map_url || null,
+          theme_primary_color: form.theme_primary_color || null,
+          theme_accent_color: form.theme_accent_color || null,
+          sponsor_images: form.sponsor_images.filter((item) => item.trim().length > 0),
+          is_published: form.is_published,
+        },
+        age_groups: ageGroupsForTemplate,
+      },
+    })
+    setTournamentTemplateName('')
+    setTournamentTemplateDescription('')
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    if (!form.organization_id) { setError('Seleziona o crea un\'società'); return }
+    const selectedOrganization = orgs?.find((org) => org.id === form.organization_id)
+    const computedSlug = buildTournamentSlugPreview({
+      organizationSlug: selectedOrganization?.slug,
+      name: form.name,
+      eventType: form.event_type,
+      year: Number(form.year),
+      startDate: form.start_date || undefined,
+    })
+
+    const payload = {
+      ...form,
+      year: Number(form.year),
+      slug: computedSlug,
+      edition: form.edition || undefined,
+      start_date: form.start_date || undefined,
+      end_date: form.single_day ? (form.start_date || undefined) : (form.end_date || undefined),
+      location: form.location || undefined,
+      description: form.description || undefined,
+      logo_url: form.logo_url || undefined,
+      venue_map_url: form.venue_map_url || undefined,
+      theme_primary_color: form.theme_primary_color || undefined,
+      theme_accent_color: form.theme_accent_color || undefined,
+      sponsor_images: form.sponsor_images.filter((item) => item.trim().length > 0),
+    }
+
+    try {
+      if (isEdit) {
+        await updateTournament.mutateAsync({ id: tournament!.id, data: payload })
+      } else {
+        const createdTournament = await createTournament.mutateAsync(payload)
+        if (pendingTemplateAgeGroups.length > 0) {
+          for (const ageGroupTemplate of pendingTemplateAgeGroups) {
+            const createdAgeGroup = await createAgeGroup.mutateAsync({
+              tournament_id: createdTournament.id,
+              age_group: ageGroupTemplate.age_group,
+              display_name: ageGroupTemplate.display_name ?? undefined,
+              scoring_rules: ageGroupTemplate.scoring_rules,
+            })
+            if (ageGroupTemplate.structure_config) {
+              await updateAgeGroupStructure.mutateAsync({
+                id: createdAgeGroup.id,
+                tournamentId: createdTournament.id,
+                structure_template_name: ageGroupTemplate.structure_template_name ?? null,
+                structure_config: ageGroupTemplate.structure_config,
+              })
+            }
+          }
+        }
+      }
+      onClose()
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setError(msg ?? 'Errore durante il salvataggio')
+    }
+  }
+
+  const isPending = createTournament.isPending || updateTournament.isPending
+
+  const formContent = (
+    <>
+      <form onSubmit={handleSubmit} className={pageMode ? 'space-y-6 p-6' : 'flex-1 overflow-y-auto px-6 py-5 space-y-5'}>
+          {error && (
+            <div className="bg-red-50 text-red-600 text-sm rounded-lg px-3 py-2">{error}</div>
+          )}
+
+          {/* Organization */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Società *</label>
+            {orgs && orgs.length > 0 ? (
+              <select
+                value={form.organization_id}
+                onChange={e => set('organization_id', e.target.value)}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rugby-green"
+              >
+                <option value="">— seleziona —</option>
+                {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            ) : null}
+            {!showNewOrg ? (
+              <button type="button" onClick={() => setShowNewOrg(true)}
+                className="mt-1.5 text-xs text-rugby-green font-medium hover:underline">
+                + Crea nuova società
+              </button>
+            ) : (
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={newOrgName}
+                  onChange={e => setNewOrgName(e.target.value)}
+                  placeholder="Nome società"
+                  className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                />
+                <button type="button" onClick={handleCreateOrg}
+                  className="bg-rugby-green text-white px-3 py-2 rounded-lg text-sm font-medium">
+                  Crea
+                </button>
+                <button type="button" onClick={() => setShowNewOrg(false)}
+                  className="px-2 py-2 rounded-lg text-gray-400 hover:bg-gray-100">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          <Field label="Nome evento *" required>
+            <input value={form.name} onChange={e => set('name', e.target.value)} className={input} required />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Tipo evento *" required>
+              <select value={form.event_type} onChange={e => set('event_type', e.target.value)} className={input}>
+                <option value="TOURNAMENT">Torneo</option>
+                <option value="GATHERING">Raggruppamento</option>
+              </select>
+            </Field>
+            <Field label="Anno *" required>
+              <input type="number" value={form.year} onChange={e => set('year', e.target.value)}
+                min={2000} max={2099} className={input} required />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Edizione">
+              <input value={form.edition} onChange={e => set('edition', e.target.value)}
+                placeholder="es. 1ª edizione" className={input} />
+            </Field>
+            <Field label={form.event_type === 'GATHERING' ? 'Data per URL' : 'URL pubblico'} hint={form.event_type === 'GATHERING' ? 'Usa la data del raggruppamento' : 'Usa l’anno dell’evento'}>
+              <div className="rounded-lg border border-gray-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                /tornei/{buildTournamentSlugPreview({
+                  organizationSlug: orgs?.find((org) => org.id === form.organization_id)?.slug,
+                  name: form.name,
+                  eventType: form.event_type,
+                  year: Number(form.year),
+                  startDate: form.start_date || undefined,
+                })}
+              </div>
+            </Field>
+          </div>
+
+          <div className="space-y-3">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.single_day}
+                onChange={e => set('single_day', e.target.checked)}
+                className="w-4 h-4 accent-rugby-green"
+              />
+              <span className="text-sm font-medium text-gray-700">Giorno unico</span>
+            </label>
+            <div className={`grid gap-3 ${form.single_day ? '' : 'grid-cols-2'}`}>
+              <Field label={form.single_day ? 'Data' : 'Data inizio'}>
+                <input type="date" value={form.start_date} onChange={e => set('start_date', e.target.value)} className={input} />
+              </Field>
+              {!form.single_day && (
+                <Field label="Data fine">
+                  <input type="date" value={form.end_date} onChange={e => set('end_date', e.target.value)} className={input} />
+                </Field>
+              )}
+            </div>
+          </div>
+
+          <Field label="Sede / Località">
+            <input value={form.location} onChange={e => set('location', e.target.value)}
+              placeholder="es. Campo Sportivo Livorno" className={input} />
+          </Field>
+
+          <Field label="Descrizione">
+            <textarea value={form.description} onChange={e => set('description', e.target.value)}
+              rows={3} className={input + ' resize-none'} />
+          </Field>
+
+          <ImageUpload
+            label="Logo torneo"
+            value={form.logo_url}
+            onChange={v => set('logo_url', v)}
+            folder="tournaments"
+            maxDim={400}
+            placeholder="Carica logo"
+          />
+
+          <ImageUpload
+            label="Mappa / Piantina sede"
+            value={form.venue_map_url}
+            onChange={v => set('venue_map_url', v)}
+            folder="maps"
+            maxDim={2000}
+            preview="wide"
+            placeholder="Carica piantina"
+          />
+
+          {!isEdit && (
+            <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-4">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Template evento</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">Crea un evento partendo da un template completo</p>
+              </div>
+              <div className="space-y-3">
+                <select
+                  value={selectedTournamentTemplateId}
+                  onChange={(e) => {
+                    const template = tournamentTemplates?.find((item) => item.id === e.target.value)
+                    if (template) applyTournamentTemplate(template)
+                    else {
+                      setSelectedTournamentTemplateId('')
+                      setSelectedTournamentTemplateName('')
+                      setPendingTemplateAgeGroups([])
+                    }
+                  }}
+                  className={input}
+                >
+                  <option value="">Nessun template evento</option>
+                  {(tournamentTemplates ?? []).map((template) => (
+                    <option key={template.id} value={template.id}>{template.name}</option>
+                  ))}
+                </select>
+                {selectedTournamentTemplateName && (
+                  <div className="rounded-[1.2rem] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                    Template applicato: <span className="font-semibold">{selectedTournamentTemplateName}</span>
+                    {pendingTemplateAgeGroups.length > 0 ? ` · ${pendingTemplateAgeGroups.length} categorie incluse` : ''}
+                  </div>
+                )}
+                <div className="rounded-[1.2rem] border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Composizione categorie</p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    In alternativa al template completo, puoi comporre l&apos;evento scegliendo una o più categorie-template.
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    {AGE_GROUP_OPTIONS.map((option) => {
+                      const availableTemplates = (allStructureTemplates ?? []).filter((template) => template.age_group === option.value)
+                      const isSelected = pendingTemplateAgeGroups.some((group) => group.age_group === option.value)
+                      return (
+                        <div key={option.value} className="rounded-[1.1rem] border border-slate-200 bg-slate-50 px-3 py-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">{option.label}</p>
+                              <p className="text-xs text-slate-500">{isSelected ? 'Categoria inclusa nel nuovo torneo' : 'Categoria non ancora inclusa'}</p>
+                            </div>
+                            <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    upsertPendingAgeGroup({
+                                      age_group: option.value,
+                                      display_name: option.label,
+                                    })
+                                  } else {
+                                    removePendingAgeGroup(option.value)
+                                    setCategoryTemplateSelections((current) => {
+                                      const next = { ...current }
+                                      delete next[option.value]
+                                      return next
+                                    })
+                                  }
+                                }}
+                                className="h-4 w-4 accent-rugby-green"
+                              />
+                              Includi
+                            </label>
+                          </div>
+                          <div className="mt-3">
+                            <select
+                              value={categoryTemplateSelections[option.value] ?? ''}
+                              onChange={(e) => {
+                                const templateId = e.target.value
+                                setCategoryTemplateSelections((current) => ({ ...current, [option.value]: templateId }))
+                                const template = availableTemplates.find((item) => item.id === templateId)
+                                if (template) {
+                                  upsertPendingAgeGroup({
+                                    age_group: option.value,
+                                    display_name: option.label,
+                                    structure_template_name: template.name,
+                                    structure_config: template.config,
+                                  })
+                                } else if (isSelected) {
+                                  upsertPendingAgeGroup({
+                                    age_group: option.value,
+                                    display_name: option.label,
+                                  })
+                                }
+                              }}
+                              className={input}
+                              disabled={!isSelected}
+                            >
+                              <option value="">Categoria vuota / configurazione manuale</option>
+                              {availableTemplates.map((template) => (
+                                <option key={template.id} value={template.id}>{template.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 p-4">
+            <div className="mb-4">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Tema torneo</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">Hero pubblico, colori e atmosfera visiva dell&apos;evento</p>
+            </div>
+            <div className="mb-4">
+              <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Tavolozza rapida</p>
+              <div className="grid grid-cols-2 gap-2">
+                {themePalettes.map((palette) => (
+                  <button
+                    key={palette.id}
+                    type="button"
+                    onClick={() => setForm((current) => ({
+                      ...current,
+                      theme_primary_color: palette.primary,
+                      theme_accent_color: palette.accent,
+                    }))}
+                    className="overflow-hidden rounded-2xl border border-slate-200 bg-white text-left transition-transform hover:-translate-y-0.5"
+                  >
+                    <div
+                      className="h-16"
+                      style={{ background: `linear-gradient(135deg, ${palette.primary} 0%, ${palette.primary}dd 45%, ${palette.accent} 100%)` }}
+                    />
+                    <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{palette.name}</p>
+                        <p className="text-[11px] text-slate-500">{palette.primary} · {palette.accent}</p>
+                      </div>
+                      <Sparkles className="h-4 w-4 text-slate-400" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Colore principale">
+                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                  <input
+                    type="color"
+                    value={form.theme_primary_color}
+                    onChange={e => set('theme_primary_color', e.target.value)}
+                    className="h-8 w-10 rounded border-0 bg-transparent p-0"
+                  />
+                  <input
+                    value={form.theme_primary_color}
+                    onChange={e => set('theme_primary_color', e.target.value)}
+                    className="min-w-0 flex-1 text-sm text-slate-700 focus:outline-none"
+                  />
+                </div>
+              </Field>
+              <Field label="Colore accento">
+                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                  <input
+                    type="color"
+                    value={form.theme_accent_color}
+                    onChange={e => set('theme_accent_color', e.target.value)}
+                    className="h-8 w-10 rounded border-0 bg-transparent p-0"
+                  />
+                  <input
+                    value={form.theme_accent_color}
+                    onChange={e => set('theme_accent_color', e.target.value)}
+                    className="min-w-0 flex-1 text-sm text-slate-700 focus:outline-none"
+                  />
+                </div>
+              </Field>
+            </div>
+            <div className="mt-4 overflow-hidden rounded-[1.2rem] border border-slate-200 bg-white">
+              <div
+                className="px-4 py-4"
+                style={{ background: `linear-gradient(135deg, ${form.theme_primary_color}18 0%, #ffffff 45%, ${form.theme_accent_color}16 100%)` }}
+              >
+                <div className="flex items-center gap-3">
+                  {form.logo_url ? (
+                    <img src={form.logo_url} alt={form.name || 'Torneo'} className="h-12 w-12 rounded-2xl bg-white object-contain p-1 shadow-sm" />
+                  ) : (
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-sm font-black text-slate-700 shadow-sm">
+                      {(form.name || 'T').slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm font-black text-slate-950">{form.name || 'Anteprima evento'}</p>
+                    <p className="text-xs text-slate-600">
+                      {form.start_date ? `Dal ${form.start_date}` : 'Data da definire'}
+                      {form.location ? ` · ${form.location}` : ' · Sede da definire'}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-700">Categorie</span>
+                  <span className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-700">Programma</span>
+                  <span className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-700">Sponsor</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 border-t border-slate-100 px-4 py-3">
+                <div className="h-10 w-10 rounded-2xl" style={{ backgroundColor: form.theme_primary_color }} />
+                <div className="h-10 w-10 rounded-2xl" style={{ backgroundColor: form.theme_accent_color }} />
+                <div className="text-xs text-slate-500">Colori applicati a testata, pulsanti e dettagli categoria</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 p-4">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Sponsor</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">Loghi sponsor dell&apos;evento</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setForm(current => ({ ...current, sponsor_images: [...current.sponsor_images, ''] }))}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+              >
+                Aggiungi sponsor
+              </button>
+            </div>
+            <div className="space-y-4">
+              {form.sponsor_images.map((image, index) => (
+                <div key={`sponsor-${index}`} className="rounded-[1.2rem] border border-slate-200 bg-white p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-slate-800">Sponsor {index + 1}</p>
+                    <button
+                      type="button"
+                      onClick={() => setForm(current => ({
+                        ...current,
+                        sponsor_images: current.sponsor_images.filter((_, currentIndex) => currentIndex !== index),
+                      }))}
+                      className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    <ImageUpload
+                      value={image}
+                      onChange={(value) => setForm(current => ({
+                        ...current,
+                        sponsor_images: current.sponsor_images.map((entry, currentIndex) => currentIndex === index ? value : entry),
+                      }))}
+                      folder="sponsors"
+                      maxDim={600}
+                      placeholder="Carica logo sponsor"
+                    />
+                    <input
+                      value={image}
+                      onChange={e => setForm(current => ({
+                        ...current,
+                        sponsor_images: current.sponsor_images.map((entry, currentIndex) => currentIndex === index ? e.target.value : entry),
+                      }))}
+                      placeholder="Oppure incolla URL logo sponsor"
+                      className={input}
+                    />
+                  </div>
+                </div>
+              ))}
+              {form.sponsor_images.length === 0 && (
+                <div className="rounded-[1.2rem] border border-dashed border-slate-200 bg-white px-4 py-5 text-sm text-slate-500">
+                  Nessun sponsor configurato. Puoi aggiungere uno o più loghi da mostrare nella pagina evento.
+                </div>
+              )}
+              {form.sponsor_images.length > 0 && (
+                <div className="rounded-[1.2rem] border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Anteprima pubblica</p>
+                  <div className="mt-3 overflow-hidden rounded-[1.2rem] border border-slate-100 bg-[linear-gradient(180deg,_#ffffff_0%,_#f8fafc_100%)] py-4">
+                    <div className="px-3 text-center">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: form.theme_accent_color || '#15803d' }}>Sponsor</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-700">Partner dell&apos;evento</p>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-3 px-4">
+                    {form.sponsor_images.filter((image) => image.trim().length > 0).map((image, index) => (
+                      <div key={`sponsor-preview-${index}`} className="flex h-16 w-36 items-center justify-center rounded-2xl border border-slate-100 bg-slate-50 px-4">
+                        <img src={image} alt={`Sponsor ${index + 1}`} className="max-h-10 max-w-full object-contain" />
+                      </div>
+                    ))}
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs text-slate-500">
+                    I loghi compaiono tra hero e categorie nella pagina torneo, e anche nella pagina della singola categoria.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" checked={form.is_published}
+              onChange={e => set('is_published', e.target.checked)}
+              className="w-4 h-4 accent-rugby-green" />
+            <span className="text-sm font-medium text-gray-700">Pubblica (visibile al pubblico)</span>
+          </label>
+
+          <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 p-4">
+            <div className="mb-4">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Salva come template evento</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">Salva l&apos;evento completo e le categorie già configurate</p>
+            </div>
+            <div className="space-y-3">
+              <input
+                value={tournamentTemplateName}
+                onChange={e => setTournamentTemplateName(e.target.value)}
+                placeholder="Es. Torneo minirugby completo"
+                className={input}
+              />
+              <input
+                value={tournamentTemplateDescription}
+                onChange={e => setTournamentTemplateDescription(e.target.value)}
+                placeholder="Descrizione breve del template"
+                className={input}
+              />
+              <div className="rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+              {currentAgeGroups && currentAgeGroups.length > 0
+                  ? `Categorie incluse se salvi ora: ${currentAgeGroups.length}. Le squadre continueranno a definirsi dentro le singole categorie dell&apos;evento.`
+                  : 'Se l’evento non ha ancora categorie, il template salverà per ora solo branding e dati base dell’evento.'}
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleSaveTournamentTemplate()}
+                disabled={!tournamentTemplateName.trim() || createTournamentTemplate.isPending}
+                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {createTournamentTemplate.isPending ? 'Salvataggio...' : 'Salva template evento'}
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <div className={`${pageMode ? 'flex gap-3 border-t border-slate-200 px-6 py-5' : 'px-6 py-4 border-t border-gray-100 flex gap-3'}`}>
+          <button type="button" onClick={onClose}
+            className="flex-1 px-4 py-2.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+            Annulla
+          </button>
+          <button onClick={handleSubmit as unknown as React.MouseEventHandler}
+            disabled={isPending}
+            className="flex-1 px-4 py-2.5 rounded-lg bg-rugby-green text-white text-sm font-semibold hover:bg-rugby-green-dark transition-colors disabled:opacity-50">
+            {isPending ? 'Salvataggio...' : isEdit ? 'Salva modifiche' : 'Crea evento'}
+          </button>
+        </div>
+    </>
+  )
+
+  if (pageMode) {
+    return (
+      <div className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
+        <div className="border-b border-slate-200 px-6 py-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                {isEdit ? 'Aggiorna evento' : 'Crea evento'}
+              </p>
+              <h2 className="mt-1 text-2xl font-black text-slate-950">
+                {isEdit ? tournament?.name : 'Dati base, branding e template'}
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                Configura l&apos;evento in una pagina completa, senza pannelli laterali: dati base, tema, sponsor e template.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Torna ai tornei
+            </button>
+          </div>
+        </div>
+        {formContent}
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col bg-white shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-bold text-gray-900">
+            {isEdit ? 'Modifica evento' : 'Nuovo evento'}
+          </h2>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+            <X className="h-5 w-5 text-gray-500" />
+          </button>
+        </div>
+        {formContent}
+      </div>
+    </>
+  )
+}
+
+const input = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rugby-green focus:border-transparent'
+
+function Field({ label, hint, required, children }: {
+  label: string; hint?: string; required?: boolean; children: React.ReactNode
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        {label}{required && <span className="text-red-400 ml-0.5">*</span>}
+        {hint && <span className="font-normal text-gray-400 ml-1 text-xs">({hint})</span>}
+      </label>
+      {children}
+    </div>
+  )
+}
+
+// ─── Fields management ────────────────────────────────────────────────────────
+
+const AGE_GROUP_OPTIONS: Array<{
+  value: 'U6' | 'U8' | 'U10' | 'U12'
+  label: string
+  subtitle: string
+  className: string
+}> = [
+  { value: 'U6', label: 'Under 6', subtitle: 'Primi tornei', className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { value: 'U8', label: 'Under 8', subtitle: 'Minirugby base', className: 'bg-sky-50 text-sky-700 border-sky-200' },
+  { value: 'U10', label: 'Under 10', subtitle: 'Competizione intermedia', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { value: 'U12', label: 'Under 12', subtitle: 'Categoria avanzata', className: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200' },
+]
+
+type StructurePhase = {
+  id: string
+  name: string
+  phase_type: 'GROUP_STAGE' | 'KNOCKOUT'
+  num_groups: number | null
+  group_sizes: string
+  qualifiers_per_group: number | null
+  best_extra_teams: number | null
+  next_phase_type: '' | 'GROUP_STAGE' | 'KNOCKOUT'
+  bracket_mode: 'standard' | 'placement'
+  group_field_assignments: Record<string, PlayingFieldConfig[]>
+  referee_group_assignments: Record<string, string[]>
+  notes: string
+}
+
+type PlayingFieldConfig = {
+  id: string
+  field_name: string
+  field_number: number | null
+}
+
+type ScheduleConfig = {
+  start_time: string
+  match_duration_minutes: number | null
+  interval_minutes: number | null
+  playing_fields: PlayingFieldConfig[]
+}
+
+type StructureConfig = {
+  expected_teams: number | null
+  schedule: ScheduleConfig
+  notes: string
+  phases: StructurePhase[]
+}
+
+const BUILTIN_TEMPLATES: Array<{
+  name: string
+  description: string
+  age_group?: string
+  config: StructureConfig
+}> = [
+  {
+    name: 'Solo girone unico',
+    description: 'Una sola fase a girone per tornei piccoli.',
+    config: {
+      expected_teams: null,
+      schedule: {
+        start_time: '09:30',
+        match_duration_minutes: 12,
+        interval_minutes: 8,
+        playing_fields: [],
+      },
+      notes: '',
+      phases: [
+        {
+          id: 'phase-1',
+          name: 'Girone unico',
+          phase_type: 'GROUP_STAGE',
+          num_groups: 1,
+          group_sizes: '',
+          qualifiers_per_group: null,
+          best_extra_teams: null,
+          next_phase_type: '',
+          bracket_mode: 'standard',
+          group_field_assignments: {},
+          referee_group_assignments: {},
+          notes: '',
+        },
+      ],
+    },
+  },
+  {
+    name: 'Gironi + finali',
+    description: 'Fase a gironi e poi tabellone finale.',
+    config: {
+      expected_teams: null,
+      schedule: {
+        start_time: '09:30',
+        match_duration_minutes: 12,
+        interval_minutes: 8,
+        playing_fields: [],
+      },
+      notes: '',
+      phases: [
+        {
+          id: 'phase-1',
+          name: 'Fase a gironi',
+          phase_type: 'GROUP_STAGE',
+          num_groups: 2,
+          group_sizes: '4,4',
+          qualifiers_per_group: 2,
+          best_extra_teams: 0,
+          next_phase_type: 'KNOCKOUT',
+          bracket_mode: 'standard',
+          group_field_assignments: {},
+          referee_group_assignments: {},
+          notes: '',
+        },
+        {
+          id: 'phase-2',
+          name: 'Finali',
+          phase_type: 'KNOCKOUT',
+          num_groups: null,
+          group_sizes: '',
+          qualifiers_per_group: null,
+          best_extra_teams: null,
+          next_phase_type: '',
+          bracket_mode: 'standard',
+          group_field_assignments: {},
+          referee_group_assignments: {},
+          notes: 'Semifinali e finali',
+        },
+      ],
+    },
+  },
+  {
+    name: 'Gironi + piazzamenti mini rugby',
+    description: 'Prime per il titolo, seconde per il piazzamento, e cosi via.',
+    config: {
+      expected_teams: null,
+      schedule: {
+        start_time: '09:30',
+        match_duration_minutes: 12,
+        interval_minutes: 8,
+        playing_fields: [],
+      },
+      notes: '',
+      phases: [
+        {
+          id: 'phase-1',
+          name: 'Gironi iniziali',
+          phase_type: 'GROUP_STAGE',
+          num_groups: 4,
+          group_sizes: '4,4,4,4',
+          qualifiers_per_group: 1,
+          best_extra_teams: 1,
+          next_phase_type: 'KNOCKOUT',
+          bracket_mode: 'placement',
+          group_field_assignments: {},
+          referee_group_assignments: {},
+          notes: 'Le prime giocano per 1-4 posto, le seconde per 5-8 posto, ecc.',
+        },
+        {
+          id: 'phase-2',
+          name: 'Fase finale e piazzamenti',
+          phase_type: 'KNOCKOUT',
+          num_groups: null,
+          group_sizes: '',
+          qualifiers_per_group: null,
+          best_extra_teams: null,
+          next_phase_type: '',
+          bracket_mode: 'placement',
+          group_field_assignments: {},
+          referee_group_assignments: {},
+          notes: 'Bracket principale e bracket di piazzamento',
+        },
+      ],
+    },
+  },
+]
+
+function AgeGroupsDrawer({ tournament, onClose }: { tournament: Tournament; onClose: () => void }) {
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Categorie dell&apos;evento</h2>
+            <p className="mt-0.5 text-xs text-gray-400">{tournament.name}</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-2 hover:bg-gray-100 transition-colors">
+            <X className="h-5 w-5 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <AgeGroupsManagerPanel tournament={tournament} />
+        </div>
+
+        <div className="border-t border-gray-100 px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
+          >
+            Chiudi
+          </button>
+        </div>
+      </div>
+
+    </>
+  )
+}
+
+function AgeGroupsManagerPanel({ tournament }: { tournament: Tournament }) {
+  const navigate = useNavigate()
+  const { data: ageGroups, isLoading, error: ageGroupsError } = useAdminTournamentAgeGroups(tournament.id)
+  const createAgeGroup = useCreateAgeGroup()
+  const deleteAgeGroup = useDeleteAgeGroup()
+  const [actionError, setActionError] = useState('')
+
+  async function handleToggle(option: typeof AGE_GROUP_OPTIONS[number]) {
+    setActionError('')
+    try {
+      const existing = ageGroups?.find((group) => group.age_group === option.value)
+      if (existing) {
+        await deleteAgeGroup.mutateAsync({ id: existing.id, tournamentId: tournament.id })
+        return
+      }
+
+      const created = await createAgeGroup.mutateAsync({
+        tournament_id: tournament.id,
+        age_group: option.value,
+        display_name: option.label,
+      })
+      navigate(`/admin/tornei/${tournament.id}/categorie/${created.id}`)
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setActionError(msg ?? 'Impossibile aggiornare la categoria')
+    }
+  }
+
+  const isPending = createAgeGroup.isPending || deleteAgeGroup.isPending
+
+  return (
+    <>
+      {(actionError || ageGroupsError) && (
+        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {actionError || 'Errore nel caricamento delle categorie. Verifica che il database sia aggiornato.'}
+        </div>
+      )}
+
+      <div className="rounded-[1.6rem] border border-amber-200 bg-[linear-gradient(180deg,_#fff8e8_0%,_#fffdf5_100%)] p-5 shadow-sm">
+        <p className="text-xs font-bold uppercase tracking-[0.22em] text-amber-600">Passo 1</p>
+        <h3 className="mt-2 text-xl font-black text-slate-900">Aggiungi le categorie dell&apos;evento</h3>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Seleziona subito le categorie presenti. Dopo l’aggiunta potrai entrare in configurazione oppure direttamente nella gestione operativa.
+        </p>
+      </div>
+
+      <div className="mt-5 grid gap-3">
+        {AGE_GROUP_OPTIONS.map((option) => {
+          const selected = !!ageGroups?.find((group) => group.age_group === option.value)
+          const activeGroup = ageGroups?.find((group) => group.age_group === option.value)
+          return (
+            <div
+              key={option.value}
+              className={`rounded-[1.4rem] border p-4 transition-all ${
+                selected ? option.className : 'border-slate-200 bg-white text-slate-800'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-base font-bold">{option.label}</p>
+                  <p className={`mt-1 text-sm ${selected ? 'text-current/80' : 'text-slate-500'}`}>
+                    {option.subtitle}
+                  </p>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  selected ? 'bg-white/80 text-current' : 'bg-slate-100 text-slate-500'
+                }`}>
+                  {selected ? 'Attiva' : 'Non attiva'}
+                </span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => void handleToggle(option)}
+                  className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
+                    selected ? 'bg-white/80 text-current' : 'bg-rugby-green text-white hover:bg-rugby-green-dark'
+                  }`}
+                >
+                  {selected && <Trash2 className="h-4 w-4" />}
+                  {selected ? 'Rimuovi' : 'Aggiungi categoria'}
+                </button>
+                {activeGroup && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${activeGroup.id}`)}
+                      className="rounded-xl border border-current/20 px-3 py-2 text-sm font-semibold"
+                    >
+                      Formula e squadre
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${activeGroup.id}/gestione`)}
+                      className="rounded-xl border border-current/20 bg-white/75 px-3 py-2 text-sm font-semibold"
+                    >
+                      Risultati e ritardi
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="mt-6">
+        <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Categorie già aggiunte</p>
+        {isLoading && <p className="py-4 text-sm text-gray-400">Caricamento...</p>}
+        {!isLoading && ageGroups && ageGroups.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {ageGroups.map((group) => (
+              <AgeGroupQuickCard key={group.id} tournament={tournament} group={group} />
+            ))}
+          </div>
+        ) : !isLoading ? (
+          <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+            Nessuna categoria selezionata.
+          </div>
+        ) : null}
+      </div>
+    </>
+  )
+}
+
+function AgeGroupQuickCard({ tournament, group }: { tournament: Tournament; group: AgeGroup }) {
+  const navigate = useNavigate()
+  const { data: program } = useAdminAgeGroupProgram(group.id)
+  const structure = normalizeStructureConfig(group.structure_config)
+  const hasFormula = structure.phases.length > 0
+  const hasScheduleBase = Boolean(structure.schedule.start_time && structure.schedule.playing_fields.length > 0)
+  const hasProgram = Boolean(program?.generated)
+  const completedMatches = countProgramMatches(program, (match) => match.status === 'COMPLETED')
+  const totalMatches = countProgramMatches(program)
+
+  return (
+    <div className="rounded-[1.45rem] border border-slate-200 bg-slate-50 px-4 py-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <p className="text-base font-black text-slate-900">{group.display_name || group.age_group}</p>
+          <p className="mt-1 text-sm text-slate-500">Formula, squadre e operatività della categoria in un solo punto.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <StatusPill label={hasFormula ? 'Formula pronta' : 'Formula da completare'} tone={hasFormula ? 'emerald' : 'amber'} />
+            <StatusPill label={hasScheduleBase ? 'Orari e campi impostati' : 'Base calendario incompleta'} tone={hasScheduleBase ? 'sky' : 'amber'} />
+            <StatusPill label={hasProgram ? `Programma generato · ${completedMatches}/${totalMatches}` : 'Programma non generato'} tone={hasProgram ? 'fuchsia' : 'slate'} />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${group.id}`)}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+          >
+            Formula e squadre
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${group.id}/gestione`)}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+          >
+            Risultati e ritardi
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AgeGroupsOperationsPanel({ tournament }: { tournament: Tournament }) {
+  const navigate = useNavigate()
+  const { data: ageGroups, isLoading, error } = useAdminTournamentAgeGroups(tournament.id)
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        Errore nel caricamento delle categorie operative.
+      </div>
+    )
+  }
+
+  if (isLoading) {
+    return <div className="py-8 text-center text-sm text-slate-500">Caricamento categorie...</div>
+  }
+
+  if (!ageGroups || ageGroups.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+        Nessuna categoria presente. Aggiungila prima dalla pagina evento.
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid gap-3">
+      {ageGroups.map((group) => (
+        <div key={group.id} className="rounded-[1.45rem] border border-slate-200 bg-slate-50 px-4 py-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-base font-black text-slate-900">{group.display_name || group.age_group}</p>
+              <p className="mt-1 text-sm text-slate-500">Apri direttamente risultati, ritardi, arbitri, campi e cambi nei gironi.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${group.id}/gestione`)}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+            >
+              <Calendar className="h-4 w-4" />
+              Apri gestione categoria
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function StatusPill({
+  label,
+  tone,
+}: {
+  label: string
+  tone: 'emerald' | 'amber' | 'sky' | 'fuchsia' | 'slate'
+}) {
+  const toneClass = {
+    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    amber: 'border-amber-200 bg-amber-50 text-amber-700',
+    sky: 'border-sky-200 bg-sky-50 text-sky-700',
+    fuchsia: 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700',
+    slate: 'border-slate-200 bg-white text-slate-600',
+  }[tone]
+
+  return (
+    <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${toneClass}`}>
+      {label}
+    </span>
+  )
+}
+
+function AgeGroupConfigurationScreen({
+  tournament,
+  ageGroupId,
+}: {
+  tournament: Tournament
+  ageGroupId: string
+}) {
+  const { data: ageGroups, isLoading } = useAdminTournamentAgeGroups(tournament.id)
+  const ageGroup = ageGroups?.find((item) => item.id === ageGroupId) ?? null
+  const [activeTab, setActiveTab] = useState<'formula' | 'squadre' | 'template'>('formula')
+
+  if (isLoading) {
+    return <div className="py-12 text-center text-sm text-slate-500">Caricamento categoria...</div>
+  }
+
+  if (!ageGroup) {
+    return (
+      <div className="rounded-[1.8rem] border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm">
+        Categoria non trovata.
+      </div>
+    )
+  }
+
+  const tabs: Array<{ id: 'formula' | 'squadre' | 'template'; label: string }> = [
+    { id: 'formula', label: 'Formula' },
+    { id: 'squadre', label: 'Squadre' },
+    { id: 'template', label: 'Template' },
+  ]
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-5">
+      <div className="rounded-[2rem] border border-white/80 bg-white/85 p-6 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <Link to="/admin/tornei" className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 transition-colors hover:text-slate-600">
+              Tornei
+            </Link>
+            <h1 className="mt-2 text-3xl font-black text-slate-950">{ageGroup.display_name || ageGroup.age_group}</h1>
+            <p className="mt-1 text-sm text-slate-500">{tournament.name}</p>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+              Pagina dedicata alla configurazione della categoria. Risultati, ritardi e cambi gironi stanno in una pagina operativa separata.
+            </p>
+            {tournament.event_type === 'GATHERING' && (
+              <p className="mt-3 inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-sky-700">
+                Modalità raggruppamento
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to={`/admin/tornei/${tournament.id}/categorie/${ageGroup.id}/gestione`}
+              className="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+            >
+              Risultati e ritardi
+            </Link>
+            <Link
+              to="/admin/tornei"
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Torna ai tornei
+            </Link>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                activeTab === tab.id
+                  ? 'bg-slate-900 text-white'
+                  : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <AgeGroupConfigurationPanel
+        tournament={tournament}
+        ageGroup={ageGroup}
+        activeTab={activeTab}
+        pageMode
+      />
+    </div>
+  )
+}
+
+function AgeGroupOperationsScreen({
+  tournament,
+  ageGroupId,
+}: {
+  tournament: Tournament
+  ageGroupId: string
+}) {
+  const { data: ageGroups, isLoading } = useAdminTournamentAgeGroups(tournament.id)
+  const ageGroup = ageGroups?.find((item) => item.id === ageGroupId) ?? null
+
+  if (isLoading) {
+    return <div className="py-12 text-center text-sm text-slate-500">Caricamento gestione categoria...</div>
+  }
+
+  if (!ageGroup) {
+    return (
+      <div className="rounded-[1.8rem] border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm">
+        Categoria non trovata.
+      </div>
+    )
+  }
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-5">
+      <div className="rounded-[2rem] border border-white/80 bg-white/85 p-6 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <Link to={`/admin/tornei/${tournament.id}/gestione`} className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 transition-colors hover:text-slate-600">
+              Risultati e ritardi
+            </Link>
+            <h1 className="mt-2 text-3xl font-black text-slate-950">{ageGroup.display_name || ageGroup.age_group}</h1>
+            <p className="mt-1 text-sm text-slate-500">{tournament.name}</p>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+              Pagina operativa semplificata: cambi gironi, risultati e ritardi con filtri per fase, girone e stato.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to={`/admin/tornei/${tournament.id}/categorie/${ageGroup.id}`}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Formula e squadre
+            </Link>
+            <Link
+              to={`/admin/tornei/${tournament.id}/gestione`}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Torna alle categorie operative
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      <AgeGroupOperationsPanel ageGroup={ageGroup} />
+    </div>
+  )
+}
+
+function AgeGroupOperationsPanel({ ageGroup }: { ageGroup: AgeGroup }) {
+  const { data: participants } = useAgeGroupParticipants(ageGroup.id)
+  const { data: program } = useAdminAgeGroupProgram(ageGroup.id)
+  const structure = normalizeStructureConfig(ageGroup.structure_config)
+
+  return (
+    <section className="overflow-hidden rounded-[1.9rem] border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 bg-[linear-gradient(135deg,_#ffffff_0%,_#f8fafc_100%)] px-5 py-5">
+        <div className="mb-5 grid gap-3 md:grid-cols-3">
+          <div className="rounded-[1.4rem] border border-sky-200 bg-sky-50 px-4 py-3">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Cambi gironi</p>
+            <p className="mt-2 text-sm text-sky-900">Sposta le squadre solo quando serve, in modo rapido.</p>
+          </div>
+          <div className="rounded-[1.4rem] border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">Risultati</p>
+            <p className="mt-2 text-sm text-amber-900">Inserisci e correggi il punteggio con una vista lineare.</p>
+          </div>
+          <div className="rounded-[1.4rem] border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Ritardi</p>
+            <p className="mt-2 text-sm text-emerald-900">Aggiorna il ritardo e propagalo sulle partite successive del campo.</p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <InfoField label="Orario inizio" value={structure.schedule.start_time || 'Da definire'} />
+          <InfoField label="Durata incontro" value={structure.schedule.match_duration_minutes ? `${structure.schedule.match_duration_minutes} min` : 'Da definire'} />
+          <InfoField label="Intervallo" value={structure.schedule.interval_minutes !== null ? `${structure.schedule.interval_minutes} min` : 'Da definire'} />
+        </div>
+      </div>
+
+      <div className="p-5">
+        {participants && participants.length === 0 ? (
+          <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-500">
+            Aggiungi prima le squadre partecipanti, poi genera gironi e partite.
+          </div>
+        ) : program ? (
+          <AgeGroupProgramView
+            program={program}
+            mode="admin"
+            variant="operations"
+            playingFields={structure.schedule.playing_fields}
+            participants={participants ?? []}
+            matchDurationMinutes={structure.schedule.match_duration_minutes ?? 12}
+            intervalMinutes={structure.schedule.interval_minutes ?? 8}
+          />
+        ) : (
+          <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-500">
+            Nessun programma generato per questa categoria.
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function InfoField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3">
+      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{label}</p>
+      <p className="mt-2 text-sm font-semibold text-slate-900">{value}</p>
+    </div>
+  )
+}
+
+function AgeGroupConfigurationPanel({
+  tournament,
+  ageGroup,
+  activeTab,
+  pageMode = false,
+}: {
+  tournament: Tournament
+  ageGroup: AgeGroup
+  activeTab?: 'formula' | 'squadre' | 'template'
+  pageMode?: boolean
+}) {
+  const { data: participants } = useAgeGroupParticipants(ageGroup.id)
+  const { data: teams } = useAdminTeams()
+  const { data: organizations } = useAdminOrganizations()
+  const { data: facilities } = useOrganizationFields(tournament.organization_id)
+  const { data: templates } = useStructureTemplates(ageGroup.age_group, tournament.organization_id)
+  const createTeam = useCreateTeam()
+  const enrollTeam = useEnrollTournamentTeam()
+  const unenrollTeam = useUnenrollTournamentTeam()
+  const updateStructure = useUpdateAgeGroupStructure()
+  const createTemplate = useCreateStructureTemplate()
+
+  const [selectedTeamId, setSelectedTeamId] = useState('')
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState('')
+  const [newTeamName, setNewTeamName] = useState('')
+  const [newTeamShortName, setNewTeamShortName] = useState('')
+  const [templateName, setTemplateName] = useState('')
+  const [templateDescription, setTemplateDescription] = useState('')
+  const [selectedTemplateName, setSelectedTemplateName] = useState(ageGroup.structure_template_name ?? '')
+  const [structure, setStructure] = useState<StructureConfig>(() => normalizeStructureConfig(ageGroup.structure_config))
+  const [saveError, setSaveError] = useState('')
+  const [saveMessage, setSaveMessage] = useState('')
+  const [teamError, setTeamError] = useState('')
+  const [teamMessage, setTeamMessage] = useState('')
+  useEffect(() => {
+    setSelectedTemplateName(ageGroup.structure_template_name ?? '')
+    setStructure(normalizeStructureConfig(ageGroup.structure_config))
+    setSaveError('')
+    setSaveMessage('')
+    setTeamError('')
+    setTeamMessage('')
+  }, [ageGroup.id, ageGroup.structure_template_name, ageGroup.structure_config])
+
+  useEffect(() => {
+    setStructure((current) => ({
+      ...current,
+      phases: current.phases.map((phase) => {
+        if (phase.phase_type !== 'GROUP_STAGE') return phase
+        return {
+          ...phase,
+          group_field_assignments: buildAutoGroupFieldAssignments(phase, current.schedule.playing_fields),
+          referee_group_assignments: buildAutoRefereeAssignments(phase),
+        }
+      }),
+    }))
+  }, [structure.schedule.playing_fields.length, structure.phases.map((phase) => `${phase.id}:${phase.num_groups ?? ''}:${phase.group_sizes}`).join('|')])
+
+  const allTemplates = [
+    ...BUILTIN_TEMPLATES.filter((template) => !template.age_group || template.age_group === ageGroup.age_group),
+    ...(templates ?? []),
+  ]
+
+  const selectedTeamIds = new Set(participants?.map((participant) => participant.team_id) ?? [])
+  const availableTeams = (teams ?? []).filter((team) => !selectedTeamIds.has(team.id))
+  const availableOrganizations = organizations ?? []
+  const availableFacilities = facilities ?? []
+  const validationErrors = validateStructureConfig(structure)
+  const formulaStatus = validationErrors.length === 0 ? 'Pronta' : 'Bozza incompleta'
+  const isGathering = tournament.event_type === 'GATHERING'
+
+  async function handleAddTeam() {
+    if (!selectedTeamId) return
+    setTeamError('')
+    setTeamMessage('')
+    try {
+      await enrollTeam.mutateAsync({
+        tournament_age_group_id: ageGroup.id,
+        team_id: selectedTeamId,
+      })
+      setSelectedTeamId('')
+      setTeamMessage('Squadra aggiunta correttamente alla categoria')
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setTeamError(msg ?? 'Errore durante l’aggiunta della squadra')
+    }
+  }
+
+  async function handleCreateTeamFromOrganization() {
+    if (!selectedOrganizationId || !newTeamName.trim()) return
+    setTeamError('')
+    setTeamMessage('')
+    const organization = organizations?.find((item) => item.id === selectedOrganizationId)
+    if (!organization) return
+    try {
+      const createdTeam = await createTeam.mutateAsync({
+        organization_id: organization.id,
+        name: newTeamName.trim(),
+        short_name: newTeamShortName.trim() || undefined,
+      })
+      await enrollTeam.mutateAsync({
+        tournament_age_group_id: ageGroup.id,
+        team_id: createdTeam.id,
+      })
+      setSelectedOrganizationId('')
+      setNewTeamName('')
+      setNewTeamShortName('')
+      setTeamMessage('Squadra creata e aggiunta correttamente')
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setTeamError(msg ?? 'Errore durante la creazione della squadra')
+    }
+  }
+
+  async function handleApplyTemplate(template: StructureTemplate | typeof BUILTIN_TEMPLATES[number]) {
+    const config = 'config' in template ? template.config : {}
+    setSelectedTemplateName(template.name)
+    setStructure(normalizeStructureConfig(config))
+  }
+
+  function applyGatheringPreset(mode: 'single' | 'double' | 'triple') {
+    const groupCount = mode === 'single' ? 1 : mode === 'double' ? 2 : 3
+    const defaultSizes = Array.from({ length: groupCount }, () => Math.max(Math.floor((structure.expected_teams ?? Math.max(participants?.length ?? 0, groupCount)) / groupCount), 1))
+    defaultSizes[0] += Math.max((structure.expected_teams ?? Math.max(participants?.length ?? 0, groupCount)) - defaultSizes.reduce((sum, value) => sum + value, 0), 0)
+    setStructure((current) => ({
+      ...current,
+      notes: current.notes || 'Raggruppamento impostato con sola fase a gironi, senza finali.',
+      phases: [
+        {
+          ...makeEmptyPhase(1),
+          name: groupCount === 1 ? 'Girone unico' : 'Gironi di giornata',
+          phase_type: 'GROUP_STAGE',
+          num_groups: groupCount,
+          group_sizes: defaultSizes.join(','),
+          qualifiers_per_group: null,
+          best_extra_teams: null,
+          next_phase_type: '',
+          bracket_mode: 'standard',
+          notes: 'Raggruppamento senza fase finale.',
+          group_field_assignments: {},
+          referee_group_assignments: {},
+        },
+      ],
+    }))
+    setSelectedTemplateName('')
+  }
+
+  async function persistStructure(showSuccessMessage = true) {
+    setSaveError('')
+    try {
+      await updateStructure.mutateAsync({
+        id: ageGroup.id,
+        tournamentId: tournament.id,
+        structure_template_name: selectedTemplateName || null,
+        structure_config: structure as unknown as Record<string, unknown>,
+      })
+      if (showSuccessMessage) {
+        setSaveMessage(
+          validationErrors.length > 0
+            ? `Bozza salvata. Mancano ancora ${validationErrors.length} elementi per generare il programma.`
+            : 'Struttura salvata correttamente'
+        )
+      }
+      return true
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setSaveError(msg ?? 'Errore durante il salvataggio della struttura')
+      return false
+    }
+  }
+
+  async function handleSaveStructure() {
+    setSaveMessage('')
+    await persistStructure(true)
+  }
+
+  async function handleSaveAsTemplate() {
+    if (!templateName.trim()) return
+    await createTemplate.mutateAsync({
+      name: templateName.trim(),
+      description: templateDescription.trim() || undefined,
+      organization_id: tournament.organization_id,
+      age_group: ageGroup.age_group,
+      config: structure as unknown as Record<string, unknown>,
+    })
+    setTemplateName('')
+    setTemplateDescription('')
+  }
+
+  function setPhase(index: number, patch: Partial<StructurePhase>) {
+    setStructure((current) => ({
+      ...current,
+      phases: current.phases.map((phase, phaseIndex) => phaseIndex === index ? { ...phase, ...patch } : phase),
+    }))
+  }
+
+  function toggleGroupPlayingField(phaseIndex: number, groupName: string, playingField: PlayingFieldConfig) {
+    setStructure((current) => ({
+      ...current,
+      phases: current.phases.map((phase, currentPhaseIndex) => {
+        if (currentPhaseIndex !== phaseIndex) return phase
+        const currentAssignments = phase.group_field_assignments[groupName] ?? []
+        const exists = currentAssignments.some((assignment) => (
+          assignment.field_name === playingField.field_name && assignment.field_number === playingField.field_number
+        ))
+        const nextAssignments = exists
+          ? currentAssignments.filter((assignment) => !(assignment.field_name === playingField.field_name && assignment.field_number === playingField.field_number))
+          : [...currentAssignments, playingField]
+        return {
+          ...phase,
+          group_field_assignments: {
+            ...phase.group_field_assignments,
+            [groupName]: nextAssignments,
+          },
+        }
+      }),
+    }))
+  }
+
+  function toggleRefereeSourceGroup(phaseIndex: number, groupName: string, sourceGroupName: string) {
+    setStructure((current) => ({
+      ...current,
+      phases: current.phases.map((phase, currentPhaseIndex) => {
+        if (currentPhaseIndex !== phaseIndex) return phase
+        const currentAssignments = phase.referee_group_assignments[groupName] ?? []
+        const exists = currentAssignments.includes(sourceGroupName)
+        const nextAssignments = exists
+          ? currentAssignments.filter((item) => item !== sourceGroupName)
+          : [...currentAssignments, sourceGroupName]
+        return {
+          ...phase,
+          referee_group_assignments: {
+            ...phase.referee_group_assignments,
+            [groupName]: nextAssignments,
+          },
+        }
+      }),
+    }))
+  }
+
+  function addPhase() {
+    setStructure((current) => ({
+      ...current,
+      phases: [...current.phases, makeEmptyPhase(current.phases.length + 1)],
+    }))
+  }
+
+  function removePhase(index: number) {
+    setStructure((current) => ({
+      ...current,
+      phases: current.phases.filter((_, phaseIndex) => phaseIndex !== index),
+    }))
+  }
+
+  function addPlayingField() {
+    setStructure((current) => ({
+      ...current,
+      schedule: {
+        ...current.schedule,
+        playing_fields: [...current.schedule.playing_fields, makeEmptyPlayingField(current.schedule.playing_fields.length + 1)],
+      },
+    }))
+  }
+
+  function updatePlayingField(index: number, patch: Partial<PlayingFieldConfig>) {
+    setStructure((current) => ({
+      ...current,
+      schedule: {
+        ...current.schedule,
+        playing_fields: current.schedule.playing_fields.map((playingField, playingFieldIndex) => (
+          playingFieldIndex === index ? { ...playingField, ...patch } : playingField
+        )),
+      },
+    }))
+  }
+
+  function removePlayingField(index: number) {
+    setStructure((current) => ({
+      ...current,
+      schedule: {
+        ...current.schedule,
+        playing_fields: current.schedule.playing_fields.filter((_, playingFieldIndex) => playingFieldIndex !== index),
+      },
+    }))
+  }
+
+  const currentTab = activeTab ?? 'formula'
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-3 lg:grid-cols-4">
+        <SummaryTile label="Categoria" value={ageGroup.display_name || ageGroup.age_group} tone="slate" />
+        <SummaryTile label="Formula" value={formulaStatus} tone={validationErrors.length === 0 ? 'emerald' : 'amber'} />
+        <SummaryTile label="Squadre" value={`${participants?.length ?? 0}/${structure.expected_teams ?? '?'}`} tone="sky" />
+        <SummaryTile label="Template" value={selectedTemplateName || 'Nessuno'} tone="fuchsia" />
+      </div>
+
+      <div className={pageMode ? 'space-y-5' : 'grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_360px]'}>
+        <div className="space-y-5">
+          {currentTab === 'formula' && (
+          <section className="overflow-hidden rounded-[1.9rem] border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 bg-[linear-gradient(135deg,_#ffffff_0%,_#f8fafc_100%)] px-5 py-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Passo 1</p>
+                  <p className="mt-1 text-lg font-black text-slate-950">Formula dell&apos;evento</p>
+                  <p className="mt-1 text-sm text-slate-600">Parti da qui: numero squadre, fasi, gironi e qualificazioni.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={addPhase}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  <Plus className="h-4 w-4" />
+                  Aggiungi fase
+                </button>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Squadre inserite</p>
+                  <p className="mt-2 text-2xl font-black text-slate-950">{participants?.length ?? 0}</p>
+                </div>
+                <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-3">
+                  <FormField label="Numero squadre atteso" hint="Totale previsto per la categoria">
+                    <input
+                      type="number"
+                      value={structure.expected_teams ?? ''}
+                      onChange={(e) => setStructure((current) => ({ ...current, expected_teams: e.target.value ? Number(e.target.value) : null }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                    />
+                  </FormField>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-5">
+              {isGathering && (
+                <div className="mb-5 rounded-[1.5rem] border border-sky-200 bg-sky-50 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Configurazione guidata raggruppamento</p>
+                  <p className="mt-2 text-sm text-sky-900">
+                    Di solito un raggruppamento usa una o più fasi a gironi senza classifica finale. Puoi partire da un preset rapido e poi rifinire i dettagli.
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => applyGatheringPreset('single')} className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm">
+                      Girone unico
+                    </button>
+                    <button type="button" onClick={() => applyGatheringPreset('double')} className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm">
+                      2 gironi senza finali
+                    </button>
+                    <button type="button" onClick={() => applyGatheringPreset('triple')} className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm">
+                      3 gironi senza finali
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="mb-5 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Programma base</p>
+                    <p className="mt-1 text-base font-black text-slate-950">Orari e campi di gioco</p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Definisci subito l’orario di inizio, la durata incontro, l’intervallo e i campi effettivi della categoria.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addPlayingField}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Aggiungi campo
+                  </button>
+                </div>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-3">
+                  <FormField label="Orario inizio">
+                    <input
+                      type="time"
+                      value={structure.schedule.start_time}
+                      onChange={(e) => setStructure((current) => ({ ...current, schedule: { ...current.schedule, start_time: e.target.value } }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                    />
+                  </FormField>
+                  <FormField label="Durata incontro" hint="Minuti">
+                    <input
+                      type="number"
+                      value={structure.schedule.match_duration_minutes ?? ''}
+                      onChange={(e) => setStructure((current) => ({ ...current, schedule: { ...current.schedule, match_duration_minutes: e.target.value ? Number(e.target.value) : null } }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                    />
+                  </FormField>
+                  <FormField label="Intervallo tra incontri" hint="Minuti">
+                    <input
+                      type="number"
+                      value={structure.schedule.interval_minutes ?? ''}
+                      onChange={(e) => setStructure((current) => ({ ...current, schedule: { ...current.schedule, interval_minutes: e.target.value ? Number(e.target.value) : null } }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                    />
+                  </FormField>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {structure.schedule.playing_fields.map((playingField, index) => (
+                    <div key={playingField.id} className="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[minmax(0,1.4fr)_180px_auto] md:items-end">
+                      <FormField label={`Impianto ${index + 1}`}>
+                        <input
+                          list={`facilities-list-${ageGroup.id}`}
+                          value={playingField.field_name}
+                          onChange={(e) => updatePlayingField(index, { field_name: e.target.value })}
+                          placeholder="Es. Livorno Rugby"
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                        />
+                      </FormField>
+                      <FormField label="Campo" hint="Numero">
+                        <input
+                          type="number"
+                          value={playingField.field_number ?? ''}
+                          onChange={(e) => updatePlayingField(index, { field_number: e.target.value ? Number(e.target.value) : null })}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                        />
+                      </FormField>
+                      <button
+                        type="button"
+                        onClick={() => removePlayingField(index)}
+                        className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+
+                  {structure.schedule.playing_fields.length === 0 && (
+                    <div className="rounded-[1.25rem] border border-dashed border-slate-200 bg-white px-4 py-5 text-sm text-slate-500">
+                      Esempio: Impianto "Esempio" con Campi 1, 2 e 3 per giocare tre partite in contemporanea. Puoi anche scrivere subito il nome dell&apos;impianto qui e completare i dettagli del torneo dopo.
+                    </div>
+                  )}
+                  <datalist id={`facilities-list-${ageGroup.id}`}>
+                    {availableFacilities.map((facility) => (
+                      <option key={facility.id} value={facility.name} />
+                    ))}
+                  </datalist>
+                </div>
+              </div>
+
+              <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Preset rapidi</p>
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                  {BUILTIN_TEMPLATES.filter((template) => !template.age_group || template.age_group === ageGroup.age_group).map((template) => (
+                    <button
+                      key={template.name}
+                      type="button"
+                      onClick={() => void handleApplyTemplate(template)}
+                      className={`rounded-[1.35rem] border p-4 text-left transition-all ${
+                        selectedTemplateName === template.name
+                          ? 'border-emerald-300 bg-emerald-50 shadow-sm'
+                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-white'
+                      }`}
+                    >
+                      <p className="text-sm font-bold text-slate-900">{template.name}</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-500">{template.description}</p>
+                      <VisualTemplateMini config={template.config} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {saveError && (
+                <div className="mt-4 rounded-[1.3rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {saveError}
+                </div>
+              )}
+
+              {saveMessage && (
+                <div className="mt-4 rounded-[1.3rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {saveMessage}
+                </div>
+              )}
+
+              {validationErrors.length > 0 && (
+                <div className="mt-4 rounded-[1.4rem] border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-sm font-semibold text-amber-900">Per generare il programma manca ancora questo</p>
+                  <div className="mt-2 space-y-1 text-sm text-amber-800">
+                    {validationErrors.map((error) => (
+                      <p key={error}>• {error}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {isGathering && structure.phases.some((phase) => phase.phase_type === 'KNOCKOUT') && (
+                <div className="mt-4 rounded-[1.4rem] border border-fuchsia-200 bg-fuchsia-50 px-4 py-3 text-sm text-fuchsia-900">
+                  Hai inserito una fase a eliminazione in un raggruppamento. È consentito, ma di solito i raggruppamenti si fermano ai gironi.
+                </div>
+              )}
+
+              <div className="mt-5">
+                <StructurePreviewCard
+                  structure={structure}
+                  participantCount={participants?.length ?? 0}
+                />
+              </div>
+
+              <div className="mt-5 space-y-4">
+                {structure.phases.map((phase, index) => (
+                  <div key={phase.id} className="overflow-hidden rounded-[1.6rem] border border-slate-200 bg-white shadow-sm">
+                    <div className={`flex items-center justify-between gap-3 border-b px-4 py-3 ${
+                      phase.phase_type === 'GROUP_STAGE'
+                        ? 'border-sky-200 bg-sky-50'
+                        : phase.bracket_mode === 'placement'
+                          ? 'border-fuchsia-200 bg-fuchsia-50'
+                          : 'border-rose-200 bg-rose-50'
+                    }`}>
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Fase {index + 1}</p>
+                        <p className="mt-1 text-sm font-bold text-slate-900">{phase.name || `Fase ${index + 1}`}</p>
+                      </div>
+                      {structure.phases.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removePhase(index)}
+                          className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid gap-4 p-4 sm:grid-cols-2">
+                      <FormField label="Nome fase">
+                        <input
+                          value={phase.name}
+                          onChange={(e) => setPhase(index, { name: e.target.value })}
+                          placeholder="es. Gironi iniziali"
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                        />
+                      </FormField>
+                      <FormField label="Tipo fase">
+                        <select
+                          value={phase.phase_type}
+                          onChange={(e) => setPhase(index, { phase_type: e.target.value as StructurePhase['phase_type'] })}
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                        >
+                          <option value="GROUP_STAGE">Gironi</option>
+                          <option value="KNOCKOUT">Eliminazione</option>
+                        </select>
+                      </FormField>
+                    </div>
+
+                    <div className="px-4 pb-4">
+                      {phase.phase_type === 'GROUP_STAGE' ? (
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <FormField label="Numero gironi">
+                            <input
+                              type="number"
+                              value={phase.num_groups ?? ''}
+                              onChange={(e) => setPhase(index, { num_groups: e.target.value ? Number(e.target.value) : null })}
+                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                            />
+                          </FormField>
+                          <FormField label="Squadre per girone" hint="Es. 4,4,5">
+                            <input
+                              value={phase.group_sizes}
+                              onChange={(e) => setPhase(index, { group_sizes: e.target.value })}
+                              placeholder="4,4,5"
+                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                            />
+                          </FormField>
+                          <FormField label="Fase successiva">
+                            <select
+                              value={phase.next_phase_type}
+                              onChange={(e) => setPhase(index, {
+                                next_phase_type: e.target.value as StructurePhase['next_phase_type'],
+                                qualifiers_per_group: e.target.value ? (phase.qualifiers_per_group ?? 1) : null,
+                                best_extra_teams: e.target.value ? (phase.best_extra_teams ?? 0) : null,
+                              })}
+                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                            >
+                              <option value="">Nessuna fase successiva</option>
+                              <option value="GROUP_STAGE">Ancora gironi</option>
+                              <option value="KNOCKOUT">Eliminazione diretta</option>
+                            </select>
+                          </FormField>
+                          {phase.next_phase_type ? (
+                            <>
+                              <FormField label="Qualificate per girone">
+                                <input
+                                  type="number"
+                                  value={phase.qualifiers_per_group ?? ''}
+                                  onChange={(e) => setPhase(index, { qualifiers_per_group: e.target.value ? Number(e.target.value) : null })}
+                                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                                />
+                              </FormField>
+                              <FormField label="Migliori extra qualificate" hint="Secondi o terzi migliori">
+                                <input
+                                  type="number"
+                                  value={phase.best_extra_teams ?? ''}
+                                  onChange={(e) => setPhase(index, { best_extra_teams: e.target.value ? Number(e.target.value) : null })}
+                                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                                />
+                              </FormField>
+                            </>
+                          ) : (
+                            <div className="rounded-[1.2rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 sm:col-span-2">
+                              Questa fase si chiude con la classifica finale del girone. Non servono qualificate.
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <FormField label="Tipo eliminazione">
+                            <select
+                              value={phase.bracket_mode}
+                              onChange={(e) => setPhase(index, { bracket_mode: e.target.value as StructurePhase['bracket_mode'] })}
+                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                            >
+                              <option value="standard">Eliminazione standard</option>
+                              <option value="placement">Tabelloni piazzamento mini rugby</option>
+                            </select>
+                          </FormField>
+                          <FormField label="Fase successiva">
+                            <select
+                              value={phase.next_phase_type}
+                              onChange={(e) => setPhase(index, { next_phase_type: e.target.value as StructurePhase['next_phase_type'] })}
+                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                            >
+                              <option value="">Nessuna fase successiva</option>
+                              <option value="GROUP_STAGE">Ancora gironi</option>
+                              <option value="KNOCKOUT">Ancora eliminazione</option>
+                            </select>
+                          </FormField>
+                        </div>
+                      )}
+
+                      {phase.phase_type === 'GROUP_STAGE' && structure.schedule.playing_fields.length > 0 && (
+                        <div className="mt-4 rounded-[1.3rem] border border-slate-200 bg-slate-50 p-4">
+                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Campi per girone</p>
+                          <p className="mt-1 text-sm text-slate-600">Ogni girone giocherà sempre sui campi che selezioni qui.</p>
+                          <div className="mt-4 space-y-3">
+                            {buildGroupNames(phase).map((groupName) => {
+                              const assignments = phase.group_field_assignments[groupName] ?? []
+                              return (
+                                <div key={`${phase.id}-${groupName}`} className="rounded-[1.15rem] border border-white bg-white p-3">
+                                  <p className="text-sm font-bold text-slate-900">{groupName}</p>
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    {structure.schedule.playing_fields.map((playingField) => {
+                                      const selected = assignments.some((assignment) => (
+                                        assignment.field_name === playingField.field_name && assignment.field_number === playingField.field_number
+                                      ))
+                                      return (
+                                        <button
+                                          key={`${groupName}-${playingField.field_name}-${playingField.field_number ?? 'x'}`}
+                                          type="button"
+                                          onClick={() => toggleGroupPlayingField(index, groupName, playingField)}
+                                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                            selected
+                                              ? 'bg-sky-700 text-white'
+                                              : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                                          }`}
+                                        >
+                                          {playingField.field_name}{playingField.field_number ? ` · Campo ${playingField.field_number}` : ''}
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {phase.phase_type === 'GROUP_STAGE' && (
+                        <div className="mt-4 rounded-[1.3rem] border border-slate-200 bg-slate-50 p-4">
+                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Arbitraggio per girone</p>
+                          <p className="mt-1 text-sm text-slate-600">
+                            Scegli da quali altri gironi arrivano gli arbitri. Se c&apos;è un solo girone, il sistema userà squadre a riposo o staff torneo.
+                          </p>
+                          <div className="mt-4 space-y-3">
+                            {buildGroupNames(phase).map((groupName) => {
+                              const selectedSources = phase.referee_group_assignments[groupName] ?? []
+                              const sourceOptions = buildGroupNames(phase).filter((item) => item !== groupName)
+                              return (
+                                <div key={`${phase.id}-ref-${groupName}`} className="rounded-[1.15rem] border border-white bg-white p-3">
+                                  <p className="text-sm font-bold text-slate-900">{groupName}</p>
+                                  {sourceOptions.length > 0 ? (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                      {sourceOptions.map((sourceGroupName) => {
+                                        const selected = selectedSources.includes(sourceGroupName)
+                                        return (
+                                          <button
+                                            key={`${groupName}-${sourceGroupName}`}
+                                            type="button"
+                                            onClick={() => toggleRefereeSourceGroup(index, groupName, sourceGroupName)}
+                                            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                              selected
+                                                ? 'bg-emerald-700 text-white'
+                                                : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                                            }`}
+                                          >
+                                            {sourceGroupName}
+                                          </button>
+                                        )
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <p className="mt-2 text-sm text-slate-500">
+                                      Girone unico: arbitri automatici da squadre a riposo o staff torneo.
+                                    </p>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-4">
+                        <FormField label="Note fase" hint="Seeding, piazzamenti, eccezioni">
+                          <textarea
+                            value={phase.notes}
+                            onChange={(e) => setPhase(index, { notes: e.target.value })}
+                            rows={2}
+                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                          />
+                        </FormField>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-5 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                <FormField label="Note generali formula">
+                  <textarea
+                    value={structure.notes}
+                    onChange={(e) => setStructure((current) => ({ ...current, notes: e.target.value }))}
+                    rows={3}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                  />
+                </FormField>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-200 pt-4">
+                <button
+                  type="button"
+                  onClick={() => void handleSaveStructure()}
+                  disabled={updateStructure.isPending}
+                  className="inline-flex items-center gap-2 rounded-xl bg-rugby-green px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-rugby-green-dark disabled:opacity-50"
+                >
+                  <Save className="h-4 w-4" />
+                  {updateStructure.isPending ? 'Salvataggio...' : 'Salva bozza'}
+                </button>
+              </div>
+            </div>
+          </section>
+          )}
+
+          {currentTab === 'squadre' && (
+          <section className="overflow-hidden rounded-[1.9rem] border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 bg-[linear-gradient(135deg,_#ffffff_0%,_#f8fafc_100%)] px-5 py-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
+                  <Users className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Passo 2</p>
+                  <p className="mt-1 text-lg font-black text-slate-950">Squadre partecipanti</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-5">
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-[1.4rem] border border-sky-200 bg-sky-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Inserite</p>
+                  <p className="mt-2 text-2xl font-black text-slate-900">{participants?.length ?? 0}</p>
+                </div>
+                <div className="rounded-[1.4rem] border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Attese</p>
+                  <p className="mt-2 text-2xl font-black text-slate-900">{structure.expected_teams ?? '?'}</p>
+                </div>
+                <div className="rounded-[1.4rem] border border-fuchsia-200 bg-fuchsia-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-fuchsia-700">Disponibili</p>
+                  <p className="mt-2 text-2xl font-black text-slate-900">{availableTeams.length}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-[1.4rem] border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-sm font-semibold text-amber-900">Prima salva la formula, poi completa le squadre della categoria.</p>
+                <p className="mt-1 text-sm text-amber-800">
+                  Attese {structure.expected_teams ?? '?'} / inserite {participants?.length ?? 0}
+                </p>
+              </div>
+
+              {teamError && (
+                <div className="mt-4 rounded-[1.3rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {teamError}
+                </div>
+              )}
+
+              {teamMessage && (
+                <div className="mt-4 rounded-[1.3rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {teamMessage}
+                </div>
+              )}
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-bold text-slate-900">Aggiungi squadra esistente</p>
+                  <p className="mt-1 text-sm text-slate-500">Usa una squadra già presente nel sistema.</p>
+                  <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
+                    <FormField label="Squadra disponibile">
+                      <select
+                        value={selectedTeamId}
+                        onChange={(e) => setSelectedTeamId(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                      >
+                        <option value="">Seleziona squadra</option>
+                        {availableTeams.map((team) => (
+                          <option key={team.id} value={team.id}>{team.name}</option>
+                        ))}
+                      </select>
+                    </FormField>
+                    <button
+                      type="button"
+                      onClick={() => void handleAddTeam()}
+                      disabled={!selectedTeamId || enrollTeam.isPending}
+                      className="self-end rounded-xl bg-rugby-green px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-rugby-green-dark disabled:opacity-50"
+                    >
+                      Aggiungi
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-bold text-slate-900">Crea nuova squadra</p>
+                  <p className="mt-1 text-sm text-slate-500">Per esempio Rugby Livorno 1, Rugby Livorno 2, Verdi o Bianchi.</p>
+                  <div className="mt-4 grid gap-3">
+                    <FormField label="Società">
+                      <select
+                        value={selectedOrganizationId}
+                        onChange={(e) => setSelectedOrganizationId(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                      >
+                        <option value="">Seleziona società</option>
+                        {availableOrganizations.map((organization) => (
+                          <option key={organization.id} value={organization.id}>{organization.name}</option>
+                        ))}
+                      </select>
+                    </FormField>
+                    <FormField label="Nome squadra" hint="Es. Rugby Livorno 1">
+                      <input
+                        value={newTeamName}
+                        onChange={(e) => setNewTeamName(e.target.value)}
+                        placeholder="Rugby Livorno 1"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                      />
+                    </FormField>
+                    <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                      <FormField label="Nome breve" hint="Opzionale, es. RL1">
+                        <input
+                          value={newTeamShortName}
+                          onChange={(e) => setNewTeamShortName(e.target.value)}
+                          placeholder="RL1"
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                        />
+                      </FormField>
+                      <button
+                        type="button"
+                        onClick={() => void handleCreateTeamFromOrganization()}
+                        disabled={!selectedOrganizationId || !newTeamName.trim() || createTeam.isPending || enrollTeam.isPending}
+                        className="self-end rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-50"
+                      >
+                        {createTeam.isPending || enrollTeam.isPending ? 'Creazione...' : 'Crea e aggiungi'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {participants && participants.length > 0 ? participants.map((participant) => (
+                  <div key={participant.id} className="flex items-center justify-between rounded-[1.35rem] border border-slate-200 bg-[linear-gradient(135deg,_#ffffff_0%,_#f8fafc_100%)] px-4 py-3 shadow-sm">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{participant.team_name}</p>
+                      {participant.city && <p className="text-xs text-slate-500">{participant.city}</p>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => unenrollTeam.mutate({ id: participant.id, ageGroupId: ageGroup.id })}
+                      className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )) : (
+                  <div className="rounded-[1.35rem] border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                    Nessuna squadra assegnata alla categoria.
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+          )}
+
+        </div>
+
+        {currentTab === 'template' && (
+        <div className="space-y-5">
+          <section className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Passo 3</p>
+            <p className="mt-1 text-lg font-black text-slate-950">Template struttura</p>
+            <p className="mt-1 text-sm leading-6 text-slate-500">Applica un modello esistente oppure salva questa configurazione per riusarla.</p>
+
+            <div className="mt-4 grid gap-2">
+              {allTemplates.map((template) => {
+                const name = template.name
+                const description = template.description ?? ('description' in template ? template.description : '')
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => void handleApplyTemplate(template)}
+                    className={`rounded-[1.25rem] border px-4 py-3 text-left transition-colors ${
+                      selectedTemplateName === name
+                        ? 'border-emerald-300 bg-emerald-50'
+                        : 'border-slate-200 bg-slate-50 hover:bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">{name}</p>
+                        {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-slate-300" />
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+
+          <section className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-base font-black text-slate-950">Salva come template</p>
+            <p className="mt-1 text-sm leading-6 text-slate-500">Riutilizza questa formula su altri tornei e altre categorie.</p>
+            <div className="mt-4 grid gap-3">
+              <FormField label="Nome template">
+                <input
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  placeholder="Es. 2 gironi + semifinali"
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                />
+              </FormField>
+              <FormField label="Descrizione breve">
+                <input
+                  value={templateDescription}
+                  onChange={(e) => setTemplateDescription(e.target.value)}
+                  placeholder="Torneo rapido con finali"
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                />
+              </FormField>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleSaveAsTemplate()}
+              disabled={!templateName.trim() || createTemplate.isPending}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-white disabled:opacity-50"
+            >
+              <Save className="h-4 w-4" />
+              Salva template
+            </button>
+          </section>
+
+          <section className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-base font-black text-slate-950">Controllo manuale</p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Dopo il salvataggio potrai continuare a intervenire manualmente su squadre, gironi, piazzamenti e risultati.
+            </p>
+          </section>
+        </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function FormField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="block text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{label}</span>
+      {hint && <span className="mt-1 block text-xs leading-5 text-slate-500">{hint}</span>}
+      <div className="mt-2">{children}</div>
+    </label>
+  )
+}
+
+function SummaryTile({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone: 'slate' | 'emerald' | 'amber' | 'sky' | 'fuchsia'
+}) {
+  const toneClass = {
+    slate: 'border-slate-200 bg-white',
+    emerald: 'border-emerald-200 bg-emerald-50',
+    amber: 'border-amber-200 bg-amber-50',
+    sky: 'border-sky-200 bg-sky-50',
+    fuchsia: 'border-fuchsia-200 bg-fuchsia-50',
+  }[tone]
+
+  return (
+    <div className={`rounded-[1.5rem] border px-4 py-4 shadow-sm ${toneClass}`}>
+      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+      <p className="mt-2 text-base font-black text-slate-950">{value}</p>
+    </div>
+  )
+}
+
+function VisualTemplateMini({ config }: { config: StructureConfig }) {
+  return (
+    <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-1">
+      {config.phases.map((phase, index) => (
+        <div key={phase.id} className="flex items-center gap-2">
+          <div className={`min-w-[118px] rounded-2xl border px-3 py-2 ${
+            phase.phase_type === 'GROUP_STAGE'
+              ? 'border-sky-200 bg-sky-50'
+              : phase.bracket_mode === 'placement'
+                ? 'border-fuchsia-200 bg-fuchsia-50'
+                : 'border-rose-200 bg-rose-50'
+          }`}>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+              {phase.phase_type === 'GROUP_STAGE' ? 'Gironi' : phase.bracket_mode === 'placement' ? 'Piazzamenti' : 'Finali'}
+            </p>
+            <p className="mt-1 text-sm font-semibold text-slate-900">{phase.name}</p>
+          </div>
+          {index < config.phases.length - 1 && (
+            <ArrowRight className="h-4 w-4 shrink-0 text-slate-300" />
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function parseGroupSizes(input: string): number[] {
+  return input
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => Number(item))
+    .filter((value) => Number.isFinite(value) && value > 0)
+}
+
+function buildGroupNames(phase: StructurePhase): string[] {
+  const sizes = parseGroupSizes(phase.group_sizes)
+  const groupsCount = Math.max(phase.num_groups ?? sizes.length, sizes.length, 1)
+  return Array.from({ length: groupsCount }, (_, index) => `Girone ${String.fromCharCode(65 + index)}`)
+}
+
+function buildAutoGroupFieldAssignments(
+  phase: StructurePhase,
+  playingFields: PlayingFieldConfig[],
+): Record<string, PlayingFieldConfig[]> {
+  const groupNames = buildGroupNames(phase)
+  if (groupNames.length === 0 || playingFields.length === 0) return phase.group_field_assignments
+
+  const fieldsPerGroup = Math.max(Math.floor(playingFields.length / groupNames.length), 1)
+  const nextAssignments: Record<string, PlayingFieldConfig[]> = { ...phase.group_field_assignments }
+
+  groupNames.forEach((groupName, groupIndex) => {
+    const existingAssignments = nextAssignments[groupName] ?? []
+    if (existingAssignments.length > 0) return
+
+    const start = groupIndex * fieldsPerGroup
+    const end = start + fieldsPerGroup
+    const assignedFields = playingFields.slice(start, end)
+    nextAssignments[groupName] = assignedFields.length > 0
+      ? assignedFields
+      : [playingFields[Math.min(groupIndex, playingFields.length - 1)]]
+  })
+
+  return nextAssignments
+}
+
+function buildAutoRefereeAssignments(
+  phase: StructurePhase,
+): Record<string, string[]> {
+  const groupNames = buildGroupNames(phase)
+  if (groupNames.length === 0) return phase.referee_group_assignments
+
+  const nextAssignments: Record<string, string[]> = { ...phase.referee_group_assignments }
+  groupNames.forEach((groupName) => {
+    const existingAssignments = nextAssignments[groupName] ?? []
+    if (existingAssignments.length > 0) return
+    nextAssignments[groupName] = groupNames.filter((item) => item !== groupName)
+  })
+  return nextAssignments
+}
+
+function validateStructureConfig(structure: StructureConfig): string[] {
+  const errors: string[] = []
+
+  if (structure.expected_teams !== null && structure.expected_teams <= 0) {
+    errors.push('Il numero squadre atteso deve essere maggiore di zero.')
+  }
+
+  if (!structure.schedule.start_time) {
+    errors.push('Inserisci l’orario di inizio del programma.')
+  }
+
+  if ((structure.schedule.match_duration_minutes ?? 0) <= 0) {
+    errors.push('La durata incontro deve essere maggiore di zero.')
+  }
+
+  if ((structure.schedule.interval_minutes ?? -1) < 0) {
+    errors.push('L’intervallo tra incontri non può essere negativo.')
+  }
+
+  if (structure.schedule.playing_fields.length === 0) {
+    errors.push('Definisci almeno un campo di gioco per la categoria.')
+  }
+
+  const duplicateFieldKeys = new Set<string>()
+  for (const playingField of structure.schedule.playing_fields) {
+    if (!playingField.field_name.trim()) {
+      errors.push('Ogni campo di gioco deve avere un impianto selezionato.')
+      continue
+    }
+    if (!playingField.field_number || playingField.field_number <= 0) {
+      errors.push('Ogni campo di gioco deve avere un numero campo valido.')
+      continue
+    }
+    const key = `${playingField.field_name}::${playingField.field_number}`
+    if (duplicateFieldKeys.has(key)) {
+      errors.push(`Il campo ${playingField.field_name} ${playingField.field_number} è duplicato.`)
+    }
+    duplicateFieldKeys.add(key)
+  }
+
+  structure.phases.forEach((phase, index) => {
+    const phaseLabel = `Fase ${index + 1}`
+    if (!phase.name.trim()) {
+      errors.push(`${phaseLabel}: inserisci un nome fase.`)
+    }
+
+    if (phase.phase_type === 'GROUP_STAGE') {
+      const groupSizes = parseGroupSizes(phase.group_sizes)
+      const totalTeamsInGroups = groupSizes.reduce((sum, size) => sum + size, 0)
+      const hasNextPhase = !!phase.next_phase_type
+      const qualifiers = hasNextPhase ? (phase.qualifiers_per_group ?? 0) : 0
+      const extras = hasNextPhase ? (phase.best_extra_teams ?? 0) : 0
+
+      if (!phase.num_groups || phase.num_groups <= 0) {
+        errors.push(`${phaseLabel}: il numero gironi deve essere maggiore di zero.`)
+      }
+
+      if (phase.group_sizes.trim() && phase.num_groups && groupSizes.length !== phase.num_groups) {
+        errors.push(`${phaseLabel}: il numero di valori in "squadre per girone" deve coincidere con i gironi.`)
+      }
+
+      if (qualifiers < 0 || extras < 0) {
+        errors.push(`${phaseLabel}: qualificate ed extra non possono essere negative.`)
+      }
+
+      if (groupSizes.length > 0 && qualifiers > 0) {
+        const smallestGroup = Math.min(...groupSizes)
+        if (qualifiers > smallestGroup) {
+          errors.push(`${phaseLabel}: non puoi qualificare più squadre di quelle presenti nel girone più piccolo.`)
+        }
+      }
+
+      if (groupSizes.length > 0) {
+        const promotedTeams = (phase.num_groups ?? 0) * qualifiers + extras
+        if (promotedTeams > totalTeamsInGroups) {
+          errors.push(`${phaseLabel}: le squadre qualificate superano le squadre presenti nei gironi.`)
+        }
+      }
+
+      if (structure.expected_teams && totalTeamsInGroups > 0 && totalTeamsInGroups !== structure.expected_teams) {
+        errors.push(`${phaseLabel}: la somma delle squadre per girone deve essere ${structure.expected_teams}.`)
+      }
+
+      if ((phase.num_groups ?? 0) > structure.schedule.playing_fields.length) {
+        errors.push(`${phaseLabel}: servono almeno ${phase.num_groups} campi di gioco per distribuire i gironi automaticamente.`)
+      }
+
+      if (hasNextPhase && qualifiers <= 0 && extras <= 0) {
+        errors.push(`${phaseLabel}: indica almeno una squadra qualificata verso la fase successiva.`)
+      }
+
+      if ((phase.num_groups ?? 0) > 1) {
+        const groupNames = Array.from({ length: phase.num_groups ?? 0 }, (_, groupIndex) => `Girone ${String.fromCharCode(65 + groupIndex)}`)
+        for (const groupName of groupNames) {
+          const assignments = phase.group_field_assignments[groupName] ?? []
+          if (assignments.length === 0) {
+            errors.push(`${phaseLabel}: assegna almeno un campo a ${groupName}.`)
+          }
+          const refereeAssignments = phase.referee_group_assignments[groupName] ?? []
+          if (refereeAssignments.length === 0) {
+            errors.push(`${phaseLabel}: assegna almeno un girone arbitro a ${groupName}.`)
+          }
+        }
+      }
+    }
+  })
+
+  return errors
+}
+
+function countProgramMatches(
+  program: AgeGroupProgram | undefined,
+  predicate?: (match: ProgramMatch) => boolean,
+) {
+  if (!program) return 0
+
+  return program.days.reduce((dayTotal, day) => (
+    dayTotal + day.phases.reduce((phaseTotal, phase) => {
+      const allMatches: ProgramMatch[] = [
+        ...phase.groups.flatMap((group) => group.matches),
+        ...phase.knockout_matches,
+      ]
+      return phaseTotal + (predicate ? allMatches.filter(predicate).length : allMatches.length)
+    }, 0)
+  ), 0)
+}
+
+function normalizeStructureConfig(value: unknown): StructureConfig {
+  const input = (value && typeof value === 'object') ? value as Partial<StructureConfig> : {}
+  const phases = Array.isArray(input.phases) && input.phases.length > 0
+    ? input.phases.map((phase, index) => normalizePhase(phase, index + 1))
+    : [makeEmptyPhase(1)]
+
+  return {
+    expected_teams: typeof input.expected_teams === 'number' ? input.expected_teams : null,
+    schedule: normalizeScheduleConfig(input.schedule),
+    notes: typeof input.notes === 'string' ? input.notes : '',
+    phases,
+  }
+}
+
+function normalizeScheduleConfig(value: unknown): ScheduleConfig {
+  const input = (value && typeof value === 'object') ? value as Partial<ScheduleConfig> : {}
+  const rawFields = Array.isArray(input.playing_fields) ? input.playing_fields : []
+  return {
+    start_time: typeof input.start_time === 'string' && input.start_time ? input.start_time : '09:30',
+    match_duration_minutes: typeof input.match_duration_minutes === 'number' ? input.match_duration_minutes : 12,
+    interval_minutes: typeof input.interval_minutes === 'number' ? input.interval_minutes : 8,
+    playing_fields: rawFields.map((field, index) => normalizePlayingFieldConfig(field, index)),
+  }
+}
+
+function normalizePlayingFieldConfig(value: unknown, index: number): PlayingFieldConfig {
+  const input = (value && typeof value === 'object') ? value as Partial<PlayingFieldConfig & { facility_name?: string }> : {}
+  return {
+    id: typeof input.id === 'string' ? input.id : `playing-field-${index}-${Date.now()}`,
+    field_name: typeof input.field_name === 'string'
+      ? input.field_name
+      : (typeof input.facility_name === 'string' ? input.facility_name : ''),
+    field_number: typeof input.field_number === 'number' ? input.field_number : null,
+  }
+}
+
+function normalizePhase(value: unknown, index: number): StructurePhase {
+  const input = (value && typeof value === 'object') ? value as Partial<StructurePhase> : {}
+  return {
+    id: typeof input.id === 'string' ? input.id : `phase-${index}`,
+    name: typeof input.name === 'string' && input.name ? input.name : `Fase ${index}`,
+    phase_type: input.phase_type === 'KNOCKOUT' ? 'KNOCKOUT' : 'GROUP_STAGE',
+    num_groups: typeof input.num_groups === 'number' ? input.num_groups : null,
+    group_sizes: typeof input.group_sizes === 'string' ? input.group_sizes : '',
+    qualifiers_per_group: typeof input.qualifiers_per_group === 'number' ? input.qualifiers_per_group : null,
+    best_extra_teams: typeof input.best_extra_teams === 'number' ? input.best_extra_teams : null,
+    next_phase_type: input.next_phase_type === 'GROUP_STAGE' || input.next_phase_type === 'KNOCKOUT' ? input.next_phase_type : '',
+    bracket_mode: input.bracket_mode === 'placement' ? 'placement' : 'standard',
+    group_field_assignments: normalizeGroupFieldAssignments((input as { group_field_assignments?: unknown }).group_field_assignments),
+    referee_group_assignments: normalizeRefereeGroupAssignments((input as { referee_group_assignments?: unknown }).referee_group_assignments),
+    notes: typeof input.notes === 'string' ? input.notes : '',
+  }
+}
+
+function normalizeGroupFieldAssignments(value: unknown): Record<string, PlayingFieldConfig[]> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(
+    Object.entries(value).map(([groupName, rawAssignments], groupIndex) => {
+      const assignments = Array.isArray(rawAssignments) ? rawAssignments.map((assignment, assignmentIndex) => (
+        normalizePlayingFieldConfig(assignment, groupIndex * 10 + assignmentIndex)
+      )).filter((assignment) => assignment.field_name) : []
+      return [groupName, assignments]
+    }),
+  )
+}
+
+function normalizeRefereeGroupAssignments(value: unknown): Record<string, string[]> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(
+    Object.entries(value).map(([groupName, rawAssignments]) => {
+      const assignments = Array.isArray(rawAssignments)
+        ? rawAssignments.filter((assignment): assignment is string => typeof assignment === 'string' && assignment.length > 0)
+        : []
+      return [groupName, assignments]
+    }),
+  )
+}
+
+function makeEmptyPhase(index: number): StructurePhase {
+  return {
+    id: `phase-${index}-${Date.now()}`,
+    name: `Fase ${index}`,
+    phase_type: 'GROUP_STAGE',
+    num_groups: null,
+    group_sizes: '',
+    qualifiers_per_group: null,
+    best_extra_teams: null,
+    next_phase_type: '',
+    bracket_mode: 'standard',
+    group_field_assignments: {},
+    referee_group_assignments: {},
+    notes: '',
+  }
+}
+
+function makeEmptyPlayingField(index: number): PlayingFieldConfig {
+  return {
+    id: `playing-field-${index}-${Date.now()}`,
+    field_name: '',
+    field_number: index,
+  }
+}
+
+function StructurePreviewCard({
+  structure,
+  participantCount,
+}: {
+  structure: StructureConfig
+  participantCount: number
+}) {
+  return (
+    <div className="rounded-[1.6rem] border border-slate-200 bg-[linear-gradient(180deg,_#ffffff_0%,_#f8fafc_100%)] p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Anteprima grafica</p>
+          <h4 className="mt-1 text-base font-black text-slate-900">Schema dell&apos;evento</h4>
+        </div>
+        <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+          {participantCount} squadre inserite
+        </div>
+      </div>
+
+      <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
+        {structure.phases.map((phase, index) => (
+          <div key={phase.id} className="flex min-w-[260px] items-center gap-3">
+            <div className={`w-full rounded-[1.5rem] border p-4 ${
+              phase.phase_type === 'GROUP_STAGE'
+                ? 'border-sky-200 bg-sky-50'
+                : phase.bracket_mode === 'placement'
+                  ? 'border-fuchsia-200 bg-fuchsia-50'
+                  : 'border-rose-200 bg-rose-50'
+            }`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Fase {index + 1}</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">{phase.name || `Fase ${index + 1}`}</p>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                  phase.phase_type === 'GROUP_STAGE'
+                    ? 'bg-sky-600 text-white'
+                    : phase.bracket_mode === 'placement'
+                      ? 'bg-fuchsia-600 text-white'
+                      : 'bg-rose-600 text-white'
+                }`}>
+                  {phase.phase_type === 'GROUP_STAGE' ? 'Gironi' : phase.bracket_mode === 'placement' ? 'Piazzamenti' : 'Finali'}
+                </span>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                {phase.phase_type === 'GROUP_STAGE' ? (
+                  <>
+                    <div className="flex flex-wrap gap-2">
+                      {buildGroupPreview(phase).map((group) => (
+                        <div key={group.label} className="rounded-xl border border-white/80 bg-white/85 px-3 py-2">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{group.label}</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-900">{group.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Passano avanti</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-800">
+                        {phase.qualifiers_per_group ? `${phase.qualifiers_per_group} per girone` : 'Da definire'}
+                        {phase.best_extra_teams ? ` + ${phase.best_extra_teams} migliori extra` : ''}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="rounded-xl border border-white/80 bg-white/85 px-3 py-2">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Tabellone</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">
+                        {phase.bracket_mode === 'placement' ? 'Piazzamenti mini rugby' : 'Eliminazione standard'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Esito</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-800">
+                        {phase.next_phase_type === 'GROUP_STAGE'
+                          ? 'Passaggio a nuovi gironi'
+                          : phase.next_phase_type === 'KNOCKOUT'
+                            ? 'Nuova eliminazione'
+                            : 'Fase finale'}
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {index < structure.phases.length - 1 && (
+              <div className="flex shrink-0 items-center justify-center">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm">
+                  <ArrowRight className="h-4 w-4" />
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {structure.notes && (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {structure.notes}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function buildGroupPreview(phase: StructurePhase): Array<{ label: string; value: string }> {
+  if (phase.phase_type !== 'GROUP_STAGE') return []
+  const sizes = parseGroupSizes(phase.group_sizes)
+  const groupsCount = Math.max(phase.num_groups ?? sizes.length, sizes.length, 1)
+  return Array.from({ length: groupsCount }, (_, index) => ({
+    label: `Girone ${String.fromCharCode(65 + index)}`,
+    value: sizes[index] ? `${sizes[index]} squadre` : 'da definire',
+  }))
+}

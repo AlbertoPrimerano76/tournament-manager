@@ -1,0 +1,1010 @@
+from __future__ import annotations
+
+from collections import defaultdict
+from datetime import date as date_type, datetime, time, timedelta
+import math
+from typing import Any
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.match import Match, MatchStatus
+from app.models.phase import Group, GroupTeam, Phase, PhaseType
+from app.models.team import TournamentTeam, Team
+from app.models.tournament import Tournament, TournamentAgeGroup
+from app.schemas.program import (
+    AgeGroupProgramResponse,
+    ProgramDayResponse,
+    ProgramGroupResponse,
+    ProgramMatchResponse,
+    ProgramPhaseResponse,
+    ProgramTeamSlotResponse,
+    TournamentProgramResponse,
+)
+
+
+AUTO_SEED_PREFIX = "AUTOSEED::"
+LOCAL_TIMEZONE = ZoneInfo("Europe/Rome")
+
+
+def parse_group_sizes(raw: str | None, fallback_groups: int, total_teams: int) -> list[int]:
+    values = [
+        int(item.strip())
+        for item in (raw or "").split(",")
+        if item.strip().isdigit() and int(item.strip()) > 0
+    ]
+    if values:
+      return values
+
+    groups = max(fallback_groups, 1)
+    base = total_teams // groups if total_teams else 0
+    extra = total_teams % groups if total_teams else 0
+    return [base + (1 if index < extra else 0) for index in range(groups)]
+
+
+def encode_seed_note(home_label: str, away_label: str, extra_note: str | None = None) -> str:
+    note = f"{AUTO_SEED_PREFIX}{home_label}||{away_label}"
+    if extra_note:
+        note = f"{note}||{extra_note}"
+    return note
+
+
+def decode_seed_note(note: str | None) -> tuple[str | None, str | None, str | None]:
+    if not note or not note.startswith(AUTO_SEED_PREFIX):
+        return None, None, note
+    payload = note[len(AUTO_SEED_PREFIX):]
+    parts = payload.split("||")
+    home = parts[0] if len(parts) > 0 else None
+    away = parts[1] if len(parts) > 1 else None
+    extra = parts[2] if len(parts) > 2 else None
+    return home, away, extra
+
+
+def _phase_date(age_group: TournamentAgeGroup, phase_index: int) -> datetime | None:
+    start_date = age_group.tournament.start_date or date_type.today()
+    if age_group.tournament.end_date and age_group.tournament.end_date >= start_date:
+        max_days = (age_group.tournament.end_date - start_date).days
+        day_offset = min(phase_index, max_days)
+    else:
+        day_offset = phase_index
+    return datetime.combine(start_date + timedelta(days=day_offset), time(hour=12), tzinfo=LOCAL_TIMEZONE)
+
+
+def _team_label(tt: TournamentTeam) -> str:
+    return tt.team.name
+
+
+def _group_name(index: int) -> str:
+    return f"Girone {chr(65 + index)}"
+
+
+def _parse_start_time(raw_value: Any) -> time:
+    if isinstance(raw_value, str):
+        try:
+            hours, minutes = raw_value.split(":", maxsplit=1)
+            return time(hour=int(hours), minute=int(minutes))
+        except (TypeError, ValueError):
+            pass
+    return time(hour=9, minute=30)
+
+
+def _schedule_settings(age_group: TournamentAgeGroup) -> dict[str, Any]:
+    structure = age_group.structure_config if isinstance(age_group.structure_config, dict) else {}
+    schedule = structure.get("schedule", {}) if isinstance(structure, dict) else {}
+    return schedule if isinstance(schedule, dict) else {}
+
+
+def _schedule_playing_fields(age_group: TournamentAgeGroup) -> list[dict[str, Any]]:
+    schedule = _schedule_settings(age_group)
+    raw_fields = schedule.get("playing_fields", [])
+    if not isinstance(raw_fields, list):
+        return []
+
+    playing_fields: list[dict[str, Any]] = []
+    for raw_field in raw_fields:
+        if not isinstance(raw_field, dict):
+            continue
+        field_name = raw_field.get("field_name") or raw_field.get("facility_name")
+        field_number = raw_field.get("field_number")
+        if not field_name:
+            continue
+        playing_fields.append({
+            "field_name": str(field_name),
+            "field_number": int(field_number) if isinstance(field_number, int) else None,
+        })
+    return playing_fields
+
+
+def _phase_start_datetime(age_group: TournamentAgeGroup, phase_index: int) -> datetime | None:
+    base = _phase_date(age_group, phase_index)
+    if not base:
+        return None
+    schedule = _schedule_settings(age_group)
+    start = _parse_start_time(schedule.get("start_time"))
+    return datetime.combine(base.date(), start, tzinfo=LOCAL_TIMEZONE)
+
+
+def _slot_delta(age_group: TournamentAgeGroup) -> timedelta:
+    schedule = _schedule_settings(age_group)
+    duration = int(schedule.get("match_duration_minutes") or 12)
+    interval = int(schedule.get("interval_minutes") or 8)
+    return timedelta(minutes=max(duration, 1) + max(interval, 0))
+
+
+def _round_robin_rounds(slots: list[dict[str, Any]]) -> list[list[tuple[dict[str, Any], dict[str, Any]]]]:
+    if len(slots) < 2:
+        return []
+
+    rotation = slots[:]
+    if len(rotation) % 2 == 1:
+        rotation.append({"label": "Riposo", "is_bye": True})
+
+    rounds: list[list[tuple[dict[str, Any], dict[str, Any]]]] = []
+    total_rounds = len(rotation) - 1
+
+    for _ in range(total_rounds):
+        half = len(rotation) // 2
+        left = rotation[:half]
+        right = list(reversed(rotation[half:]))
+        round_pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+
+        for home, away in zip(left, right):
+            if home.get("is_bye") or away.get("is_bye"):
+                continue
+            round_pairs.append((home, away))
+
+        if round_pairs:
+            rounds.append(round_pairs)
+
+        fixed = rotation[0]
+        rotating = rotation[1:]
+        rotating = [rotating[-1], *rotating[:-1]]
+        rotation = [fixed, *rotating]
+
+    return rounds
+
+
+def _group_lanes(
+    age_group: TournamentAgeGroup,
+    phase_config: dict[str, Any],
+    group_name: str,
+    group_index: int,
+    total_groups: int,
+) -> list[dict[str, Any]]:
+    raw_assignments = phase_config.get("group_field_assignments", {})
+    if not isinstance(raw_assignments, dict):
+        raw_assignments = {}
+    raw_lanes = raw_assignments.get(group_name, [])
+    lanes: list[dict[str, Any]] = []
+    if isinstance(raw_lanes, list):
+        for lane in raw_lanes:
+            if not isinstance(lane, dict):
+                continue
+            field_name = lane.get("field_name")
+            field_number = lane.get("field_number")
+            if not field_name:
+                continue
+            lanes.append({
+                "field_name": str(field_name),
+                "field_number": int(field_number) if isinstance(field_number, int) else None,
+            })
+    if lanes:
+        return lanes
+
+    playing_fields = _schedule_playing_fields(age_group)
+    if not playing_fields:
+        return []
+    if total_groups <= 1:
+        return playing_fields
+
+    chunk_size = max(math.ceil(len(playing_fields) / total_groups), 1)
+    start = group_index * chunk_size
+    end = start + chunk_size
+    lanes = playing_fields[start:end]
+    if lanes:
+        return lanes
+
+    fallback_index = min(group_index, len(playing_fields) - 1)
+    return [playing_fields[fallback_index]]
+    
+
+
+def _knockout_lanes(age_group: TournamentAgeGroup, phase_config: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_lanes = phase_config.get("knockout_field_assignments", [])
+    lanes: list[dict[str, Any]] = []
+    if isinstance(raw_lanes, list):
+        for lane in raw_lanes:
+            if not isinstance(lane, dict):
+                continue
+            field_name = lane.get("field_name")
+            field_number = lane.get("field_number")
+            if not field_name:
+                continue
+            lanes.append({
+                "field_name": str(field_name),
+                "field_number": int(field_number) if isinstance(field_number, int) else None,
+            })
+    return lanes or _schedule_playing_fields(age_group)
+
+
+def _assign_cross_group_referees(
+    matches: list[Match],
+    group_team_ids: dict[str, list[str]],
+    participants: list[TournamentTeam],
+    referee_source_group_ids: dict[str, list[str]] | None = None,
+) -> None:
+    participant_name_map = {team.id: team.team.name for team in participants}
+    referee_load: dict[str, int] = defaultdict(int)
+    referee_source_group_ids = referee_source_group_ids or {}
+
+    matches_by_slot: dict[datetime | None, list[Match]] = defaultdict(list)
+    for match in matches:
+        matches_by_slot[match.scheduled_at].append(match)
+
+    for scheduled_at, slot_matches in matches_by_slot.items():
+        busy_team_ids = {
+            team_id
+            for match in slot_matches
+            for team_id in [match.home_team_id, match.away_team_id]
+            if team_id
+        }
+        assigned_referee_ids: set[str] = set()
+        external_referee_counter = 1
+
+        for match in slot_matches:
+            same_group_team_ids = set(group_team_ids.get(match.group_id or "", []))
+            allowed_source_group_ids = referee_source_group_ids.get(match.group_id or "", [])
+            cross_group_candidate_ids = [
+                team_id
+                for group_id, team_ids in group_team_ids.items()
+                if group_id != match.group_id and (not allowed_source_group_ids or group_id in allowed_source_group_ids)
+                for team_id in team_ids
+                if team_id not in busy_team_ids and team_id not in same_group_team_ids and team_id not in assigned_referee_ids
+            ]
+
+            fallback_same_group_ids = [
+                team_id
+                for team_id in same_group_team_ids
+                if team_id not in busy_team_ids and team_id not in assigned_referee_ids
+            ]
+
+            candidate_ids = cross_group_candidate_ids or fallback_same_group_ids
+            if not candidate_ids:
+                remaining_global_ids = [
+                    team_id
+                    for team_id in participant_name_map.keys()
+                    if team_id not in busy_team_ids and team_id not in assigned_referee_ids
+                ]
+                candidate_ids = remaining_global_ids
+            if not candidate_ids:
+                match.referee = f"Staff torneo {external_referee_counter}"
+                external_referee_counter += 1
+                continue
+
+            candidate_ids.sort(key=lambda team_id: (referee_load[team_id], participant_name_map.get(team_id, "")))
+            selected = candidate_ids[0]
+            match.referee = participant_name_map.get(selected)
+            referee_load[selected] += 1
+            assigned_referee_ids.add(selected)
+
+
+def _next_power_of_two(value: int) -> int:
+    if value <= 1:
+        return 1
+    return 1 << math.ceil(math.log2(value))
+
+
+def _ordinal_it(rank: int) -> str:
+    if rank == 1:
+        return "1a"
+    return f"{rank}a"
+
+
+def _source_entries_from_group_phase(group_names: list[str], config: dict[str, Any] | None) -> list[dict[str, Any]]:
+    labels: list[dict[str, Any]] = []
+    config = config or {}
+    qualifiers = int(config.get("top_n_per_group", 0) or 0)
+    extras = int(config.get("best_third_count", 0) or 0)
+
+    for group_name in group_names:
+        for rank in range(1, qualifiers + 1):
+            labels.append({"label": f"{_ordinal_it(rank)} {group_name}", "rank": rank})
+
+    for index in range(extras):
+        labels.append({"label": f"Migliore extra {index + 1}", "rank": qualifiers + 1})
+
+    return labels
+
+
+def _pair_seed_entries(entries: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any] | None]]:
+    ordered = entries[:]
+    pairs: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
+    while ordered:
+        first = ordered.pop(0)
+        last = ordered.pop(-1) if ordered else None
+        pairs.append((first, last))
+    return pairs
+
+
+def _knockout_round_name(size: int) -> str:
+    names = {2: "Finale", 4: "Semifinali", 8: "Quarti", 16: "Ottavi"}
+    return names.get(size, f"Round of {size}")
+
+
+async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> TournamentAgeGroup:
+    result = await db.execute(
+        select(TournamentAgeGroup)
+        .options(
+            selectinload(TournamentAgeGroup.tournament),
+            selectinload(TournamentAgeGroup.tournament_teams).selectinload(TournamentTeam.team),
+            selectinload(TournamentAgeGroup.phases).selectinload(Phase.groups).selectinload(Group.group_teams),
+            selectinload(TournamentAgeGroup.phases).selectinload(Phase.matches),
+        )
+        .where(TournamentAgeGroup.id == age_group_id)
+    )
+    age_group = result.scalar_one_or_none()
+    if not age_group:
+        raise ValueError("Age group not found")
+
+    for phase in list(age_group.phases):
+        await db.delete(phase)
+    await db.flush()
+
+    structure = age_group.structure_config or {}
+    phases_config = structure.get("phases", [])
+    if not phases_config:
+        await db.commit()
+        await db.refresh(age_group)
+        return age_group
+
+    participants = sorted(age_group.tournament_teams, key=lambda item: item.team.name.lower())
+    match_slot_length = _slot_delta(age_group)
+    current_entries: list[dict[str, Any]] = [
+        {
+            "label": _team_label(team),
+            "tournament_team_id": team.id,
+            "team_id": team.team_id,
+        }
+        for team in participants
+    ]
+
+    for phase_index, phase_config in enumerate(phases_config):
+        phase_type = PhaseType[phase_config.get("phase_type", "GROUP_STAGE")]
+        phase = Phase(
+            tournament_age_group_id=age_group.id,
+            phase_order=phase_index + 1,
+            name=phase_config.get("name") or f"Fase {phase_index + 1}",
+            phase_type=phase_type,
+            num_groups=phase_config.get("num_groups"),
+            teams_per_group=None,
+            num_teams=len(current_entries) if current_entries else None,
+            advancement_config={
+                "top_n_per_group": phase_config.get("qualifiers_per_group") or 0,
+                "best_third_count": phase_config.get("best_extra_teams") or 0,
+                "notes": phase_config.get("notes") or "",
+            },
+            seeding_source={
+                "bracket_mode": phase_config.get("bracket_mode", "standard"),
+                "next_phase_type": phase_config.get("next_phase_type") or "",
+            },
+        )
+        db.add(phase)
+        await db.flush()
+
+        phase_start = _phase_start_datetime(age_group, phase_index)
+
+        if phase_type == PhaseType.GROUP_STAGE:
+            group_sizes = parse_group_sizes(
+                phase_config.get("group_sizes"),
+                int(phase_config.get("num_groups") or 1),
+                len(current_entries),
+            )
+            groups: list[Group] = []
+            entry_cursor = 0
+            slot_labels_by_group: dict[str, list[str]] = {}
+            phase_group_team_ids: dict[str, list[str]] = {}
+            phase_group_name_to_id: dict[str, str] = {}
+            created_group_matches: list[Match] = []
+
+            for group_index, group_size in enumerate(group_sizes):
+                group_name = _group_name(group_index)
+                group = Group(
+                    phase_id=phase.id,
+                    name=group_name,
+                    group_order=group_index,
+                )
+                db.add(group)
+                await db.flush()
+                groups.append(group)
+                phase_group_name_to_id[group_name] = group.id
+
+                group_entries = current_entries[entry_cursor: entry_cursor + group_size]
+                entry_cursor += group_size
+                slot_labels_by_group[group.id] = [entry["label"] for entry in group_entries]
+                phase_group_team_ids[group.id] = [
+                    entry["tournament_team_id"]
+                    for entry in group_entries
+                    if entry.get("tournament_team_id")
+                ]
+
+                for entry in group_entries:
+                    if entry.get("tournament_team_id"):
+                        db.add(GroupTeam(group_id=group.id, tournament_team_id=entry["tournament_team_id"]))
+                await db.flush()
+
+                lanes = _group_lanes(age_group, phase_config, group_name, group_index, len(group_sizes)) or [{"field_name": None, "field_number": None}]
+                rounds = _round_robin_rounds(group_entries)
+                slot_index = 0
+                match_index = 0
+
+                for round_pairs in rounds:
+                    for chunk_start in range(0, len(round_pairs), len(lanes)):
+                        round_chunk = round_pairs[chunk_start: chunk_start + len(lanes)]
+                        slot_time = phase_start + (match_slot_length * slot_index) if phase_start else None
+                        for lane_index, (home_entry, away_entry) in enumerate(round_chunk):
+                            lane = lanes[lane_index % len(lanes)]
+                            match = Match(
+                                phase_id=phase.id,
+                                group_id=group.id,
+                                home_team_id=home_entry.get("tournament_team_id"),
+                                away_team_id=away_entry.get("tournament_team_id"),
+                                scheduled_at=slot_time,
+                                field_name=lane.get("field_name"),
+                                field_number=lane.get("field_number"),
+                                status=MatchStatus.SCHEDULED,
+                                notes=None if home_entry.get("tournament_team_id") and away_entry.get("tournament_team_id") else encode_seed_note(
+                                    home_entry["label"],
+                                    away_entry["label"],
+                                ),
+                                bracket_position=match_index + 1,
+                            )
+                            db.add(match)
+                            created_group_matches.append(match)
+                            match_index += 1
+                        slot_index += 1
+
+            await db.flush()
+            raw_referee_assignments = phase_config.get("referee_group_assignments", {})
+            referee_source_group_ids = {}
+            if isinstance(raw_referee_assignments, dict):
+                for group_name, raw_source_group_names in raw_referee_assignments.items():
+                    group_id = phase_group_name_to_id.get(group_name)
+                    if not group_id or not isinstance(raw_source_group_names, list):
+                        continue
+                    source_group_ids = [
+                        phase_group_name_to_id[source_group_name]
+                        for source_group_name in raw_source_group_names
+                        if isinstance(source_group_name, str) and source_group_name in phase_group_name_to_id and source_group_name != group_name
+                    ]
+                    referee_source_group_ids[group_id] = source_group_ids
+
+            _assign_cross_group_referees(
+                created_group_matches,
+                phase_group_team_ids,
+                participants,
+                referee_source_group_ids,
+            )
+
+            phase.advancement_config = {
+                **(phase.advancement_config or {}),
+                "group_slot_labels": slot_labels_by_group,
+            }
+            current_entries = _source_entries_from_group_phase(
+                [group.name for group in groups],
+                phase.advancement_config,
+            )
+            continue
+
+        bracket_mode = (phase.seeding_source or {}).get("bracket_mode", "standard")
+        if bracket_mode == "placement":
+            buckets: dict[int, list[dict[str, Any]]] = defaultdict(list)
+            for entry in current_entries:
+                buckets[int(entry.get("rank") or 1)].append(entry)
+            ordered_ranks = sorted(buckets.keys())
+            carry_matches: list[tuple[str, list[dict[str, Any]]]] = []
+            for rank in ordered_ranks:
+                carry_matches.append((f"Piazzamento {_ordinal_it(rank)}", buckets[rank]))
+        else:
+            carry_matches = [("Tabellone principale", current_entries)]
+
+        next_entries: list[dict[str, Any]] = []
+        match_position = 1
+        knockout_lanes = _knockout_lanes(age_group, phase_config) or [{"field_name": None, "field_number": None}]
+        knockout_slot_index = 0
+        created_knockout_matches: list[Match] = []
+
+        for bucket_name, bucket_entries in carry_matches:
+            if not bucket_entries:
+                continue
+            bracket_size = _next_power_of_two(len(bucket_entries))
+            padded = bucket_entries + [
+                {"label": f"Riposo {index + 1}", "rank": 999}
+                for index in range(max(bracket_size - len(bucket_entries), 0))
+            ]
+            round_entries = padded
+            round_size = bracket_size
+            round_order = 1
+
+            while round_size >= 2:
+                pairs = _pair_seed_entries(round_entries)
+                round_name = f"{bucket_name} · {_knockout_round_name(round_size)}" if bucket_name != "Tabellone principale" else _knockout_round_name(round_size)
+                winners: list[dict[str, Any]] = []
+                for pair_index, (home_entry, away_entry) in enumerate(pairs):
+                    home_label = home_entry["label"]
+                    away_label = away_entry["label"] if away_entry else "Bye"
+                    home_team_id = home_entry.get("tournament_team_id")
+                    away_team_id = away_entry.get("tournament_team_id") if away_entry else None
+                    lane = knockout_lanes[knockout_slot_index % len(knockout_lanes)]
+                    scheduled_at = phase_start + (match_slot_length * (knockout_slot_index // len(knockout_lanes))) if phase_start else None
+
+                    match = Match(
+                        phase_id=phase.id,
+                        group_id=None,
+                        bracket_round=round_name,
+                        bracket_position=match_position,
+                        bracket_round_order=round_order,
+                        home_team_id=home_team_id if away_label != "Bye" else home_team_id,
+                        away_team_id=away_team_id if away_label != "Bye" else None,
+                        scheduled_at=scheduled_at,
+                        field_name=lane.get("field_name"),
+                        field_number=lane.get("field_number"),
+                        status=MatchStatus.SCHEDULED,
+                        notes=None if home_team_id and away_team_id else encode_seed_note(home_label, away_label),
+                    )
+                    db.add(match)
+                    created_knockout_matches.append(match)
+                    match_position += 1
+                    knockout_slot_index += 1
+                    winners.append({"label": f"Vincente {round_name} {pair_index + 1}"})
+
+                round_entries = winners
+                round_size = len(round_entries)
+                round_order += 1
+
+                if round_size <= 1:
+                    break
+
+            next_entries.extend(bucket_entries)
+
+        await db.flush()
+        _assign_cross_group_referees(
+            created_knockout_matches,
+            {"all": [team.id for team in participants]},
+            participants,
+        )
+
+        current_entries = next_entries
+
+    await _sync_tournament_dates_from_generated_program(age_group)
+    await db.commit()
+    await db.refresh(age_group)
+    return age_group
+
+
+async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, db: AsyncSession) -> TournamentAgeGroup:
+    result = await db.execute(
+        select(TournamentAgeGroup)
+        .options(
+            selectinload(TournamentAgeGroup.tournament),
+            selectinload(TournamentAgeGroup.tournament_teams).selectinload(TournamentTeam.team),
+            selectinload(TournamentAgeGroup.phases).selectinload(Phase.groups).selectinload(Group.group_teams),
+            selectinload(TournamentAgeGroup.phases).selectinload(Phase.matches),
+        )
+        .where(TournamentAgeGroup.id == age_group_id)
+    )
+    age_group = result.scalar_one_or_none()
+    if not age_group:
+        raise ValueError("Age group not found")
+
+    structure = age_group.structure_config or {}
+    phases_config = structure.get("phases", [])
+    if not phases_config:
+        await db.commit()
+        await db.refresh(age_group)
+        return age_group
+
+    start_index = max(phase_order - 1, 0)
+    if start_index >= len(phases_config):
+        raise ValueError("Phase not found")
+
+    existing_phases = sorted(age_group.phases, key=lambda item: item.phase_order)
+    for phase in existing_phases:
+        if phase.phase_order >= phase_order:
+            await db.delete(phase)
+    await db.flush()
+
+    participants = sorted(age_group.tournament_teams, key=lambda item: item.team.name.lower())
+    match_slot_length = _slot_delta(age_group)
+    current_entries: list[dict[str, Any]] = [
+        {
+            "label": _team_label(team),
+            "tournament_team_id": team.id,
+            "team_id": team.team_id,
+        }
+        for team in participants
+    ]
+
+    for phase in existing_phases:
+        if phase.phase_order >= phase_order:
+            break
+        if phase.phase_type == PhaseType.GROUP_STAGE:
+            current_entries = _source_entries_from_group_phase(
+                [group.name for group in sorted(phase.groups, key=lambda item: item.group_order)],
+                phase.advancement_config,
+            )
+
+    for relative_index, phase_config in enumerate(phases_config[start_index:], start=start_index):
+        phase_type = PhaseType[phase_config.get("phase_type", "GROUP_STAGE")]
+        phase = Phase(
+            tournament_age_group_id=age_group.id,
+            phase_order=relative_index + 1,
+            name=phase_config.get("name") or f"Fase {relative_index + 1}",
+            phase_type=phase_type,
+            num_groups=phase_config.get("num_groups"),
+            teams_per_group=None,
+            num_teams=len(current_entries) if current_entries else None,
+            advancement_config={
+                "top_n_per_group": phase_config.get("qualifiers_per_group") or 0,
+                "best_third_count": phase_config.get("best_extra_teams") or 0,
+                "notes": phase_config.get("notes") or "",
+            },
+            seeding_source={
+                "bracket_mode": phase_config.get("bracket_mode", "standard"),
+                "next_phase_type": phase_config.get("next_phase_type") or "",
+            },
+        )
+        db.add(phase)
+        await db.flush()
+
+        phase_start = _phase_start_datetime(age_group, relative_index)
+
+        if phase_type == PhaseType.GROUP_STAGE:
+            group_sizes = parse_group_sizes(
+                phase_config.get("group_sizes"),
+                int(phase_config.get("num_groups") or 1),
+                len(current_entries),
+            )
+            groups: list[Group] = []
+            entry_cursor = 0
+            slot_labels_by_group: dict[str, list[str]] = {}
+            phase_group_team_ids: dict[str, list[str]] = {}
+            phase_group_name_to_id: dict[str, str] = {}
+            created_group_matches: list[Match] = []
+
+            for group_index, group_size in enumerate(group_sizes):
+                group_name = _group_name(group_index)
+                group = Group(phase_id=phase.id, name=group_name, group_order=group_index)
+                db.add(group)
+                await db.flush()
+                groups.append(group)
+                phase_group_name_to_id[group_name] = group.id
+
+                group_entries = current_entries[entry_cursor: entry_cursor + group_size]
+                entry_cursor += group_size
+                slot_labels_by_group[group.id] = [entry["label"] for entry in group_entries]
+                phase_group_team_ids[group.id] = [
+                    entry["tournament_team_id"]
+                    for entry in group_entries
+                    if entry.get("tournament_team_id")
+                ]
+
+                for entry in group_entries:
+                    if entry.get("tournament_team_id"):
+                        db.add(GroupTeam(group_id=group.id, tournament_team_id=entry["tournament_team_id"]))
+                await db.flush()
+
+                lanes = _group_lanes(age_group, phase_config, group_name, group_index, len(group_sizes)) or [{"field_name": None, "field_number": None}]
+                rounds = _round_robin_rounds(group_entries)
+                slot_index = 0
+                match_index = 0
+
+                for round_pairs in rounds:
+                    for chunk_start in range(0, len(round_pairs), len(lanes)):
+                        round_chunk = round_pairs[chunk_start: chunk_start + len(lanes)]
+                        slot_time = phase_start + (match_slot_length * slot_index) if phase_start else None
+                        for lane_index, (home_entry, away_entry) in enumerate(round_chunk):
+                            lane = lanes[lane_index % len(lanes)]
+                            match = Match(
+                                phase_id=phase.id,
+                                group_id=group.id,
+                                home_team_id=home_entry.get("tournament_team_id"),
+                                away_team_id=away_entry.get("tournament_team_id"),
+                                scheduled_at=slot_time,
+                                field_name=lane.get("field_name"),
+                                field_number=lane.get("field_number"),
+                                status=MatchStatus.SCHEDULED,
+                                notes=None if home_entry.get("tournament_team_id") and away_entry.get("tournament_team_id") else encode_seed_note(
+                                    home_entry["label"],
+                                    away_entry["label"],
+                                ),
+                                bracket_position=match_index + 1,
+                            )
+                            db.add(match)
+                            created_group_matches.append(match)
+                            match_index += 1
+                        slot_index += 1
+
+            await db.flush()
+            raw_referee_assignments = phase_config.get("referee_group_assignments", {})
+            referee_source_group_ids = {}
+            if isinstance(raw_referee_assignments, dict):
+                for group_name, raw_source_group_names in raw_referee_assignments.items():
+                    group_id = phase_group_name_to_id.get(group_name)
+                    if not group_id or not isinstance(raw_source_group_names, list):
+                        continue
+                    source_group_ids = [
+                        phase_group_name_to_id[source_group_name]
+                        for source_group_name in raw_source_group_names
+                        if isinstance(source_group_name, str) and source_group_name in phase_group_name_to_id and source_group_name != group_name
+                    ]
+                    referee_source_group_ids[group_id] = source_group_ids
+
+            _assign_cross_group_referees(created_group_matches, phase_group_team_ids, participants, referee_source_group_ids)
+            phase.advancement_config = {**(phase.advancement_config or {}), "group_slot_labels": slot_labels_by_group}
+            current_entries = _source_entries_from_group_phase([group.name for group in groups], phase.advancement_config)
+            continue
+
+        bracket_mode = (phase.seeding_source or {}).get("bracket_mode", "standard")
+        if bracket_mode == "placement":
+            buckets: dict[int, list[dict[str, Any]]] = defaultdict(list)
+            for entry in current_entries:
+                buckets[int(entry.get("rank") or 1)].append(entry)
+            ordered_ranks = sorted(buckets.keys())
+            carry_matches: list[tuple[str, list[dict[str, Any]]]] = []
+            for rank in ordered_ranks:
+                carry_matches.append((f"Piazzamento {_ordinal_it(rank)}", buckets[rank]))
+        else:
+            carry_matches = [("Tabellone principale", current_entries)]
+
+        next_entries: list[dict[str, Any]] = []
+        match_position = 1
+        knockout_lanes = _knockout_lanes(age_group, phase_config) or [{"field_name": None, "field_number": None}]
+        knockout_slot_index = 0
+        created_knockout_matches: list[Match] = []
+
+        for bucket_name, bucket_entries in carry_matches:
+            if not bucket_entries:
+                continue
+            bracket_size = _next_power_of_two(len(bucket_entries))
+            padded = bucket_entries + [{"label": f"Riposo {index + 1}", "rank": 999} for index in range(max(bracket_size - len(bucket_entries), 0))]
+            round_entries = padded
+            round_size = bracket_size
+            round_order = 1
+
+            while round_size >= 2:
+                pairs = _pair_seed_entries(round_entries)
+                round_name = f"{bucket_name} · {_knockout_round_name(round_size)}" if bucket_name != "Tabellone principale" else _knockout_round_name(round_size)
+                winners: list[dict[str, Any]] = []
+                for pair_index, (home_entry, away_entry) in enumerate(pairs):
+                    home_label = home_entry["label"]
+                    away_label = away_entry["label"] if away_entry else "Bye"
+                    home_team_id = home_entry.get("tournament_team_id")
+                    away_team_id = away_entry.get("tournament_team_id") if away_entry else None
+                    lane = knockout_lanes[knockout_slot_index % len(knockout_lanes)]
+                    scheduled_at = phase_start + (match_slot_length * (knockout_slot_index // len(knockout_lanes))) if phase_start else None
+                    match = Match(
+                        phase_id=phase.id,
+                        group_id=None,
+                        bracket_round=round_name,
+                        bracket_position=match_position,
+                        bracket_round_order=round_order,
+                        home_team_id=home_team_id if away_label != "Bye" else home_team_id,
+                        away_team_id=away_team_id if away_label != "Bye" else None,
+                        scheduled_at=scheduled_at,
+                        field_name=lane.get("field_name"),
+                        field_number=lane.get("field_number"),
+                        status=MatchStatus.SCHEDULED,
+                        notes=None if home_team_id and away_team_id else encode_seed_note(home_label, away_label),
+                    )
+                    db.add(match)
+                    created_knockout_matches.append(match)
+                    match_position += 1
+                    knockout_slot_index += 1
+                    winners.append({"label": f"Vincente {round_name} {pair_index + 1}"})
+                round_entries = winners
+                round_size = len(round_entries)
+                round_order += 1
+                if round_size <= 1:
+                    break
+            next_entries.extend(bucket_entries)
+
+        await db.flush()
+        _assign_cross_group_referees(created_knockout_matches, {"all": [team.id for team in participants]}, participants)
+        current_entries = next_entries
+
+    await _sync_tournament_dates_from_generated_program(age_group)
+    await db.commit()
+    await db.refresh(age_group)
+    return age_group
+
+
+async def _sync_tournament_dates_from_generated_program(age_group: TournamentAgeGroup) -> None:
+    tournament = age_group.tournament
+    if tournament is None:
+        return
+
+    phase_dates = [
+        match.scheduled_at.astimezone(LOCAL_TIMEZONE).date()
+        for phase in age_group.phases
+        for match in phase.matches
+        if match.scheduled_at
+    ]
+
+    if not phase_dates:
+        return
+
+    earliest = min(phase_dates)
+    latest = max(phase_dates)
+
+    if tournament.start_date is None or earliest < tournament.start_date:
+        tournament.start_date = earliest
+    if tournament.end_date is None or latest > tournament.end_date:
+        tournament.end_date = latest
+
+
+async def get_age_group_program(age_group_id: str, db: AsyncSession) -> AgeGroupProgramResponse | None:
+    result = await db.execute(
+        select(TournamentAgeGroup)
+        .options(
+            selectinload(TournamentAgeGroup.tournament).selectinload(Tournament.age_groups),
+            selectinload(TournamentAgeGroup.tournament_teams).selectinload(TournamentTeam.team).selectinload(Team.organization),
+            selectinload(TournamentAgeGroup.phases).selectinload(Phase.groups).selectinload(Group.group_teams).selectinload(GroupTeam.tournament_team).selectinload(TournamentTeam.team).selectinload(Team.organization),
+            selectinload(TournamentAgeGroup.phases).selectinload(Phase.matches).selectinload(Match.home_team).selectinload(TournamentTeam.team).selectinload(Team.organization),
+            selectinload(TournamentAgeGroup.phases).selectinload(Phase.matches).selectinload(Match.away_team).selectinload(TournamentTeam.team).selectinload(Team.organization),
+        )
+        .where(TournamentAgeGroup.id == age_group_id)
+    )
+    age_group = result.scalar_one_or_none()
+    if not age_group:
+        return None
+    return _serialize_age_group_program(age_group)
+
+
+async def get_tournament_program(tournament_slug: str, db: AsyncSession) -> TournamentProgramResponse | None:
+    result = await db.execute(
+        select(Tournament)
+        .options(
+            selectinload(Tournament.age_groups).selectinload(TournamentAgeGroup.tournament_teams).selectinload(TournamentTeam.team),
+            selectinload(Tournament.age_groups).selectinload(TournamentAgeGroup.tournament_teams).selectinload(TournamentTeam.team).selectinload(Team.organization),
+            selectinload(Tournament.age_groups).selectinload(TournamentAgeGroup.phases).selectinload(Phase.groups).selectinload(Group.group_teams).selectinload(GroupTeam.tournament_team).selectinload(TournamentTeam.team).selectinload(Team.organization),
+            selectinload(Tournament.age_groups).selectinload(TournamentAgeGroup.phases).selectinload(Phase.matches).selectinload(Match.home_team).selectinload(TournamentTeam.team).selectinload(Team.organization),
+            selectinload(Tournament.age_groups).selectinload(TournamentAgeGroup.phases).selectinload(Phase.matches).selectinload(Match.away_team).selectinload(TournamentTeam.team).selectinload(Team.organization),
+        )
+        .where(Tournament.slug == tournament_slug, Tournament.is_published == True)
+    )
+    tournament = result.scalar_one_or_none()
+    if not tournament:
+        return None
+
+    age_groups = [
+        _serialize_age_group_program(age_group)
+        for age_group in sorted(tournament.age_groups, key=lambda item: item.age_group.value)
+    ]
+    return TournamentProgramResponse(
+        tournament_id=tournament.id,
+        tournament_name=tournament.name,
+        age_groups=age_groups,
+    )
+
+
+def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgramResponse:
+    phase_days: dict[str, list[ProgramPhaseResponse]] = defaultdict(list)
+
+    for phase in sorted(age_group.phases, key=lambda item: item.phase_order):
+        group_responses: list[ProgramGroupResponse] = []
+        knockout_matches: list[ProgramMatchResponse] = []
+
+        for group in sorted(phase.groups, key=lambda item: item.group_order):
+            slot_labels = (phase.advancement_config or {}).get("group_slot_labels", {}).get(group.id, [])
+            teams = [
+                ProgramTeamSlotResponse(
+                    team_id=group_team.tournament_team.team_id,
+                    tournament_team_id=group_team.tournament_team.id,
+                    label=_team_label(group_team.tournament_team),
+                    team_logo_url=group_team.tournament_team.team.logo_url or group_team.tournament_team.team.organization.logo_url,
+                    is_placeholder=False,
+                )
+                for group_team in group.group_teams
+            ]
+
+            if not teams and slot_labels:
+                teams = [
+                    ProgramTeamSlotResponse(label=label, is_placeholder=True)
+                    for label in slot_labels
+                ]
+
+            matches = [
+                _serialize_match(match, phase.name, phase.phase_type.value, group.name)
+                for match in sorted(
+                    [item for item in phase.matches if item.group_id == group.id],
+                    key=lambda item: (item.bracket_position or 0, item.scheduled_at or datetime.max),
+                )
+            ]
+
+            group_responses.append(ProgramGroupResponse(
+                id=group.id,
+                name=group.name,
+                order=group.group_order,
+                teams=teams,
+                matches=matches,
+            ))
+
+        knockout_matches = [
+            _serialize_match(match, phase.name, phase.phase_type.value, None)
+            for match in sorted(
+                [item for item in phase.matches if item.group_id is None],
+                key=lambda item: (item.bracket_round_order or 0, item.bracket_position or 0),
+            )
+        ]
+
+        scheduled_dates = [match.scheduled_at.date() for match in phase.matches if match.scheduled_at]
+        phase_date = min(scheduled_dates) if scheduled_dates else None
+        day_key = phase_date.isoformat() if phase_date else f"phase-{phase.phase_order}"
+        phase_days[day_key].append(ProgramPhaseResponse(
+            id=phase.id,
+            name=phase.name,
+            phase_type=phase.phase_type.value,
+            phase_order=phase.phase_order,
+            scheduled_date=phase_date,
+            groups=group_responses,
+            knockout_matches=knockout_matches,
+        ))
+
+    days: list[ProgramDayResponse] = []
+    for day_key, phases in sorted(phase_days.items(), key=lambda item: item[0]):
+        date_value = phases[0].scheduled_date
+        label = date_value.strftime("%d/%m/%Y") if date_value else "Da definire"
+        days.append(ProgramDayResponse(date=date_value, label=label, phases=phases))
+
+    expected_teams = None
+    if age_group.structure_config and isinstance(age_group.structure_config, dict):
+        raw_expected = age_group.structure_config.get("expected_teams")
+        expected_teams = raw_expected if isinstance(raw_expected, int) else None
+
+    return AgeGroupProgramResponse(
+        age_group_id=age_group.id,
+        age_group=age_group.age_group.value,
+        display_name=age_group.display_name,
+        participant_count=len(age_group.tournament_teams),
+        expected_teams=expected_teams,
+        generated=len(age_group.phases) > 0,
+        days=days,
+    )
+
+
+def _serialize_match(match: Match, phase_name: str, phase_type: str, group_name: str | None) -> ProgramMatchResponse:
+    seed_home, seed_away, clean_notes = decode_seed_note(match.notes)
+    home_label = match.home_team.team.name if match.home_team else seed_home or "Da definire"
+    away_label = match.away_team.team.name if match.away_team else seed_away or "Da definire"
+    home_logo_url = match.home_team.team.logo_url or match.home_team.team.organization.logo_url if match.home_team else None
+    away_logo_url = match.away_team.team.logo_url or match.away_team.team.organization.logo_url if match.away_team else None
+
+    return ProgramMatchResponse(
+        id=match.id,
+        phase_id=match.phase_id,
+        phase_name=phase_name,
+        phase_type=phase_type,
+        group_id=match.group_id,
+        group_name=group_name,
+        bracket_round=match.bracket_round,
+        bracket_position=match.bracket_position,
+        scheduled_at=match.scheduled_at,
+        actual_end_at=match.actual_end_at,
+        status=match.status,
+        field_name=match.field_name,
+        field_number=match.field_number,
+        home_team_id=match.home_team_id,
+        away_team_id=match.away_team_id,
+        home_label=home_label,
+        away_label=away_label,
+        home_logo_url=home_logo_url,
+        away_logo_url=away_logo_url,
+        home_score=match.home_score,
+        away_score=match.away_score,
+        home_tries=match.home_tries,
+        away_tries=match.away_tries,
+        referee=match.referee,
+        notes=clean_notes,
+    )

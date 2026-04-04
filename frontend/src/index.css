@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 142 69% 30%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 142 69% 30%;
+    --radius: 0.5rem;
+    --tournament-ink: #0f172a;
+    --tournament-accent: #166534;
+    --tournament-accent-soft: #ecfdf3;
+    --tournament-highlight: #d97706;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer components {
+  .surface-panel {
+    @apply rounded-[1.8rem] border border-white/80 bg-white shadow-[0_24px_70px_-48px_rgba(15,23,42,0.45)];
+  }
+
+  .surface-muted {
+    @apply rounded-[1.5rem] border border-slate-200 bg-slate-50;
+  }
+
+  .page-shell {
+    background:
+      radial-gradient(circle at top, #ebfff2 0%, #f8fafc 38%, #edf2f7 100%);
+  }
+}
+
+@keyframes sponsor-marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.sponsor-track {
+  animation: sponsor-marquee 28s linear infinite;
+}
+
+.sponsor-track:hover {
+  animation-play-state: paused;
+}
+
+/* Touch-friendly minimum tap targets (applied to interactive elements, not layout) */
+button:not(.no-min-touch),
+[role="button"]:not(.no-min-touch) {
+  min-height: 44px;
+}
