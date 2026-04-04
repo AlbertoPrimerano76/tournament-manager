@@ -40,7 +40,7 @@ class Settings(BaseSettings):
 
     @property
     def allowed_origin_regex(self) -> Optional[str]:
-        if any(origin.endswith(".vercel.app") for origin in self.allowed_origins_list):
+        if self.is_production:
             return r"^https://.*\.vercel\.app$"
         return None
 
