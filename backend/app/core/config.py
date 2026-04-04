@@ -39,6 +39,12 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
 
     @property
+    def allowed_origin_regex(self) -> Optional[str]:
+        if any(origin.endswith(".vercel.app") for origin in self.allowed_origins_list):
+            return r"^https://.*\.vercel\.app$"
+        return None
+
+    @property
     def async_database_url(self) -> str:
         url = self.DATABASE_URL.strip()
         if url.startswith("postgresql+asyncpg://") or url.startswith("sqlite+aiosqlite://"):
