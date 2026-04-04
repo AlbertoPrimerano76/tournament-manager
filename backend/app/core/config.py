@@ -39,6 +39,17 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
 
     @property
+    def async_database_url(self) -> str:
+        url = self.DATABASE_URL.strip()
+        if url.startswith("postgresql+asyncpg://") or url.startswith("sqlite+aiosqlite://"):
+            return url
+        if url.startswith("postgres://"):
+            return url.replace("postgres://", "postgresql+asyncpg://", 1)
+        if url.startswith("postgresql://") and "+asyncpg" not in url:
+            return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return url
+
+    @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT.lower() == "production"
 
