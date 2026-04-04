@@ -1,10 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.core.deps import require_admin
-from app.core.security import hash_password
+from app.core.security import hash_password, validate_password_strength
+from app.models.password_reset_token import PasswordResetToken
 from app.models.user import User
 from app.models.user_tournament_assignment import UserTournamentAssignment
 from app.schemas.user import UserCreate, UserUpdate, UserResponse, PasswordReset
@@ -42,11 +46,17 @@ async def create_user(
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    try:
+        validate_password_strength(body.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     user = User(
         email=body.email,
         hashed_password=hash_password(body.password),
         role=body.role,
         organization_id=body.organization_id,
+        updated_at=datetime.now(timezone.utc),
     )
     db.add(user)
     await db.flush()
@@ -95,11 +105,19 @@ async def reset_password(
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    try:
+        validate_password_strength(body.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.hashed_password = hash_password(body.password)
+    user.token_version += 1
+    user.updated_at = datetime.now(timezone.utc)
+    await db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
     await db.commit()
 
 

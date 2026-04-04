@@ -18,6 +18,8 @@ from app.api.v1.admin import fields as admin_fields
 from app.api.v1.admin import upload as admin_upload
 from app.api.v1.admin import dashboard as admin_dashboard
 
+settings.validate_production_settings()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

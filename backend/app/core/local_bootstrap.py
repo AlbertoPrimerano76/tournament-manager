@@ -40,12 +40,13 @@ async def bootstrap_local_environment() -> None:
     is_sqlite = settings.DATABASE_URL.startswith("sqlite")
     is_development = settings.ENVIRONMENT.lower() == "development"
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        if is_development:
-            await _ensure_development_schema(conn)
-        if is_sqlite:
-            await _ensure_alembic_version(conn)
+    if is_sqlite or is_development:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            if is_development:
+                await _ensure_development_schema(conn)
+            if is_sqlite:
+                await _ensure_alembic_version(conn)
 
     async with AsyncSessionLocal() as session:
         if is_sqlite or is_development:
@@ -90,6 +91,9 @@ async def _ensure_development_schema(conn: AsyncConnection) -> None:
         organization_columns = {
             row[1] for row in (await conn.exec_driver_sql("PRAGMA table_info(organizations)")).fetchall()
         }
+        user_columns = {
+            row[1] for row in (await conn.exec_driver_sql("PRAGMA table_info(users)")).fetchall()
+        }
         field_columns = {
             row[1] for row in (await conn.exec_driver_sql("PRAGMA table_info(fields)")).fetchall()
         }
@@ -123,6 +127,14 @@ async def _ensure_development_schema(conn: AsyncConnection) -> None:
         if "city" not in organization_columns:
             await conn.exec_driver_sql(
                 "ALTER TABLE organizations ADD COLUMN city VARCHAR(100)"
+            )
+        if "token_version" not in user_columns:
+            await conn.exec_driver_sql(
+                "ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0"
+            )
+        if "updated_at" not in user_columns:
+            await conn.exec_driver_sql(
+                "ALTER TABLE users ADD COLUMN updated_at DATETIME"
             )
         if "organization_id" not in field_columns:
             await conn.exec_driver_sql(
@@ -170,6 +182,19 @@ async def _ensure_development_schema(conn: AsyncConnection) -> None:
             )
             """
         )
+        await conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id VARCHAR(36) PRIMARY KEY NOT NULL,
+                user_id VARCHAR(36) NOT NULL,
+                token_hash VARCHAR(64) NOT NULL UNIQUE,
+                expires_at DATETIME NOT NULL,
+                used_at DATETIME,
+                created_at DATETIME NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            """
+        )
         return
 
     if dialect == "postgresql":
@@ -184,6 +209,12 @@ async def _ensure_development_schema(conn: AsyncConnection) -> None:
         )
         await conn.exec_driver_sql(
             "ALTER TABLE matches ADD COLUMN IF NOT EXISTS actual_end_at TIMESTAMP WITH TIME ZONE"
+        )
+        await conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0"
+        )
+        await conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE"
         )
         await conn.exec_driver_sql(
             "ALTER TABLE fields ADD COLUMN IF NOT EXISTS organization_id VARCHAR(36)"
@@ -210,6 +241,18 @@ async def _ensure_development_schema(conn: AsyncConnection) -> None:
             )
             """
         )
+        await conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id VARCHAR(36) PRIMARY KEY NOT NULL,
+                user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                token_hash VARCHAR(64) NOT NULL UNIQUE,
+                expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                used_at TIMESTAMP WITH TIME ZONE,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL
+            )
+            """
+        )
 
 
 async def _ensure_alembic_version(conn: AsyncConnection) -> None:
@@ -219,6 +262,6 @@ async def _ensure_alembic_version(conn: AsyncConnection) -> None:
     result = await conn.exec_driver_sql("SELECT version_num FROM alembic_version LIMIT 1")
     current = result.scalar_one_or_none()
     if current is None:
-        await conn.exec_driver_sql("INSERT INTO alembic_version(version_num) VALUES ('004')")
-    elif current != "004":
-        await conn.exec_driver_sql("UPDATE alembic_version SET version_num = '004'")
+        await conn.exec_driver_sql("INSERT INTO alembic_version(version_num) VALUES ('005')")
+    elif current != "005":
+        await conn.exec_driver_sql("UPDATE alembic_version SET version_num = '005'")

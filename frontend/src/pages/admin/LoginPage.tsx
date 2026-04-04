@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { Trophy } from 'lucide-react'
 
@@ -72,6 +72,12 @@ export default function LoginPage() {
           >
             {loading ? 'Accesso...' : 'Accedi'}
           </button>
+
+          <div className="text-center text-sm">
+            <Link to="/admin/forgot-password" className="text-rugby-green hover:text-rugby-green-dark font-medium">
+              Hai dimenticato la password?
+            </Link>
+          </div>
         </form>
       </div>
     </div>

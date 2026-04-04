@@ -18,6 +18,16 @@ class Settings(BaseSettings):
     SUPABASE_BUCKET: str = "rugby-images"
     DEFAULT_ADMIN_EMAIL: Optional[str] = None
     DEFAULT_ADMIN_PASSWORD: Optional[str] = None
+    FRONTEND_URL: Optional[str] = None
+    RESET_TOKEN_EXPIRE_MINUTES: int = 60
+
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_FROM_EMAIL: Optional[str] = None
+    SMTP_FROM_NAME: str = "Rugby Event Manager"
+    SMTP_USE_TLS: bool = True
 
     MAX_IMAGE_SIZE_MB: int = 5
 
@@ -26,7 +36,19 @@ class Settings(BaseSettings):
 
     @property
     def allowed_origins_list(self) -> list[str]:
-        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
+        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT.lower() == "production"
+
+    def validate_production_settings(self) -> None:
+        if not self.is_production:
+            return
+        if self.JWT_SECRET == "changeme-in-production-use-long-random-string" or len(self.JWT_SECRET) < 32:
+            raise RuntimeError("Invalid production JWT_SECRET configuration")
+        if not self.allowed_origins_list:
+            raise RuntimeError("ALLOWED_ORIGINS must be configured in production")
 
 
 settings = Settings()

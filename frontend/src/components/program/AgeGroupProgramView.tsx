@@ -176,15 +176,15 @@ function AdminOperationsView({
   const phases = flattenPhases(program)
   const [selectedPhaseId, setSelectedPhaseId] = useState(phases[0]?.id ?? '')
   const [statusView, setStatusView] = useState<'pending' | 'completed'>('pending')
-  const [operationsTab, setOperationsTab] = useState<'changes' | 'results'>('results')
-  const [page, setPage] = useState(1)
+  const pageSize = 8
+  const [visibleCount, setVisibleCount] = useState(pageSize)
   const selectedPhase = phases.find((phase) => phase.id === selectedPhaseId) ?? phases[0]
   const visibleGroups = selectedPhase?.groups ?? []
   const [selectedGroupId, setSelectedGroupId] = useState(visibleGroups[0]?.id ?? '')
 
   useEffect(() => {
-    setPage(1)
-  }, [selectedPhaseId, selectedGroupId, statusView, operationsTab])
+    setVisibleCount(pageSize)
+  }, [selectedPhaseId, selectedGroupId, statusView])
 
   useEffect(() => {
     if (!selectedPhase) return
@@ -206,18 +206,28 @@ function AdminOperationsView({
     ? selectedGroup.matches.filter((match) => statusView === 'completed' ? match.status === 'COMPLETED' : match.status !== 'COMPLETED')
     : []
   const filteredKnockoutMatches = selectedPhase.knockout_matches.filter((match) => statusView === 'completed' ? match.status === 'COMPLETED' : match.status !== 'COMPLETED')
-  const activeMatches = selectedPhase.groups.length > 0 ? filteredGroupMatches : filteredKnockoutMatches
-  const pageSize = 8
-  const totalPages = Math.max(1, Math.ceil(activeMatches.length / pageSize))
-  const currentPage = Math.min(page, totalPages)
-  const paginatedMatches = activeMatches.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  const activeMatches = sortMatchesBySchedule(selectedPhase.groups.length > 0 ? filteredGroupMatches : filteredKnockoutMatches)
+  const visibleMatches = activeMatches.slice(0, visibleCount)
+  const hasMoreMatches = visibleMatches.length < activeMatches.length
+  const nextMatch = activeMatches[0] ?? null
+
+  function jumpToNextMatch() {
+    if (!nextMatch) return
+    if (visibleCount < pageSize) setVisibleCount(pageSize)
+    if (visibleCount < activeMatches.length && !visibleMatches.some((match) => match.id === nextMatch.id)) {
+      setVisibleCount((value) => Math.max(value, pageSize))
+    }
+    window.setTimeout(() => {
+      document.getElementById(`scorekeeper-match-${nextMatch.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 0)
+  }
 
   return (
     <div className="space-y-5">
       <section className="rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm">
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="rounded-[1.35rem] border border-slate-200 bg-slate-50 p-4 lg:col-span-2">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Fase</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Scegli la fase</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {phases.map((phase) => (
                 <button
@@ -230,77 +240,56 @@ function AdminOperationsView({
                       : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                   }`}
                 >
-                  Fase {phase.phase_order} · {phase.name}
+                  {phase.name}
                 </button>
               ))}
             </div>
           </div>
           <div className="rounded-[1.35rem] border border-slate-200 bg-[linear-gradient(135deg,_#f8fafc_0%,_#ffffff_100%)] p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Vista attiva</p>
-            <p className="mt-2 text-base font-black text-slate-950">{selectedPhase.name}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-                {selectedPhase.groups.length > 0 ? `${selectedPhase.groups.length} gironi` : 'Fase finale'}
-              </span>
-              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-                {statusView === 'pending' ? 'Da giocare' : 'Giocate'}
-              </span>
-            </div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Modalità segnapunti</p>
+            <p className="mt-2 text-base font-black text-slate-950">Solo tabellini e ritardi</p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Qui non puoi cambiare gironi o struttura. Apri una partita, salva risultato, orario finale o ritardo.
+            </p>
           </div>
         </div>
       </section>
 
-      <section className="rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setOperationsTab('changes')}
-            className={`rounded-full px-4 py-2 text-sm font-semibold ${
-              operationsTab === 'changes' ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
-            }`}
-          >
-            Cambi gironi
-          </button>
-          <button
-            type="button"
-            onClick={() => setOperationsTab('results')}
-            className={`rounded-full px-4 py-2 text-sm font-semibold ${
-              operationsTab === 'results' ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
-            }`}
-          >
-            Tabellino partita
-          </button>
-        </div>
-      </section>
-
-      {operationsTab === 'changes' && selectedPhase.groups.length > 0 && (
-        <section className="rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-4">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Cambi nei gironi</p>
-            <h3 className="mt-1 text-lg font-black text-slate-950">Sposta le squadre</h3>
-            <p className="mt-1 text-sm text-slate-600">Intervieni solo sulla composizione dei gironi della fase selezionata.</p>
-          </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            {selectedPhase.groups.map((group) => (
-              <AdminGroupCard key={group.id} group={group} phaseGroups={selectedPhase.groups} ageGroupId={program.age_group_id} participants={participants} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {operationsTab !== 'changes' && (
       <section className="rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-4">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Tabellino</p>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Tabellini</p>
           <h3 className="mt-1 text-lg font-black text-slate-950">{selectedPhase.name}</h3>
           <p className="mt-1 text-sm text-slate-600">
-            Vista semplificata per inserire il punteggio finale, l’ora di fine e il ritardo della partita nello stesso punto.
+            Scegli prima il filtro giusto, poi apri la partita da aggiornare.
           </p>
         </div>
 
+        {statusView === 'pending' && nextMatch && (
+          <div className="mb-4 rounded-[1.3rem] border border-amber-200 bg-amber-50 px-4 py-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">Prossima partita</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  {nextMatch.home_label} vs {nextMatch.away_label}
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  {formatMatchScheduleSummary(nextMatch)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={jumpToNextMatch}
+                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+              >
+                Apri prossima partita
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-[1.3rem] border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Stato partite</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">1. Stato partite</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -325,7 +314,7 @@ function AdminOperationsView({
 
           {selectedPhase.groups.length > 1 && (
             <div className="rounded-[1.3rem] border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Girone</p>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">2. Girone</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {selectedPhase.groups.map((group) => (
                   <button
@@ -346,7 +335,7 @@ function AdminOperationsView({
 
         <div className="mt-4 space-y-3">
           {selectedPhase.groups.length > 0 ? (
-            paginatedMatches.length > 0 ? paginatedMatches.map((match) => (
+            visibleMatches.length > 0 ? visibleMatches.map((match) => (
               <ProgramMatchCard
                 key={match.id}
                 match={match}
@@ -358,12 +347,14 @@ function AdminOperationsView({
                 adminVariant="results"
                 matchDurationMinutes={matchDurationMinutes}
                 intervalMinutes={intervalMinutes}
+                domId={`scorekeeper-match-${match.id}`}
+                highlight={statusView === 'pending' && nextMatch?.id === match.id}
               />
             )) : (
               <EmptyBlock text="Nessuna partita del girone selezionato con questo stato." />
             )
-          ) : paginatedMatches.length > 0 ? (
-            paginatedMatches.map((match) => (
+          ) : visibleMatches.length > 0 ? (
+            visibleMatches.map((match) => (
               <ProgramMatchCard
                 key={match.id}
                 match={match}
@@ -374,6 +365,8 @@ function AdminOperationsView({
                 adminVariant="results"
                 matchDurationMinutes={matchDurationMinutes}
                 intervalMinutes={intervalMinutes}
+                domId={`scorekeeper-match-${match.id}`}
+                highlight={statusView === 'pending' && nextMatch?.id === match.id}
               />
             ))
           ) : (
@@ -382,33 +375,44 @@ function AdminOperationsView({
         </div>
 
         {activeMatches.length > pageSize && (
-          <div className="mt-4 flex items-center justify-between gap-3 rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-sm text-slate-600">
-              Partite {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, activeMatches.length)} di {activeMatches.length}
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setPage((value) => Math.max(1, value - 1))}
-                disabled={currentPage === 1}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
-              >
-                Precedenti 8
-              </button>
-              <span className="text-sm font-semibold text-slate-700">Pagina {currentPage}/{totalPages}</span>
-              <button
-                type="button"
-                onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
-                disabled={currentPage === totalPages}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
-              >
-                Successive 8
-              </button>
+          <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-slate-600">
+                Partite 1-{visibleMatches.length} di {activeMatches.length}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {hasMoreMatches && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount((value) => Math.min(value + pageSize, activeMatches.length))}
+                      className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white"
+                    >
+                      Mostra altre 8
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount(activeMatches.length)}
+                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                    >
+                      Mostra tutte
+                    </button>
+                  </>
+                )}
+                {visibleMatches.length > pageSize && (
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount(pageSize)}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                  >
+                    Mostra meno
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
       </section>
-      )}
     </div>
   )
 }
@@ -1015,6 +1019,8 @@ function ProgramMatchCard({
   adminVariant = 'full',
   matchDurationMinutes = 12,
   intervalMinutes = 8,
+  domId,
+  highlight = false,
 }: {
   match: ProgramMatch
   mode: 'public' | 'admin'
@@ -1025,6 +1031,8 @@ function ProgramMatchCard({
   adminVariant?: 'full' | 'results' | 'delays'
   matchDurationMinutes?: number
   intervalMinutes?: number
+  domId?: string
+  highlight?: boolean
 }) {
   const scoreMutation = useEnterMatchScore()
   const scheduleMutation = useUpdateMatchSchedule()
@@ -1099,7 +1107,7 @@ function ProgramMatchCard({
         data: {
           home_score: Number(homeScore),
           away_score: Number(awayScore),
-          status,
+          status: adminVariant === 'results' ? 'COMPLETED' : status,
         },
       })
       if (actualEndAtValue) {
@@ -1191,13 +1199,13 @@ function ProgramMatchCard({
   }
 
   return (
-    <div className={`rounded-2xl border p-3 ${
+    <div id={domId} className={`rounded-2xl border p-3 ${
       adminVariant !== 'full'
         ? status === 'COMPLETED'
           ? 'border-emerald-200 bg-emerald-50/50'
           : 'border-amber-200 bg-amber-50/40'
         : 'border-slate-200 bg-slate-50'
-    }`}>
+    } ${highlight ? 'ring-2 ring-amber-300 ring-offset-2' : ''}`}>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
@@ -1420,30 +1428,11 @@ function ProgramMatchCard({
           {(adminVariant === 'full' || adminVariant === 'results') && (
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             {adminVariant === 'results' ? (
-              <div className="grid gap-3 md:grid-cols-4">
-                <label className="text-xs font-semibold text-slate-500">
-                  Ora inizio
-                  <input
-                    type="datetime-local"
-                    value={scheduledAtValue}
-                    onChange={(e) => setScheduledAt(e.target.value)}
-                    className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-                  />
-                </label>
-                <label className="text-xs font-semibold text-slate-500">
-                  Stato partita
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value)}
-                    className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-                  >
-                    <option value="SCHEDULED">Da giocare</option>
-                    <option value="IN_PROGRESS">In corso</option>
-                    <option value="COMPLETED">Finale</option>
-                    <option value="POSTPONED">Rinviata</option>
-                    <option value="CANCELLED">Annullata</option>
-                  </select>
-                </label>
+              <div className="space-y-3">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                  Salvando il punteggio, la partita viene segnata come <span className="font-bold text-slate-900">finale</span>.
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
                 <label className="text-xs font-semibold text-slate-500">
                   Ora fine
                   <input
@@ -1453,15 +1442,16 @@ function ProgramMatchCard({
                     className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                   />
                 </label>
-                <label className="inline-flex items-end gap-2 text-xs font-semibold text-slate-500">
-                  <input
-                    type="checkbox"
-                    checked={propagateDelay}
-                    onChange={(e) => setPropagateDelay(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300"
-                  />
-                  Propaga il ritardo se la partita termina in ritardo
-                </label>
+                  <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={propagateDelay}
+                      onChange={(e) => setPropagateDelay(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    Propaga il ritardo
+                  </label>
+                </div>
               </div>
             ) : (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -1650,4 +1640,26 @@ function deriveDelayMinutes(
   if (!slotDeadline) return 0
   const delay = Math.round((new Date(actualEndAt).getTime() - slotDeadline.getTime()) / 60_000)
   return Math.max(delay, 0)
+}
+
+function matchScheduleTimestamp(match: ProgramMatch) {
+  return match.scheduled_at ? new Date(match.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER
+}
+
+function sortMatchesBySchedule(matches: ProgramMatch[]) {
+  return [...matches].sort((left, right) => {
+    const leftTime = matchScheduleTimestamp(left)
+    const rightTime = matchScheduleTimestamp(right)
+    if (leftTime !== rightTime) return leftTime - rightTime
+    return `${left.home_label}-${left.away_label}`.localeCompare(`${right.home_label}-${right.away_label}`)
+  })
+}
+
+function formatMatchScheduleSummary(match: ProgramMatch) {
+  const parts: string[] = []
+  parts.push(match.scheduled_at ? format(new Date(match.scheduled_at), 'HH:mm', { locale: it }) : 'Orario da definire')
+  if (match.field_name) {
+    parts.push(match.field_number ? `${match.field_name} · Campo ${match.field_number}` : match.field_name)
+  }
+  return parts.join(' · ')
 }

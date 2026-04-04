@@ -1824,7 +1824,7 @@ function AgeGroupOperationsScreen({
             <h1 className="mt-2 text-3xl font-black text-slate-950">{ageGroup.display_name || ageGroup.age_group}</h1>
             <p className="mt-1 text-sm text-slate-500">{tournament.name}</p>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-              Pagina operativa semplificata: cambi gironi, risultati e ritardi con filtri per fase, girone e stato.
+              Pagina operativa semplificata per segnapunti: solo tabellini, risultati e ritardi con filtri per fase, girone e stato.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1859,12 +1859,12 @@ function AgeGroupOperationsPanel({ ageGroup }: { ageGroup: AgeGroup }) {
       <div className="border-b border-slate-200 bg-[linear-gradient(135deg,_#ffffff_0%,_#f8fafc_100%)] px-5 py-5">
         <div className="mb-5 grid gap-3 md:grid-cols-3">
           <div className="rounded-[1.4rem] border border-sky-200 bg-sky-50 px-4 py-3">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Cambi gironi</p>
-            <p className="mt-2 text-sm text-sky-900">Sposta le squadre solo quando serve, in modo rapido.</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Flusso guidato</p>
+            <p className="mt-2 text-sm text-sky-900">Scegli fase e stato, poi apri solo la partita da aggiornare.</p>
           </div>
           <div className="rounded-[1.4rem] border border-amber-200 bg-amber-50 px-4 py-3">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">Risultati</p>
-            <p className="mt-2 text-sm text-amber-900">Inserisci e correggi il punteggio con una vista lineare.</p>
+            <p className="mt-2 text-sm text-amber-900">Inserisci o correggi il punteggio con una vista lineare e semplice.</p>
           </div>
           <div className="rounded-[1.4rem] border border-emerald-200 bg-emerald-50 px-4 py-3">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Ritardi</p>

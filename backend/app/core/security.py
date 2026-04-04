@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import re
 from typing import Optional
 from jose import jwt, JWTError
 from passlib.context import CryptContext
@@ -17,19 +18,30 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
-def create_access_token(subject: str, role: str) -> str:
+def validate_password_strength(password: str) -> None:
+    if len(password) < 8:
+        raise ValueError("La password deve contenere almeno 8 caratteri")
+    if not re.search(r"[A-Z]", password):
+        raise ValueError("La password deve contenere almeno una lettera maiuscola")
+    if not re.search(r"[a-z]", password):
+        raise ValueError("La password deve contenere almeno una lettera minuscola")
+    if not re.search(r"\d", password):
+        raise ValueError("La password deve contenere almeno un numero")
+
+
+def create_access_token(subject: str, role: str, token_version: int) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.JWT_ACCESS_EXPIRE_MINUTES)
     return jwt.encode(
-        {"sub": subject, "role": role, "exp": expire, "type": "access"},
+        {"sub": subject, "role": role, "token_version": token_version, "exp": expire, "type": "access"},
         settings.JWT_SECRET,
         algorithm=ALGORITHM,
     )
 
 
-def create_refresh_token(subject: str) -> str:
+def create_refresh_token(subject: str, token_version: int) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_EXPIRE_DAYS)
     return jwt.encode(
-        {"sub": subject, "exp": expire, "type": "refresh"},
+        {"sub": subject, "token_version": token_version, "exp": expire, "type": "refresh"},
         settings.JWT_SECRET,
         algorithm=ALGORITHM,
     )

@@ -78,6 +78,11 @@ async def upload_image(
             )
         public_url = f"{url}/storage/v1/object/public/{settings.SUPABASE_BUCKET}/{path}"
     else:
+        if settings.is_production:
+            raise HTTPException(
+                status_code=503,
+                detail="Storage immagini non configurato in produzione. Imposta SUPABASE_URL e SUPABASE_KEY.",
+            )
         # ── Local fallback (development) ─────────────────────────────────────
         dest_dir = LOCAL_UPLOAD_DIR / folder
         dest_dir.mkdir(parents=True, exist_ok=True)
