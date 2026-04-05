@@ -86,6 +86,11 @@ async def build_and_send_password_reset_email(db: AsyncSession, user: User) -> N
     await send_password_reset_email(user.email, reset_url)
 
 
+async def issue_password_setup_token(db: AsyncSession, user: User) -> str:
+    raw_token, _ = await issue_password_reset_token(db, user)
+    return raw_token
+
+
 async def consume_password_reset_token(db: AsyncSession, raw_token: str) -> PasswordResetToken | None:
     result = await db.execute(
         select(PasswordResetToken).where(PasswordResetToken.token_hash == _token_hash(raw_token))

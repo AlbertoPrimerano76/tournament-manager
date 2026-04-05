@@ -269,7 +269,6 @@ Set these environment variables:
 - `ALLOWED_ORIGINS`
 - `ENVIRONMENT=production`
 - `DEFAULT_ADMIN_EMAIL`
-- `DEFAULT_ADMIN_PASSWORD`
 - `FRONTEND_URL`
 - `SMTP_HOST`
 - `SMTP_PORT`
@@ -295,7 +294,7 @@ Suggested backend setup:
 5. set `DATABASE_URL` to the internal database URL from Render
 6. set `ALLOWED_ORIGINS` to your frontend URL, for example `https://your-app.vercel.app`
 7. set `FRONTEND_URL` to the public frontend URL, for example `https://your-app.vercel.app`
-8. set `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD` so the first admin user is created automatically
+8. set `DEFAULT_ADMIN_EMAIL` so the first admin user is created automatically, then complete the first access password setup from the frontend
 9. configure SMTP variables if you want password reset emails to work in production
 
 For a brand-new empty database, the build step initializes the current schema before running Alembic, so first deploys on Render do not fail on legacy additive migrations.

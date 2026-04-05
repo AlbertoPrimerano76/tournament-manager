@@ -18,8 +18,8 @@ export default function LoginPage() {
     try {
       await login(email, password)
       navigate('/admin')
-    } catch {
-      setError('Email o password non validi')
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Email o password non validi')
     } finally {
       setLoading(false)
     }
@@ -75,7 +75,7 @@ export default function LoginPage() {
 
           <div className="text-center text-sm">
             <Link to="/admin/forgot-password" className="text-rugby-green hover:text-rugby-green-dark font-medium">
-              Hai dimenticato la password?
+              Primo accesso o password dimenticata?
             </Link>
           </div>
         </form>

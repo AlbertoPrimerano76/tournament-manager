@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 import app.models  # noqa: F401
 from app.core.config import settings
 from app.core.database import Base, AsyncSessionLocal, engine
-from app.core.security import hash_password
 from app.models.organization import Organization
 from app.models.user import User, UserRole
 
@@ -60,7 +57,7 @@ async def bootstrap_local_environment() -> None:
                     continue
                 session.add(Organization(**payload))
 
-        if settings.DEFAULT_ADMIN_EMAIL and settings.DEFAULT_ADMIN_PASSWORD:
+        if settings.DEFAULT_ADMIN_EMAIL:
             existing_user = (
                 await session.execute(select(User).where(User.email == settings.DEFAULT_ADMIN_EMAIL))
             ).scalar_one_or_none()
@@ -71,36 +68,10 @@ async def bootstrap_local_environment() -> None:
                 session.add(
                     User(
                         email=settings.DEFAULT_ADMIN_EMAIL,
-                        hashed_password=hash_password(settings.DEFAULT_ADMIN_PASSWORD),
+                        hashed_password="",
                         role=UserRole.SUPER_ADMIN,
                         organization_id=default_org.id if default_org else None,
                         is_active=True,
-                    )
-                )
-
-        if settings.FORCE_ADMIN_EMAIL and settings.FORCE_ADMIN_PASSWORD:
-            default_org = (
-                await session.execute(select(Organization).order_by(Organization.name))
-            ).scalars().first()
-            forced_user = (
-                await session.execute(select(User).where(User.email == settings.FORCE_ADMIN_EMAIL))
-            ).scalar_one_or_none()
-            if forced_user:
-                forced_user.hashed_password = hash_password(settings.FORCE_ADMIN_PASSWORD)
-                forced_user.role = UserRole.SUPER_ADMIN
-                forced_user.is_active = True
-                forced_user.organization_id = default_org.id if default_org else forced_user.organization_id
-                forced_user.token_version += 1
-                forced_user.updated_at = datetime.now(timezone.utc)
-            else:
-                session.add(
-                    User(
-                        email=settings.FORCE_ADMIN_EMAIL,
-                        hashed_password=hash_password(settings.FORCE_ADMIN_PASSWORD),
-                        role=UserRole.SUPER_ADMIN,
-                        organization_id=default_org.id if default_org else None,
-                        is_active=True,
-                        updated_at=datetime.now(timezone.utc),
                     )
                 )
 

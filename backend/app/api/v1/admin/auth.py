@@ -24,7 +24,11 @@ from app.schemas.user import (
     ForgotPasswordRequest,
     PasswordResetConfirm,
 )
-from app.services.password_reset_service import build_and_send_password_reset_email, consume_password_reset_token
+from app.services.password_reset_service import (
+    build_and_send_password_reset_email,
+    consume_password_reset_token,
+    issue_password_setup_token,
+)
 
 router = APIRouter()
 
@@ -41,7 +45,14 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
 
-    if not user or not verify_password(body.password, user.hashed_password) or not user.is_active:
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    if not user.hashed_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password not set. Use first access to create it.",
+        )
+    if not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     return issue_tokens(user)
@@ -93,6 +104,10 @@ async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depend
     user = result.scalar_one_or_none()
 
     if user and user.is_active:
+        if not user.hashed_password:
+            raw_token = await issue_password_setup_token(db, user)
+            await db.commit()
+            return {"message": "Primo accesso disponibile", "reset_token": raw_token, "first_access": True}
         try:
             await build_and_send_password_reset_email(db, user)
         except RuntimeError as exc:

@@ -1,10 +1,11 @@
 import { FormEvent, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Mail, Trophy } from 'lucide-react'
 
 import { apiClient } from '@/api/client'
 
 export default function ForgotPasswordPage() {
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -16,11 +17,15 @@ export default function ForgotPasswordPage() {
     setMessage('')
     setLoading(true)
     try {
-      await apiClient.post(
+      const res = await apiClient.post(
         '/api/v1/admin/auth/forgot-password',
         { email },
         { skipAuth: true, skipAuthRefresh: true } as never,
       )
+      if (res.data?.reset_token) {
+        navigate(`/admin/reset-password?token=${encodeURIComponent(res.data.reset_token)}`)
+        return
+      }
       setMessage("Se l'account esiste, riceverai una email con il link di reset.")
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Impossibile inviare la richiesta di reset')
@@ -37,7 +42,7 @@ export default function ForgotPasswordPage() {
             <Trophy className="h-8 w-8 text-rugby-green" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Reset Password</h1>
-          <p className="text-gray-500 text-sm mt-1">Ricevi un link via email</p>
+          <p className="text-gray-500 text-sm mt-1">Primo accesso o recupero password</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
@@ -64,7 +69,7 @@ export default function ForgotPasswordPage() {
             disabled={loading}
             className="w-full bg-rugby-green text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-rugby-green-dark transition-colors disabled:opacity-50"
           >
-            {loading ? 'Invio in corso...' : 'Invia link di reset'}
+            {loading ? 'Invio in corso...' : 'Continua'}
           </button>
 
           <div className="text-center text-sm">
