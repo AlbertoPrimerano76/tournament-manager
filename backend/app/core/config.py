@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     SUPABASE_BUCKET: str = "rugby-images"
     DEFAULT_ADMIN_EMAIL: Optional[str] = None
     DEFAULT_ADMIN_PASSWORD: Optional[str] = None
+    FORCE_ADMIN_EMAIL: Optional[str] = None
+    FORCE_ADMIN_PASSWORD: Optional[str] = None
     FRONTEND_URL: Optional[str] = None
     RESET_TOKEN_EXPIRE_MINUTES: int = 60
 
