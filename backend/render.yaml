@@ -19,6 +19,10 @@ services:
         sync: false
       - key: RESET_TOKEN_EXPIRE_MINUTES
         value: "60"
+      - key: ENABLE_DB_RESET_API
+        value: "false"
+      - key: DB_RESET_API_KEY
+        sync: false
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT

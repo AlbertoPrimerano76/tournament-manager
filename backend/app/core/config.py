@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     DEFAULT_ADMIN_EMAIL: Optional[str] = None
     FRONTEND_URL: Optional[str] = None
     RESET_TOKEN_EXPIRE_MINUTES: int = 60
+    ENABLE_DB_RESET_API: bool = False
+    DB_RESET_API_KEY: Optional[str] = None
 
     SMTP_HOST: Optional[str] = None
     SMTP_PORT: int = 587

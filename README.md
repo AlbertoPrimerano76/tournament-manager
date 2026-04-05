@@ -285,6 +285,11 @@ If you want image uploads to persist in production, also set:
 - `SUPABASE_KEY`
 - `SUPABASE_BUCKET`
 
+Dangerous maintenance option:
+
+- `ENABLE_DB_RESET_API=false`
+- `DB_RESET_API_KEY`
+
 Suggested backend setup:
 
 1. create a Render PostgreSQL database
