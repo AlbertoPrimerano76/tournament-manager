@@ -52,9 +52,10 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disattivato")
     if not user.hashed_password:
-        if body.password != "":
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-        return issue_tokens(user)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password non impostata. Usa il recupero password.",
+        )
     if not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
