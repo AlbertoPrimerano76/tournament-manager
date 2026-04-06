@@ -29,6 +29,10 @@ def _password_reset_email_configured() -> bool:
     return all(required)
 
 
+def password_reset_email_configured() -> bool:
+    return _password_reset_email_configured()
+
+
 def _send_email_sync(to_email: str, subject: str, body: str) -> None:
     message = EmailMessage()
     message["Subject"] = subject
@@ -87,6 +91,11 @@ async def build_and_send_password_reset_email(db: AsyncSession, user: User) -> N
 
 
 async def issue_password_setup_token(db: AsyncSession, user: User) -> str:
+    raw_token, _ = await issue_password_reset_token(db, user)
+    return raw_token
+
+
+async def issue_password_reset_token_value(db: AsyncSession, user: User) -> str:
     raw_token, _ = await issue_password_reset_token(db, user)
     return raw_token
 

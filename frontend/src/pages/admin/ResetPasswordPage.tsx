@@ -3,6 +3,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { KeyRound, Trophy } from 'lucide-react'
 
 import { apiClient } from '@/api/client'
+import PasswordStrengthField from '@/components/PasswordStrengthField'
+import { isStrongPassword } from '@/lib/passwordStrength'
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams()
@@ -25,6 +27,10 @@ export default function ResetPasswordPage() {
     }
     if (password !== confirmPassword) {
       setError('Le password non coincidono')
+      return
+    }
+    if (!isStrongPassword(password)) {
+      setError('La password non rispetta i requisiti di sicurezza')
       return
     }
 
@@ -72,7 +78,9 @@ export default function ResetPasswordPage() {
                 placeholder="Almeno 8 caratteri"
               />
             </div>
-            <p className="mt-1 text-xs text-gray-500">Usa almeno 8 caratteri, una maiuscola, una minuscola e un numero.</p>
+            <div className="mt-3">
+              <PasswordStrengthField password={password} />
+            </div>
           </div>
 
           <div>
@@ -89,7 +97,7 @@ export default function ResetPasswordPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !isStrongPassword(password) || password !== confirmPassword}
             className="w-full bg-rugby-green text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-rugby-green-dark transition-colors disabled:opacity-50"
           >
             {loading ? 'Salvataggio...' : 'Aggiorna password'}

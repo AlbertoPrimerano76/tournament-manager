@@ -27,7 +27,9 @@ from app.schemas.user import (
 from app.services.password_reset_service import (
     build_and_send_password_reset_email,
     consume_password_reset_token,
+    issue_password_reset_token_value,
     issue_password_setup_token,
+    password_reset_email_configured,
 )
 
 router = APIRouter()
@@ -45,8 +47,10 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
 
-    if not user or not user.is_active:
+    if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disattivato")
     if not user.hashed_password:
         if body.password != "":
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
@@ -107,6 +111,10 @@ async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depend
             raw_token = await issue_password_setup_token(db, user)
             await db.commit()
             return {"message": "Primo accesso disponibile", "reset_token": raw_token, "first_access": True}
+        if not password_reset_email_configured():
+            raw_token = await issue_password_reset_token_value(db, user)
+            await db.commit()
+            return {"message": "Link di reset generato", "reset_token": raw_token, "first_access": False}
         try:
             await build_and_send_password_reset_email(db, user)
         except RuntimeError as exc:

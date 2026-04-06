@@ -7,6 +7,8 @@ import { useAdminOrganizations } from '@/api/organizations'
 import { useAdminTournaments } from '@/api/tournaments'
 import { useAuth } from '@/context/AuthContext'
 import { Plus, Pencil, Trash2, X, KeyRound, ShieldCheck, ToggleLeft, ToggleRight } from 'lucide-react'
+import PasswordStrengthField from '@/components/PasswordStrengthField'
+import { isStrongPassword } from '@/lib/passwordStrength'
 
 export default function UsersAdminPage() {
   const { data: users, isLoading } = useUsers()
@@ -85,6 +87,8 @@ function UserRow({ user: u, isMe, onEdit, onReset }: {
   const updateMutation = useUpdateUser()
 
   function toggleActive() {
+    const action = u.is_active ? 'disattivare' : 'riattivare'
+    if (!confirm(`Vuoi ${action} ${u.email}?`)) return
     updateMutation.mutate({ id: u.id, data: { is_active: !u.is_active } })
   }
 
@@ -190,6 +194,7 @@ function UserFormDrawer({ user, onClose }: { user: AppUser | null; onClose: () =
         })
       } else {
         if (!form.password) { setError('La password è obbligatoria'); return }
+        if (!isStrongPassword(form.password)) { setError('La password non rispetta i requisiti di sicurezza'); return }
         await createUser.mutateAsync({
           email: form.email,
           password: form.password,
@@ -237,7 +242,10 @@ function UserFormDrawer({ user, onClose }: { user: AppUser | null; onClose: () =
               <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
               <input type="password" value={form.password} onChange={e => set('password', e.target.value)}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rugby-green"
-                required minLength={8} placeholder="Min. 8 caratteri" />
+                required placeholder="Almeno 12 caratteri" />
+              <div className="mt-3">
+                <PasswordStrengthField password={form.password} />
+              </div>
             </div>
           )}
 
@@ -315,7 +323,7 @@ function UserFormDrawer({ user, onClose }: { user: AppUser | null; onClose: () =
             Annulla
           </button>
           <button onClick={handleSubmit as unknown as React.MouseEventHandler}
-            disabled={isPending}
+            disabled={isPending || (!isEdit && !isStrongPassword(form.password))}
             className="flex-1 px-4 py-2.5 rounded-lg bg-rugby-green text-white text-sm font-semibold hover:bg-rugby-green-dark disabled:opacity-50">
             {isPending ? 'Salvataggio...' : isEdit ? 'Salva' : 'Crea utente'}
           </button>
@@ -329,11 +337,17 @@ function ResetPasswordModal({ user, onClose }: { user: AppUser; onClose: () => v
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [done, setDone] = useState(false)
+  const [error, setError] = useState('')
   const resetMutation = useResetPassword()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    setError('')
     if (password !== confirm) return
+    if (!isStrongPassword(password)) {
+      setError('La password non rispetta i requisiti di sicurezza')
+      return
+    }
     await resetMutation.mutateAsync({ id: user.id, password })
     setDone(true)
   }
@@ -361,9 +375,11 @@ function ResetPasswordModal({ user, onClose }: { user: AppUser; onClose: () => v
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-3">
+            {error && <p className="text-xs text-red-500">{error}</p>}
             <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-              placeholder="Nuova password" minLength={8} required
+              placeholder="Nuova password" required
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rugby-green" />
+            <PasswordStrengthField password={password} />
             <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
               placeholder="Conferma password" required
               className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rugby-green ${
@@ -373,7 +389,7 @@ function ResetPasswordModal({ user, onClose }: { user: AppUser; onClose: () => v
               <p className="text-xs text-red-500">Le password non coincidono</p>
             )}
             <button type="submit"
-              disabled={resetMutation.isPending || password !== confirm || !password}
+              disabled={resetMutation.isPending || password !== confirm || !password || !isStrongPassword(password)}
               className="w-full py-2.5 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 disabled:opacity-50">
               {resetMutation.isPending ? 'Aggiornamento...' : 'Aggiorna password'}
             </button>
