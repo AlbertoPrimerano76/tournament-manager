@@ -12,6 +12,7 @@ from app.models.password_reset_token import PasswordResetToken
 from app.models.user import User
 from app.models.user_tournament_assignment import UserTournamentAssignment
 from app.schemas.user import UserCreate, UserUpdate, UserResponse, PasswordReset
+from app.services.security_questions_service import security_questions_configured
 
 router = APIRouter()
 
@@ -23,6 +24,7 @@ def serialize_user(user: User) -> UserResponse:
         role=user.role,
         organization_id=user.organization_id,
         is_active=user.is_active,
+        security_questions_configured=security_questions_configured(user.security_questions),
         assigned_tournament_ids=[assignment.tournament_id for assignment in user.tournament_assignments],
     )
 
@@ -34,7 +36,7 @@ async def list_users(
 ):
     result = await db.execute(
         select(User)
-        .options(selectinload(User.tournament_assignments))
+        .options(selectinload(User.tournament_assignments), selectinload(User.security_questions))
         .order_by(User.email)
     )
     return [serialize_user(user) for user in result.scalars().all()]
@@ -65,7 +67,11 @@ async def create_user(
     await db.commit()
     await db.refresh(user)
     user = (
-        await db.execute(select(User).options(selectinload(User.tournament_assignments)).where(User.id == user.id))
+        await db.execute(
+            select(User)
+            .options(selectinload(User.tournament_assignments), selectinload(User.security_questions))
+            .where(User.id == user.id)
+        )
     ).scalar_one()
     return serialize_user(user)
 
@@ -77,7 +83,11 @@ async def update_user(
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(User).options(selectinload(User.tournament_assignments)).where(User.id == user_id))
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.tournament_assignments), selectinload(User.security_questions))
+        .where(User.id == user_id)
+    )
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -93,7 +103,11 @@ async def update_user(
             db.add(UserTournamentAssignment(user_id=user.id, tournament_id=tournament_id))
     await db.commit()
     user = (
-        await db.execute(select(User).options(selectinload(User.tournament_assignments)).where(User.id == user.id))
+        await db.execute(
+            select(User)
+            .options(selectinload(User.tournament_assignments), selectinload(User.security_questions))
+            .where(User.id == user.id)
+        )
     ).scalar_one()
     return serialize_user(user)
 
@@ -127,7 +141,11 @@ async def delete_user(
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(User).options(selectinload(User.tournament_assignments)).where(User.id == user_id))
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.tournament_assignments), selectinload(User.security_questions))
+        .where(User.id == user_id)
+    )
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

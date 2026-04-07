@@ -1,7 +1,7 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useAuth } from '@/context/AuthContext'
-import { Trophy, Users, LayoutDashboard, LogOut, Menu, Building2, Sparkles, BookOpen, ShieldQuestion } from 'lucide-react'
+import { Trophy, Users, LayoutDashboard, LogOut, Menu, Building2, Sparkles, BookOpen } from 'lucide-react'
 import { useState } from 'react'
 import { ROLE_LABELS } from '@/api/users'
 import AppLogo from '@/components/AppLogo'
@@ -24,7 +24,6 @@ export default function AdminLayout() {
     ? [
         { to: '/admin', icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', exact: true },
         { to: '/admin/tornei', icon: <Trophy className="h-4 w-4" />, label: 'I miei tornei' },
-        { to: '/admin/sicurezza', icon: <ShieldQuestion className="h-4 w-4" />, label: 'Sicurezza' },
         { to: '/admin/guida', icon: <BookOpen className="h-4 w-4" />, label: 'Guida' },
       ]
     : user.role === 'SUPER_ADMIN'
@@ -33,14 +32,12 @@ export default function AdminLayout() {
           { to: '/admin/societa', icon: <Building2 className="h-4 w-4" />, label: 'Società' },
           { to: '/admin/tornei', icon: <Trophy className="h-4 w-4" />, label: 'Tornei' },
           { to: '/admin/utenti', icon: <Users className="h-4 w-4" />, label: 'Utenti' },
-          { to: '/admin/sicurezza', icon: <ShieldQuestion className="h-4 w-4" />, label: 'Sicurezza' },
           { to: '/admin/guida', icon: <BookOpen className="h-4 w-4" />, label: 'Guida' },
         ]
       : [
           { to: '/admin', icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', exact: true },
           { to: '/admin/societa', icon: <Building2 className="h-4 w-4" />, label: 'Società' },
           { to: '/admin/tornei', icon: <Trophy className="h-4 w-4" />, label: 'Tornei' },
-          { to: '/admin/sicurezza', icon: <ShieldQuestion className="h-4 w-4" />, label: 'Sicurezza' },
           { to: '/admin/guida', icon: <BookOpen className="h-4 w-4" />, label: 'Guida' },
         ]
 

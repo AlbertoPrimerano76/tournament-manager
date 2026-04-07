@@ -4,12 +4,10 @@ import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
 import { useDashboardSummary } from '@/api/dashboard'
 import { useAuth } from '@/context/AuthContext'
-import { useMySecurityQuestions } from '@/api/securityQuestions'
 
 export default function DashboardPage() {
   const { data, isLoading } = useDashboardSummary()
   const { user } = useAuth()
-  const { data: securityData } = useMySecurityQuestions()
 
   if (isLoading || !data || !user) {
     return <div className="py-12 text-center text-sm text-slate-500">Caricamento dashboard...</div>
@@ -50,22 +48,6 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
-
-      {!securityData?.configured && (
-        <section className="rounded-[1.5rem] border border-amber-200 bg-amber-50 px-5 py-4 shadow-[0_20px_50px_-42px_rgba(15,23,42,0.15)]">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-amber-900">Domande di sicurezza non configurate</p>
-              <p className="mt-1 text-sm text-amber-800">Impostale ora per abilitare il recupero password tramite verifica identita'.</p>
-            </div>
-            <Link to="/admin/sicurezza" className="inline-flex items-center gap-2 rounded-full bg-amber-500 px-4 py-2 text-sm font-semibold text-white">
-              Configura adesso
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-        </section>
-      )}
-
       {isScoreKeeper ? (
         <>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">

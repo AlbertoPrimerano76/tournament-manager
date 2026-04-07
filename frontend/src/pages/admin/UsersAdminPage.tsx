@@ -3,10 +3,15 @@ import {
   useUsers, useCreateUser, useUpdateUser, useDeleteUser, useResetPassword,
   AppUser, UserRole, ROLE_LABELS, ROLE_DESCRIPTIONS, ROLE_COLORS,
 } from '@/api/users'
+import {
+  useSaveUserSecurityQuestions,
+  useUserSecurityQuestions,
+  type SecurityQuestionAnswer,
+} from '@/api/securityQuestions'
 import { useAdminOrganizations } from '@/api/organizations'
 import { useAdminTournaments } from '@/api/tournaments'
 import { useAuth } from '@/context/AuthContext'
-import { Plus, Pencil, Trash2, X, KeyRound, ShieldCheck, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, KeyRound, ShieldCheck, ToggleLeft, ToggleRight, ShieldQuestion } from 'lucide-react'
 import PasswordStrengthField from '@/components/PasswordStrengthField'
 import { isStrongPassword } from '@/lib/passwordStrength'
 
@@ -16,6 +21,7 @@ export default function UsersAdminPage() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<AppUser | null>(null)
   const [resetTarget, setResetTarget] = useState<AppUser | null>(null)
+  const [securityTarget, setSecurityTarget] = useState<AppUser | null>(null)
 
   function openCreate() { setEditing(null); setShowForm(true) }
   function openEdit(u: AppUser) { setEditing(u); setShowForm(true) }
@@ -65,6 +71,7 @@ export default function UsersAdminPage() {
               isMe={u.id === me?.id}
               onEdit={() => openEdit(u)}
               onReset={() => setResetTarget(u)}
+              onSecurity={() => setSecurityTarget(u)}
             />
           ))}
         </div>
@@ -76,12 +83,15 @@ export default function UsersAdminPage() {
       {resetTarget && (
         <ResetPasswordModal user={resetTarget} onClose={() => setResetTarget(null)} />
       )}
+      {securityTarget && (
+        <SecurityQuestionsModal user={securityTarget} onClose={() => setSecurityTarget(null)} />
+      )}
     </div>
   )
 }
 
-function UserRow({ user: u, isMe, onEdit, onReset }: {
-  user: AppUser; isMe: boolean; onEdit: () => void; onReset: () => void
+function UserRow({ user: u, isMe, onEdit, onReset, onSecurity }: {
+  user: AppUser; isMe: boolean; onEdit: () => void; onReset: () => void; onSecurity: () => void
 }) {
   const deleteMutation = useDeleteUser()
   const updateMutation = useUpdateUser()
@@ -117,6 +127,13 @@ function UserRow({ user: u, isMe, onEdit, onReset }: {
           <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${ROLE_COLORS[u.role]}`}>
             {ROLE_LABELS[u.role]}
           </span>
+          <span className={`text-xs px-2 py-0.5 rounded-full ${
+            u.security_questions_configured
+              ? 'bg-emerald-50 text-emerald-700'
+              : 'bg-amber-50 text-amber-700'
+          }`}>
+            {u.security_questions_configured ? 'Domande impostate' : 'Domande mancanti'}
+          </span>
           {!u.is_active && (
             <span className="text-xs bg-red-50 text-red-400 px-2 py-0.5 rounded-full">Disabilitato</span>
           )}
@@ -134,6 +151,10 @@ function UserRow({ user: u, isMe, onEdit, onReset }: {
         <button onClick={onReset} title="Reset password"
           className="p-2 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors">
           <KeyRound className="h-4 w-4" />
+        </button>
+        <button onClick={onSecurity} title="Domande di sicurezza"
+          className="p-2 rounded-lg text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 transition-colors">
+          <ShieldQuestion className="h-4 w-4" />
         </button>
         <button onClick={onEdit} title="Modifica"
           className="p-2 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
@@ -393,6 +414,104 @@ function ResetPasswordModal({ user, onClose }: { user: AppUser; onClose: () => v
               className="w-full py-2.5 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 disabled:opacity-50">
               {resetMutation.isPending ? 'Aggiornamento...' : 'Aggiorna password'}
             </button>
+          </form>
+        )}
+      </div>
+    </>
+  )
+}
+
+function SecurityQuestionsModal({ user, onClose }: { user: AppUser; onClose: () => void }) {
+  const { data, isLoading } = useUserSecurityQuestions(user.id)
+  const saveMutation = useSaveUserSecurityQuestions(user.id)
+  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+
+  const questions = data?.questions ?? []
+  const allFilled = questions.length > 0 && questions.every((question) => (answers[question.question_key] || '').trim().length > 0)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    setMessage('')
+    try {
+      const payload: SecurityQuestionAnswer[] = questions.map((question) => ({
+        question_key: question.question_key,
+        answer: answers[question.question_key] || '',
+      }))
+      await saveMutation.mutateAsync(payload)
+      setMessage('Domande di sicurezza salvate correttamente.')
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Impossibile salvare le domande di sicurezza')
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
+      <div className="fixed inset-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-[1.8rem] bg-white p-6 shadow-2xl">
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900">
+              <ShieldQuestion className="h-5 w-5 text-emerald-700" />
+              Domande di sicurezza
+            </h3>
+            <p className="mt-1 text-sm text-slate-500">{user.email}</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 hover:bg-gray-100">
+            <X className="h-4 w-4 text-gray-400" />
+          </button>
+        </div>
+
+        {isLoading || !data ? (
+          <div className="py-10 text-center text-sm text-slate-500">Caricamento domande di sicurezza...</div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className={`rounded-xl px-4 py-3 text-sm ${
+              data.configured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'
+            }`}>
+              {data.configured
+                ? 'Le domande sono già configurate. Puoi aggiornarle da qui.'
+                : 'Questo account non ha ancora completato le domande di sicurezza.'}
+            </div>
+            {error && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
+            {message && <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div>}
+
+            <div className="space-y-4">
+              {questions.map((question, index) => (
+                <div key={question.question_key} className="space-y-2">
+                  <label className="block text-sm font-semibold text-slate-800">
+                    {index + 1}. {question.question_label}
+                  </label>
+                  <input
+                    type="text"
+                    value={answers[question.question_key] || ''}
+                    onChange={(e) => setAnswers((current) => ({ ...current, [question.question_key]: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                    placeholder="Inserisci la risposta segreta"
+                    autoComplete="off"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Chiudi
+              </button>
+              <button
+                type="submit"
+                disabled={saveMutation.isPending || !allFilled}
+                className="flex-1 rounded-xl bg-rugby-green px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-rugby-green-dark disabled:opacity-50"
+              >
+                {saveMutation.isPending ? 'Salvataggio...' : 'Salva domande'}
+              </button>
+            </div>
           </form>
         )}
       </div>

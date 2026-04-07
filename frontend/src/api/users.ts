@@ -9,6 +9,7 @@ export interface AppUser {
   role: UserRole
   organization_id: string | null
   is_active: boolean
+  security_questions_configured: boolean
   assigned_tournament_ids: string[]
 }
 

@@ -24,6 +24,7 @@ class UserResponse(BaseModel):
     role: UserRole
     organization_id: str | None
     is_active: bool
+    security_questions_configured: bool = False
     assigned_tournament_ids: list[str] = []
 
     model_config = {"from_attributes": True}
