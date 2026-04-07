@@ -18,6 +18,7 @@ from app.api.v1.admin import fields as admin_fields
 from app.api.v1.admin import upload as admin_upload
 from app.api.v1.admin import dashboard as admin_dashboard
 from app.api.v1.admin import maintenance as admin_maintenance
+from app.api.v1.admin import security_questions as admin_security_questions
 
 settings.validate_production_settings()
 
@@ -61,6 +62,7 @@ app.include_router(admin_fields.router, prefix="/api/v1/admin", tags=["admin-fie
 app.include_router(admin_upload.router, prefix="/api/v1/admin", tags=["admin-upload"])
 app.include_router(admin_dashboard.router, prefix="/api/v1/admin", tags=["admin-dashboard"])
 app.include_router(admin_maintenance.router, prefix="/api/v1/admin", tags=["admin-maintenance"])
+app.include_router(admin_security_questions.router, prefix="/api/v1/admin", tags=["admin-security-questions"])
 
 
 @app.get("/health")

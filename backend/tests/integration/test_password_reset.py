@@ -1,9 +1,5 @@
-from urllib.parse import parse_qs, urlparse
-
 import pytest
 from httpx import AsyncClient
-
-from app.services import password_reset_service
 
 
 async def ensure_admin_headers(client: AsyncClient) -> dict[str, str]:
@@ -24,13 +20,6 @@ async def ensure_admin_headers(client: AsyncClient) -> dict[str, str]:
 
 @pytest.mark.asyncio
 async def test_password_reset_flow_revokes_old_tokens(client: AsyncClient, monkeypatch: pytest.MonkeyPatch):
-    sent_reset_urls: list[str] = []
-
-    async def fake_send_password_reset_email(to_email: str, reset_url: str) -> None:
-        sent_reset_urls.append(reset_url)
-
-    monkeypatch.setattr(password_reset_service, "send_password_reset_email", fake_send_password_reset_email)
-
     admin_headers = await ensure_admin_headers(client)
     create_user_resp = await client.post("/api/v1/admin/users", json={
         "email": "admin-reset@test.com",
@@ -44,19 +33,42 @@ async def test_password_reset_flow_revokes_old_tokens(client: AsyncClient, monke
         "email": "admin-reset@test.com",
         "password": "TestPass123!",
     })
+    assert login_resp.status_code == 200
+    user_token = login_resp.json()["access_token"]
+    user_headers = {"Authorization": f"Bearer {user_token}"}
     old_refresh_token = login_resp.json()["refresh_token"]
+
+    setup_questions_resp = await client.get("/api/v1/admin/auth/security-questions", headers=user_headers)
+    assert setup_questions_resp.status_code == 200
+    questions = setup_questions_resp.json()["questions"]
+
+    save_questions_resp = await client.post("/api/v1/admin/auth/security-questions", json={
+        "answers": [
+            {"question_key": question["question_key"], "answer": f"secret-answer-{index}"}
+            for index, question in enumerate(questions)
+        ]
+    }, headers=user_headers)
+    assert save_questions_resp.status_code == 204
 
     forgot_resp = await client.post("/api/v1/admin/auth/forgot-password", json={
         "email": "admin-reset@test.com",
     })
-    assert forgot_resp.status_code == 202
-    assert len(sent_reset_urls) == 1
+    assert forgot_resp.status_code == 200
+    assert len(forgot_resp.json()["questions"]) == 3
 
-    token = parse_qs(urlparse(sent_reset_urls[0]).query)["token"][0]
+    verify_resp = await client.post("/api/v1/admin/auth/forgot-password/verify", json={
+        "email": "admin-reset@test.com",
+        "answers": [
+            {"question_key": question["question_key"], "answer": f"secret-answer-{index}"}
+            for index, question in enumerate(forgot_resp.json()["questions"])
+        ]
+    })
+    assert verify_resp.status_code == 200
+    token = verify_resp.json()["reset_token"]
 
     reset_resp = await client.post("/api/v1/admin/auth/reset-password", json={
         "token": token,
-        "password": "NewPass456!",
+        "password": "NewPass456!X",
     })
     assert reset_resp.status_code == 204
 
@@ -68,7 +80,7 @@ async def test_password_reset_flow_revokes_old_tokens(client: AsyncClient, monke
 
     new_login_resp = await client.post("/api/v1/admin/auth/login", json={
         "email": "admin-reset@test.com",
-        "password": "NewPass456!",
+        "password": "NewPass456!X",
     })
     assert new_login_resp.status_code == 200
 
@@ -80,13 +92,6 @@ async def test_password_reset_flow_revokes_old_tokens(client: AsyncClient, monke
 
 @pytest.mark.asyncio
 async def test_password_reset_rejects_weak_password(client: AsyncClient, monkeypatch: pytest.MonkeyPatch):
-    sent_reset_urls: list[str] = []
-
-    async def fake_send_password_reset_email(to_email: str, reset_url: str) -> None:
-        sent_reset_urls.append(reset_url)
-
-    monkeypatch.setattr(password_reset_service, "send_password_reset_email", fake_send_password_reset_email)
-
     admin_headers = await ensure_admin_headers(client)
     create_user_resp = await client.post("/api/v1/admin/users", json={
         "email": "admin-weak@test.com",
@@ -96,10 +101,33 @@ async def test_password_reset_rejects_weak_password(client: AsyncClient, monkeyp
     }, headers=admin_headers)
     assert create_user_resp.status_code == 201
 
-    await client.post("/api/v1/admin/auth/forgot-password", json={
+    user_login_resp = await client.post("/api/v1/admin/auth/login", json={
+        "email": "admin-weak@test.com",
+        "password": "TestPass123!",
+    })
+    assert user_login_resp.status_code == 200
+    user_headers = {"Authorization": f"Bearer {user_login_resp.json()['access_token']}"}
+
+    setup_questions_resp = await client.get("/api/v1/admin/auth/security-questions", headers=user_headers)
+    questions = setup_questions_resp.json()["questions"]
+    await client.post("/api/v1/admin/auth/security-questions", json={
+        "answers": [
+            {"question_key": question["question_key"], "answer": f"weak-answer-{index}"}
+            for index, question in enumerate(questions)
+        ]
+    }, headers=user_headers)
+
+    forgot_resp = await client.post("/api/v1/admin/auth/forgot-password", json={
         "email": "admin-weak@test.com",
     })
-    token = parse_qs(urlparse(sent_reset_urls[0]).query)["token"][0]
+    verify_resp = await client.post("/api/v1/admin/auth/forgot-password/verify", json={
+        "email": "admin-weak@test.com",
+        "answers": [
+            {"question_key": question["question_key"], "answer": f"weak-answer-{index}"}
+            for index, question in enumerate(forgot_resp.json()["questions"])
+        ]
+    })
+    token = verify_resp.json()["reset_token"]
 
     reset_resp = await client.post("/api/v1/admin/auth/reset-password", json={
         "token": token,

@@ -14,6 +14,7 @@ const HelpPage = lazy(() => import('@/pages/public/HelpPage'))
 const LoginPage = lazy(() => import('@/pages/admin/LoginPage'))
 const ForgotPasswordPage = lazy(() => import('@/pages/admin/ForgotPasswordPage'))
 const ResetPasswordPage = lazy(() => import('@/pages/admin/ResetPasswordPage'))
+const SecurityQuestionsPage = lazy(() => import('@/pages/admin/SecurityQuestionsPage'))
 const DashboardPage = lazy(() => import('@/pages/admin/DashboardPage'))
 const TournamentsAdminPage = lazy(() => import('@/pages/admin/TournamentsAdminPage'))
 const UsersAdminPage = lazy(() => import('@/pages/admin/UsersAdminPage'))
@@ -53,6 +54,7 @@ export default function App() {
             <Route path="/admin/reset-password" element={<ResetPasswordPage />} />
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<DashboardPage />} />
+              <Route path="sicurezza" element={<SecurityQuestionsPage />} />
               <Route path="tornei" element={<TournamentsAdminPage />} />
               <Route path="tornei/nuovo" element={<TournamentsAdminPage />} />
               <Route path="tornei/:tournamentId/modifica" element={<TournamentsAdminPage />} />

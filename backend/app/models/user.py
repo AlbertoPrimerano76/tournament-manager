@@ -28,3 +28,4 @@ class User(Base):
     organization: Mapped["Organization"] = relationship("Organization", back_populates="users")  # type: ignore
     tournament_assignments: Mapped[list["UserTournamentAssignment"]] = relationship("UserTournamentAssignment", back_populates="user", cascade="all, delete-orphan")  # type: ignore
     password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship("PasswordResetToken", back_populates="user", cascade="all, delete-orphan")  # type: ignore
+    security_questions: Mapped[list["UserSecurityQuestion"]] = relationship("UserSecurityQuestion", back_populates="user", cascade="all, delete-orphan")  # type: ignore

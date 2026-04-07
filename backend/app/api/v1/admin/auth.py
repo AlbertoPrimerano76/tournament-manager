@@ -21,15 +21,16 @@ from app.schemas.user import (
     RefreshRequest,
     UserCreate,
     UserResponse,
-    ForgotPasswordRequest,
     PasswordResetConfirm,
 )
-from app.services.password_reset_service import (
-    build_and_send_password_reset_email,
-    consume_password_reset_token,
-    issue_password_reset_token_value,
-    issue_password_setup_token,
-    password_reset_email_configured,
+from app.schemas.security_questions import ForgotPasswordStartRequest, ForgotPasswordVerifyRequest
+from app.models.user_security_question import UserSecurityQuestion
+from app.services.password_reset_service import consume_password_reset_token, issue_password_setup_token
+from app.services.security_questions_service import (
+    ensure_user_security_questions,
+    security_questions_configured,
+    serialize_security_questions,
+    verify_security_answers,
 )
 
 router = APIRouter()
@@ -102,27 +103,45 @@ async def register_first_admin(body: UserCreate, db: AsyncSession = Depends(get_
     return user
 
 
-@router.post("/auth/forgot-password", status_code=202)
-async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+@router.post("/auth/forgot-password")
+async def forgot_password(body: ForgotPasswordStartRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
 
     if user and user.is_active:
+        rows = await ensure_user_security_questions(db, user.id)
+        await db.commit()
         if not user.hashed_password:
             raw_token = await issue_password_setup_token(db, user)
             await db.commit()
             return {"message": "Primo accesso disponibile", "reset_token": raw_token, "first_access": True}
-        if not password_reset_email_configured():
-            raw_token = await issue_password_reset_token_value(db, user)
-            await db.commit()
-            return {"message": "Link di reset generato", "reset_token": raw_token, "first_access": False}
-        try:
-            await build_and_send_password_reset_email(db, user)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc))
-        await db.commit()
+        if not security_questions_configured(rows):
+            raise HTTPException(status_code=400, detail="Domande di sicurezza non configurate per questo account")
+        return {
+            "message": "Rispondi alle domande di sicurezza per continuare",
+            "configured": True,
+            "questions": serialize_security_questions(rows),
+        }
 
-    return {"message": "Se l'account esiste, riceverai una email con le istruzioni"}
+    return {"message": "Account non disponibile", "configured": False, "questions": []}
+
+
+@router.post("/auth/forgot-password/verify")
+async def verify_forgot_password(body: ForgotPasswordVerifyRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=400, detail="Account non disponibile")
+    ok = await verify_security_answers(
+        db,
+        user.id,
+        [{"question_key": item.question_key, "answer": item.answer} for item in body.answers],
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail="Risposte di sicurezza non corrette")
+    raw_token = await issue_password_setup_token(db, user)
+    await db.commit()
+    return {"reset_token": raw_token}
 
 
 @router.post("/auth/reset-password", status_code=204)

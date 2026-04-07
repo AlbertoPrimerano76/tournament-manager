@@ -1,9 +1,10 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useAuth } from '@/context/AuthContext'
-import { Trophy, Users, LayoutDashboard, LogOut, Menu, Building2, Sparkles, BookOpen } from 'lucide-react'
+import { Trophy, Users, LayoutDashboard, LogOut, Menu, Building2, Sparkles, BookOpen, ShieldQuestion } from 'lucide-react'
 import { useState } from 'react'
 import { ROLE_LABELS } from '@/api/users'
+import AppLogo from '@/components/AppLogo'
 
 export default function AdminLayout() {
   const { user, isLoading, logout } = useAuth()
@@ -23,6 +24,7 @@ export default function AdminLayout() {
     ? [
         { to: '/admin', icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', exact: true },
         { to: '/admin/tornei', icon: <Trophy className="h-4 w-4" />, label: 'I miei tornei' },
+        { to: '/admin/sicurezza', icon: <ShieldQuestion className="h-4 w-4" />, label: 'Sicurezza' },
         { to: '/admin/guida', icon: <BookOpen className="h-4 w-4" />, label: 'Guida' },
       ]
     : user.role === 'SUPER_ADMIN'
@@ -31,12 +33,14 @@ export default function AdminLayout() {
           { to: '/admin/societa', icon: <Building2 className="h-4 w-4" />, label: 'Società' },
           { to: '/admin/tornei', icon: <Trophy className="h-4 w-4" />, label: 'Tornei' },
           { to: '/admin/utenti', icon: <Users className="h-4 w-4" />, label: 'Utenti' },
+          { to: '/admin/sicurezza', icon: <ShieldQuestion className="h-4 w-4" />, label: 'Sicurezza' },
           { to: '/admin/guida', icon: <BookOpen className="h-4 w-4" />, label: 'Guida' },
         ]
       : [
           { to: '/admin', icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', exact: true },
           { to: '/admin/societa', icon: <Building2 className="h-4 w-4" />, label: 'Società' },
           { to: '/admin/tornei', icon: <Trophy className="h-4 w-4" />, label: 'Tornei' },
+          { to: '/admin/sicurezza', icon: <ShieldQuestion className="h-4 w-4" />, label: 'Sicurezza' },
           { to: '/admin/guida', icon: <BookOpen className="h-4 w-4" />, label: 'Guida' },
         ]
 
@@ -50,8 +54,8 @@ export default function AdminLayout() {
       `}>
         <div className="border-b border-white/10 px-6 py-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10">
-              <Trophy className="h-5 w-5" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 p-1">
+              <AppLogo className="h-10 w-10" />
             </div>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-100/72">Area amministrativa</p>
