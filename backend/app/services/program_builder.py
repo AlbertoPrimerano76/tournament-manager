@@ -166,6 +166,21 @@ def _round_robin_rounds(slots: list[dict[str, Any]]) -> list[list[tuple[dict[str
     return rounds
 
 
+def _group_stage_rounds(
+    slots: list[dict[str, Any]],
+    phase_config: dict[str, Any],
+) -> list[list[tuple[dict[str, Any], dict[str, Any]]]]:
+    rounds = _round_robin_rounds(slots)
+    if phase_config.get("round_trip_mode") != "double":
+        return rounds
+
+    reverse_rounds = [
+        [(away_entry, home_entry) for home_entry, away_entry in round_pairs]
+        for round_pairs in rounds
+    ]
+    return rounds + reverse_rounds
+
+
 def _group_lanes(
     age_group: TournamentAgeGroup,
     phase_config: dict[str, Any],
@@ -439,7 +454,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                 await db.flush()
 
                 lanes = _group_lanes(age_group, phase_config, group_name, group_index, len(group_sizes)) or [{"field_name": None, "field_number": None}]
-                rounds = _round_robin_rounds(group_entries)
+                rounds = _group_stage_rounds(group_entries, phase_config)
                 slot_index = 0
                 match_index = 0
 
@@ -709,7 +724,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                 await db.flush()
 
                 lanes = _group_lanes(age_group, phase_config, group_name, group_index, len(group_sizes)) or [{"field_name": None, "field_number": None}]
-                rounds = _round_robin_rounds(group_entries)
+                rounds = _group_stage_rounds(group_entries, phase_config)
                 slot_index = 0
                 match_index = 0
 

@@ -4,7 +4,7 @@ import {
   useAdminTournaments, useCreateTournament, useUpdateTournament, useDeleteTournament,
   useAdminTournamentAgeGroups, useCreateAgeGroup, useDeleteAgeGroup,
   useAgeGroupParticipants, useStructureTemplates, useUpdateAgeGroupStructure,
-  useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate,
+  useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, useGenerateAgeGroupProgram, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate,
 } from '@/api/tournaments'
 import { useAdminOrganizations, useCreateOrganization } from '@/api/organizations'
 import { useAdminTeams, useCreateTeam, useEnrollTournamentTeam, useUnenrollTournamentTeam } from '@/api/teams'
@@ -1270,6 +1270,7 @@ type StructurePhase = {
   id: string
   name: string
   phase_type: 'GROUP_STAGE' | 'KNOCKOUT'
+  round_trip_mode: 'single' | 'double'
   num_groups: number | null
   group_sizes: string
   qualifiers_per_group: number | null
@@ -1324,6 +1325,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-1',
           name: 'Girone unico',
           phase_type: 'GROUP_STAGE',
+          round_trip_mode: 'single',
           num_groups: 1,
           group_sizes: '',
           qualifiers_per_group: null,
@@ -1354,6 +1356,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-1',
           name: 'Fase a gironi',
           phase_type: 'GROUP_STAGE',
+          round_trip_mode: 'single',
           num_groups: 2,
           group_sizes: '4,4',
           qualifiers_per_group: 2,
@@ -1368,6 +1371,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-2',
           name: 'Finali',
           phase_type: 'KNOCKOUT',
+          round_trip_mode: 'single',
           num_groups: null,
           group_sizes: '',
           qualifiers_per_group: null,
@@ -1398,6 +1402,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-1',
           name: 'Gironi iniziali',
           phase_type: 'GROUP_STAGE',
+          round_trip_mode: 'single',
           num_groups: 4,
           group_sizes: '4,4,4,4',
           qualifiers_per_group: 1,
@@ -1412,6 +1417,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-2',
           name: 'Fase finale e piazzamenti',
           phase_type: 'KNOCKOUT',
+          round_trip_mode: 'single',
           num_groups: null,
           group_sizes: '',
           qualifiers_per_group: null,
@@ -1934,6 +1940,7 @@ function AgeGroupConfigurationPanel({
   const unenrollTeam = useUnenrollTournamentTeam()
   const updateStructure = useUpdateAgeGroupStructure()
   const createTemplate = useCreateStructureTemplate()
+  const generateProgram = useGenerateAgeGroupProgram()
 
   const [selectedTeamId, setSelectedTeamId] = useState('')
   const [selectedOrganizationId, setSelectedOrganizationId] = useState('')
@@ -1982,6 +1989,9 @@ function AgeGroupConfigurationPanel({
   const validationErrors = validateStructureConfig(structure)
   const formulaStatus = validationErrors.length === 0 ? 'Pronta' : 'Bozza incompleta'
   const isGathering = tournament.event_type === 'GATHERING'
+  const isStructureDirty = serializeStructureForComparison(normalizeStructureConfig(ageGroup.structure_config)) !== serializeStructureForComparison(structure)
+    || (ageGroup.structure_template_name ?? '') !== selectedTemplateName
+  const readiness = buildGenerationReadiness(structure, participants?.length ?? 0, validationErrors, isStructureDirty)
 
   async function handleAddTeam() {
     if (!selectedTeamId) return
@@ -2044,6 +2054,7 @@ function AgeGroupConfigurationPanel({
           ...makeEmptyPhase(1),
           name: groupCount === 1 ? 'Girone unico' : 'Gironi di giornata',
           phase_type: 'GROUP_STAGE',
+          round_trip_mode: 'single',
           num_groups: groupCount,
           group_sizes: defaultSizes.join(','),
           qualifiers_per_group: null,
@@ -2086,6 +2097,28 @@ function AgeGroupConfigurationPanel({
   async function handleSaveStructure() {
     setSaveMessage('')
     await persistStructure(true)
+  }
+
+  async function handleGenerateProgram() {
+    setSaveError('')
+    setSaveMessage('')
+
+    if (!readiness.isReady) {
+      setSaveError(readiness.blockers[0] ?? 'Completa la configurazione prima di generare le partite')
+      return
+    }
+
+    const saved = await persistStructure(false)
+    if (!saved) return
+
+    try {
+      const program = await generateProgram.mutateAsync(ageGroup.id)
+      const totalMatches = countProgramMatches(program)
+      setSaveMessage(`Programma generato correttamente${totalMatches > 0 ? ` · ${totalMatches} partite create` : ''}`)
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setSaveError(msg ?? 'Errore durante la generazione del programma')
+    }
   }
 
   async function handleSaveAsTemplate() {
@@ -2249,6 +2282,49 @@ function AgeGroupConfigurationPanel({
             </div>
 
             <div className="px-5 py-5">
+              <div className={`mb-5 rounded-[1.5rem] border px-4 py-4 ${
+                readiness.isReady
+                  ? 'border-emerald-200 bg-emerald-50'
+                  : 'border-amber-200 bg-amber-50'
+              }`}>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <p className={`text-xs font-bold uppercase tracking-[0.16em] ${readiness.isReady ? 'text-emerald-700' : 'text-amber-700'}`}>
+                      Pronto per generare?
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-slate-900">
+                      {readiness.isReady
+                        ? 'Sì. La categoria ha una configurazione coerente per creare le partite.'
+                        : 'Non ancora. Qui sotto trovi cosa blocca la generazione.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleGenerateProgram()}
+                    disabled={generateProgram.isPending || !readiness.isReady}
+                    className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {generateProgram.isPending ? 'Generazione...' : 'Salva e genera partite'}
+                  </button>
+                </div>
+
+                {readiness.blockers.length > 0 && (
+                  <div className="mt-4 space-y-1 text-sm text-amber-900">
+                    {readiness.blockers.map((error) => (
+                      <p key={error}>• {error}</p>
+                    ))}
+                  </div>
+                )}
+
+                {readiness.warnings.length > 0 && (
+                  <div className="mt-4 space-y-1 text-sm text-slate-700">
+                    {readiness.warnings.map((warning) => (
+                      <p key={warning}>• {warning}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {isGathering && (
                 <div className="mb-5 rounded-[1.5rem] border border-sky-200 bg-sky-50 p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Configurazione guidata raggruppamento</p>
@@ -2269,13 +2345,36 @@ function AgeGroupConfigurationPanel({
                 </div>
               )}
 
+              <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Preset rapidi</p>
+                <p className="mt-1 text-sm text-slate-600">Parti da un modello rapido e poi rifinisci calendario, gironi e qualificazioni.</p>
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                  {BUILTIN_TEMPLATES.filter((template) => !template.age_group || template.age_group === ageGroup.age_group).map((template) => (
+                    <button
+                      key={template.name}
+                      type="button"
+                      onClick={() => void handleApplyTemplate(template)}
+                      className={`rounded-[1.35rem] border p-4 text-left transition-all ${
+                        selectedTemplateName === template.name
+                          ? 'border-emerald-300 bg-emerald-50 shadow-sm'
+                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-white'
+                      }`}
+                    >
+                      <p className="text-sm font-bold text-slate-900">{template.name}</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-500">{template.description}</p>
+                      <VisualTemplateMini config={template.config} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="mb-5 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Programma base</p>
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Base calendario</p>
                     <p className="mt-1 text-base font-black text-slate-950">Orari e campi di gioco</p>
                     <p className="mt-1 text-sm text-slate-600">
-                      Definisci subito l’orario di inizio, la durata incontro, l’intervallo e i campi effettivi della categoria.
+                      Prima definisci orario, durata, intervallo e campi effettivi. Tutte le fasi useranno questa base.
                     </p>
                   </div>
                   <button
@@ -2347,7 +2446,7 @@ function AgeGroupConfigurationPanel({
 
                   {structure.schedule.playing_fields.length === 0 && (
                     <div className="rounded-[1.25rem] border border-dashed border-slate-200 bg-white px-4 py-5 text-sm text-slate-500">
-                      Esempio: Impianto "Esempio" con Campi 1, 2 e 3 per giocare tre partite in contemporanea. Puoi anche scrivere subito il nome dell&apos;impianto qui e completare i dettagli del torneo dopo.
+                      Esempio: Impianto "Esempio" con Campi 1, 2 e 3 per giocare tre partite in contemporanea.
                     </div>
                   )}
                   <datalist id={`facilities-list-${ageGroup.id}`}>
@@ -2355,28 +2454,6 @@ function AgeGroupConfigurationPanel({
                       <option key={facility.id} value={facility.name} />
                     ))}
                   </datalist>
-                </div>
-              </div>
-
-              <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Preset rapidi</p>
-                <div className="mt-3 grid gap-3 lg:grid-cols-3">
-                  {BUILTIN_TEMPLATES.filter((template) => !template.age_group || template.age_group === ageGroup.age_group).map((template) => (
-                    <button
-                      key={template.name}
-                      type="button"
-                      onClick={() => void handleApplyTemplate(template)}
-                      className={`rounded-[1.35rem] border p-4 text-left transition-all ${
-                        selectedTemplateName === template.name
-                          ? 'border-emerald-300 bg-emerald-50 shadow-sm'
-                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-white'
-                      }`}
-                    >
-                      <p className="text-sm font-bold text-slate-900">{template.name}</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-500">{template.description}</p>
-                      <VisualTemplateMini config={template.config} />
-                    </button>
-                  ))}
                 </div>
               </div>
 
@@ -2465,6 +2542,16 @@ function AgeGroupConfigurationPanel({
                     <div className="px-4 pb-4">
                       {phase.phase_type === 'GROUP_STAGE' ? (
                         <div className="grid gap-4 sm:grid-cols-2">
+                          <FormField label="Formato partite">
+                            <select
+                              value={phase.round_trip_mode}
+                              onChange={(e) => setPhase(index, { round_trip_mode: e.target.value as StructurePhase['round_trip_mode'] })}
+                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                            >
+                              <option value="single">Solo andata</option>
+                              <option value="double">Andata e ritorno</option>
+                            </select>
+                          </FormField>
                           <FormField label="Numero gironi">
                             <input
                               type="number"
@@ -2481,6 +2568,12 @@ function AgeGroupConfigurationPanel({
                               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
                             />
                           </FormField>
+                          <div className="rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3">
+                            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Partite stimate</p>
+                            <p className="mt-2 text-sm font-semibold text-slate-900">
+                              {estimateGroupStageMatches(phase) ?? 0} incontri
+                            </p>
+                          </div>
                           <FormField label="Fase successiva">
                             <select
                               value={phase.next_phase_type}
@@ -2665,6 +2758,15 @@ function AgeGroupConfigurationPanel({
                 >
                   <Save className="h-4 w-4" />
                   {updateStructure.isPending ? 'Salvataggio...' : 'Salva bozza'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleGenerateProgram()}
+                  disabled={generateProgram.isPending || !readiness.isReady}
+                  className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {generateProgram.isPending ? 'Generazione...' : 'Salva e genera partite'}
                 </button>
               </div>
             </div>
@@ -3017,6 +3119,90 @@ function buildAutoRefereeAssignments(
   return nextAssignments
 }
 
+function estimateGroupStageMatches(phase: StructurePhase): number | null {
+  if (phase.phase_type !== 'GROUP_STAGE') return null
+  const sizes = parseGroupSizes(phase.group_sizes)
+  const inferredGroupCount = Math.max(phase.num_groups ?? sizes.length, sizes.length, 0)
+  if (inferredGroupCount === 0) return null
+
+  const normalizedSizes = sizes.length > 0
+    ? sizes
+    : Array.from({ length: inferredGroupCount }, () => 0)
+
+  const baseMatches = normalizedSizes.reduce((total, size) => total + ((size * (size - 1)) / 2), 0)
+  return phase.round_trip_mode === 'double' ? baseMatches * 2 : baseMatches
+}
+
+function describeKnockoutEstimate(phase: StructurePhase): string {
+  if (phase.phase_type !== 'KNOCKOUT') return ''
+  return phase.bracket_mode === 'placement'
+    ? 'Piazzamenti su tutti i ranghi qualificati'
+    : 'Tabellone a eliminazione diretta'
+}
+
+function buildGenerationReadiness(
+  structure: StructureConfig,
+  participantCount: number,
+  validationErrors: string[],
+  isDirty: boolean,
+) {
+  const blockers = [...validationErrors]
+  const warnings: string[] = []
+
+  if (isDirty) {
+    blockers.unshift('Salva la configurazione prima di generare le partite.')
+  }
+
+  if (participantCount < 2) {
+    blockers.push('Servono almeno 2 squadre partecipanti nella categoria.')
+  }
+
+  if (structure.expected_teams !== null && participantCount !== structure.expected_teams) {
+    warnings.push(`Hai ${participantCount} squadre inserite ma ne hai previste ${structure.expected_teams}.`)
+  }
+
+  const hasFormula = structure.phases.length > 0
+  if (!hasFormula) {
+    blockers.push('Definisci almeno una fase della formula.')
+  }
+
+  return {
+    blockers,
+    warnings,
+    isReady: blockers.length === 0,
+  }
+}
+
+function serializeStructureForComparison(structure: StructureConfig) {
+  return JSON.stringify({
+    expected_teams: structure.expected_teams,
+    notes: structure.notes,
+    schedule: {
+      start_time: structure.schedule.start_time,
+      match_duration_minutes: structure.schedule.match_duration_minutes,
+      interval_minutes: structure.schedule.interval_minutes,
+      playing_fields: structure.schedule.playing_fields.map((field) => ({
+        field_name: field.field_name,
+        field_number: field.field_number,
+      })),
+    },
+    phases: structure.phases.map((phase) => ({
+      name: phase.name,
+      phase_type: phase.phase_type,
+      round_trip_mode: phase.round_trip_mode,
+      num_groups: phase.num_groups,
+      group_sizes: phase.group_sizes,
+      qualifiers_per_group: phase.qualifiers_per_group,
+      best_extra_teams: phase.best_extra_teams,
+      next_phase_type: phase.next_phase_type,
+      bracket_mode: phase.bracket_mode,
+      notes: phase.notes,
+      group_field_assignments: phase.group_field_assignments,
+      referee_group_assignments: phase.referee_group_assignments,
+    })),
+  })
+}
+
 function validateStructureConfig(structure: StructureConfig): string[] {
   const errors: string[] = []
 
@@ -3072,6 +3258,10 @@ function validateStructureConfig(structure: StructureConfig): string[] {
 
       if (!phase.num_groups || phase.num_groups <= 0) {
         errors.push(`${phaseLabel}: il numero gironi deve essere maggiore di zero.`)
+      }
+
+      if (!phase.round_trip_mode) {
+        errors.push(`${phaseLabel}: scegli se giocare solo andata o andata e ritorno.`)
       }
 
       if (phase.group_sizes.trim() && phase.num_groups && groupSizes.length !== phase.num_groups) {
@@ -3186,6 +3376,7 @@ function normalizePhase(value: unknown, index: number): StructurePhase {
     id: typeof input.id === 'string' ? input.id : `phase-${index}`,
     name: typeof input.name === 'string' && input.name ? input.name : `Fase ${index}`,
     phase_type: input.phase_type === 'KNOCKOUT' ? 'KNOCKOUT' : 'GROUP_STAGE',
+    round_trip_mode: input.round_trip_mode === 'double' ? 'double' : 'single',
     num_groups: typeof input.num_groups === 'number' ? input.num_groups : null,
     group_sizes: typeof input.group_sizes === 'string' ? input.group_sizes : '',
     qualifiers_per_group: typeof input.qualifiers_per_group === 'number' ? input.qualifiers_per_group : null,
@@ -3227,6 +3418,7 @@ function makeEmptyPhase(index: number): StructurePhase {
     id: `phase-${index}-${Date.now()}`,
     name: `Fase ${index}`,
     phase_type: 'GROUP_STAGE',
+    round_trip_mode: 'single',
     num_groups: null,
     group_sizes: '',
     qualifiers_per_group: null,
@@ -3304,6 +3496,16 @@ function StructurePreviewCard({
                       ))}
                     </div>
                     <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Formato</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-800">
+                        {phase.round_trip_mode === 'double' ? 'Andata e ritorno' : 'Solo andata'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Partite stimate</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-800">{estimateGroupStageMatches(phase) ?? 0}</p>
+                    </div>
+                    <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
                       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Passano avanti</p>
                       <p className="mt-1 text-sm font-semibold text-slate-800">
                         {phase.qualifiers_per_group ? `${phase.qualifiers_per_group} per girone` : 'Da definire'}
@@ -3322,11 +3524,7 @@ function StructurePreviewCard({
                     <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
                       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Esito</p>
                       <p className="mt-1 text-sm font-semibold text-slate-800">
-                        {phase.next_phase_type === 'GROUP_STAGE'
-                          ? 'Passaggio a nuovi gironi'
-                          : phase.next_phase_type === 'KNOCKOUT'
-                            ? 'Nuova eliminazione'
-                            : 'Fase finale'}
+                        {describeKnockoutEstimate(phase)}
                       </p>
                     </div>
                   </>
