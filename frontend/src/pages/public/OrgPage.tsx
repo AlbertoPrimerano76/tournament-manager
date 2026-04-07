@@ -2,7 +2,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useMemo, useState } from 'react'
 import { usePublicOrganization } from '@/api/organizations'
 import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
+import { apiClient } from '@/api/client'
 import { EVENT_TYPE_LABELS, type Tournament } from '@/api/tournaments'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import ErrorMessage from '@/components/shared/ErrorMessage'
@@ -20,7 +20,7 @@ export default function OrgPage() {
   const { data: tournaments } = useQuery({
     queryKey: ['public-org-tournaments', orgSlug],
     queryFn: async () => {
-      const res = await axios.get<Tournament[]>(`/api/v1/tournaments?organization_slug=${orgSlug}`)
+      const res = await apiClient.get<Tournament[]>(`/api/v1/tournaments?organization_slug=${orgSlug}`)
       return res.data
     },
     enabled: !!orgSlug,

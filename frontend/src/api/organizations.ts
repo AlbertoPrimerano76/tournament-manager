@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
-import axios from 'axios'
 
 export interface Organization {
   id: string
@@ -27,7 +26,7 @@ export function usePublicOrganization(slug: string) {
   return useQuery({
     queryKey: ['public-org', slug],
     queryFn: async () => {
-      const res = await axios.get<Organization>(`/api/v1/organizations/${slug}`)
+      const res = await apiClient.get<Organization>(`/api/v1/organizations/${slug}`)
       return res.data
     },
     enabled: !!slug,
@@ -39,7 +38,7 @@ export function usePublicTournamentOrganization(slug: string) {
   return useQuery({
     queryKey: ['public-tournament-org', slug],
     queryFn: async () => {
-      const res = await axios.get<Organization>(`/api/v1/tournaments/${slug}/organization`)
+      const res = await apiClient.get<Organization>(`/api/v1/tournaments/${slug}/organization`)
       return res.data
     },
     enabled: !!slug,
