@@ -78,3 +78,43 @@ def test_stats_calculation():
     assert a.goals_for == 3
     assert a.goals_against == 1
     assert a.goal_diff == 2
+
+
+def test_try_diff_tiebreaker():
+    teams = ["A", "B", "C"]
+    results = [
+        MatchResult("A", "B", 1, 0, home_tries=3, away_tries=1),
+        MatchResult("C", "A", 1, 0, home_tries=2, away_tries=1),
+        MatchResult("B", "C", 1, 0, home_tries=1, away_tries=0),
+    ]
+    standings = calculate_standings(teams, results, DEFAULT_RULES, ["points", "try_diff", "tries_for"])
+
+    assert [team.team_id for team in standings] == ["A", "B", "C"]
+    assert standings[0].try_diff == 1
+
+
+def test_distance_tiebreaker():
+    teams = ["A", "B"]
+    standings = calculate_standings(
+        teams,
+        [],
+        DEFAULT_RULES,
+        ["points", "distance_from_tournament"],
+        team_metadata={
+            "A": {"team_name": "Team A", "city": "Roma"},
+            "B": {"team_name": "Team B", "city": "Livorno"},
+        },
+        tournament_location="Livorno",
+    )
+
+    assert standings[0].team_id == "A"
+    assert standings[0].distance_km and standings[0].distance_km > 200
+
+
+def test_custom_loss_points():
+    rules = {"win_points": 4, "draw_points": 2, "loss_points": 1}
+    teams = ["A", "B"]
+    standings = calculate_standings(teams, make_results([("A", "B", 2, 0)]), rules)
+
+    assert standings[0].points == 4
+    assert standings[1].points == 1

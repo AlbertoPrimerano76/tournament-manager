@@ -4,7 +4,7 @@ import {
   useAdminTournaments, useCreateTournament, useUpdateTournament, useDeleteTournament,
   useAdminTournamentAgeGroups, useCreateAgeGroup, useDeleteAgeGroup,
   useAgeGroupParticipants, useStructureTemplates, useUpdateAgeGroupStructure,
-  useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, useGenerateAgeGroupProgram, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate,
+  useUpdateAgeGroup, useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, useGenerateAgeGroupProgram, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate, type AgeGroupScoringRules,
 } from '@/api/tournaments'
 import { useAdminOrganizations, useCreateOrganization } from '@/api/organizations'
 import { useAdminTeams, useCreateTeam, useEnrollTournamentTeam, useUnenrollTournamentTeam } from '@/api/teams'
@@ -686,7 +686,7 @@ function TournamentFormDrawer({
               tournament_id: createdTournament.id,
               age_group: ageGroupTemplate.age_group,
               display_name: ageGroupTemplate.display_name ?? undefined,
-              scoring_rules: ageGroupTemplate.scoring_rules,
+              scoring_rules: normalizeScoringRules(ageGroupTemplate.scoring_rules),
             })
             if (ageGroupTemplate.structure_config) {
               await updateAgeGroupStructure.mutateAsync({
@@ -1301,6 +1301,50 @@ type StructureConfig = {
   notes: string
   phases: StructurePhase[]
 }
+
+type RankingCriterionKey =
+  | 'head_to_head'
+  | 'try_diff'
+  | 'tries_for'
+  | 'distance_from_tournament'
+
+type RankingCriterionOption = {
+  key: RankingCriterionKey
+  label: string
+  description: string
+}
+
+const DEFAULT_SCORING_RULES: AgeGroupScoringRules = {
+  win_points: 3,
+  draw_points: 1,
+  loss_points: 0,
+  try_bonus: false,
+  bonus_threshold: 4,
+  ranking_criteria: ['points', 'head_to_head', 'try_diff', 'tries_for', 'distance_from_tournament'],
+}
+
+const RANKING_CRITERIA_OPTIONS: RankingCriterionOption[] = [
+  {
+    key: 'head_to_head',
+    label: 'Vittoria scontro diretto',
+    description: 'Guarda prima i risultati tra le sole squadre pari punti.',
+  },
+  {
+    key: 'try_diff',
+    label: 'Maggiore differenza mete fatte e mete subite',
+    description: 'Premia chi ha la migliore differenza mete.',
+  },
+  {
+    key: 'tries_for',
+    label: 'Maggior numero di mete fatte',
+    description: 'Premia l’attacco con più mete segnate.',
+  },
+  {
+    key: 'distance_from_tournament',
+    label: 'La squadra più distante dalla sede del Torneo',
+    description: 'Usa la città squadra contro la sede evento per stimare i km.',
+  },
+]
 
 const BUILTIN_TEMPLATES: Array<{
   name: string
@@ -1939,6 +1983,7 @@ function AgeGroupConfigurationPanel({
   const enrollTeam = useEnrollTournamentTeam()
   const unenrollTeam = useUnenrollTournamentTeam()
   const updateStructure = useUpdateAgeGroupStructure()
+  const updateAgeGroup = useUpdateAgeGroup()
   const createTemplate = useCreateStructureTemplate()
   const generateProgram = useGenerateAgeGroupProgram()
 
@@ -1950,6 +1995,7 @@ function AgeGroupConfigurationPanel({
   const [templateDescription, setTemplateDescription] = useState('')
   const [selectedTemplateName, setSelectedTemplateName] = useState(ageGroup.structure_template_name ?? '')
   const [structure, setStructure] = useState<StructureConfig>(() => normalizeStructureConfig(ageGroup.structure_config))
+  const [scoringRules, setScoringRules] = useState<AgeGroupScoringRules>(() => normalizeScoringRules(ageGroup.scoring_rules))
   const [saveError, setSaveError] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
   const [teamError, setTeamError] = useState('')
@@ -1957,11 +2003,12 @@ function AgeGroupConfigurationPanel({
   useEffect(() => {
     setSelectedTemplateName(ageGroup.structure_template_name ?? '')
     setStructure(normalizeStructureConfig(ageGroup.structure_config))
+    setScoringRules(normalizeScoringRules(ageGroup.scoring_rules))
     setSaveError('')
     setSaveMessage('')
     setTeamError('')
     setTeamMessage('')
-  }, [ageGroup.id, ageGroup.structure_template_name, ageGroup.structure_config])
+  }, [ageGroup.id, ageGroup.structure_template_name, ageGroup.structure_config, ageGroup.scoring_rules])
 
   useEffect(() => {
     setStructure((current) => ({
@@ -1991,7 +2038,8 @@ function AgeGroupConfigurationPanel({
   const isGathering = tournament.event_type === 'GATHERING'
   const isStructureDirty = serializeStructureForComparison(normalizeStructureConfig(ageGroup.structure_config)) !== serializeStructureForComparison(structure)
     || (ageGroup.structure_template_name ?? '') !== selectedTemplateName
-  const readiness = buildGenerationReadiness(structure, participants?.length ?? 0, validationErrors, isStructureDirty)
+  const isScoringDirty = serializeScoringRules(normalizeScoringRules(ageGroup.scoring_rules)) !== serializeScoringRules(scoringRules)
+  const readiness = buildGenerationReadiness(structure, participants?.length ?? 0, validationErrors, isStructureDirty || isScoringDirty)
 
   async function handleAddTeam() {
     if (!selectedTeamId) return
@@ -2042,6 +2090,21 @@ function AgeGroupConfigurationPanel({
     setStructure(normalizeStructureConfig(config))
   }
 
+  function updateRankingCriterionOrder(index: number, direction: -1 | 1) {
+    setScoringRules((current) => {
+      const tieBreakers = getTieBreakerCriteria(current)
+      const targetIndex = index + direction
+      if (targetIndex < 0 || targetIndex >= tieBreakers.length) return current
+      const next = [...tieBreakers]
+      const [item] = next.splice(index, 1)
+      next.splice(targetIndex, 0, item)
+      return {
+        ...current,
+        ranking_criteria: ['points', ...next],
+      }
+    })
+  }
+
   function applyGatheringPreset(mode: 'single' | 'double' | 'triple') {
     const groupCount = mode === 'single' ? 1 : mode === 'double' ? 2 : 3
     const defaultSizes = Array.from({ length: groupCount }, () => Math.max(Math.floor((structure.expected_teams ?? Math.max(participants?.length ?? 0, groupCount)) / groupCount), 1))
@@ -2070,33 +2133,42 @@ function AgeGroupConfigurationPanel({
     setSelectedTemplateName('')
   }
 
-  async function persistStructure(showSuccessMessage = true) {
+  async function persistConfiguration(showSuccessMessage = true) {
     setSaveError('')
     try {
-      await updateStructure.mutateAsync({
-        id: ageGroup.id,
-        tournamentId: tournament.id,
-        structure_template_name: selectedTemplateName || null,
-        structure_config: structure as unknown as Record<string, unknown>,
-      })
+      if (isStructureDirty) {
+        await updateStructure.mutateAsync({
+          id: ageGroup.id,
+          tournamentId: tournament.id,
+          structure_template_name: selectedTemplateName || null,
+          structure_config: structure as unknown as Record<string, unknown>,
+        })
+      }
+      if (isScoringDirty) {
+        await updateAgeGroup.mutateAsync({
+          id: ageGroup.id,
+          tournamentId: tournament.id,
+          scoring_rules: scoringRules,
+        })
+      }
       if (showSuccessMessage) {
         setSaveMessage(
           validationErrors.length > 0
             ? `Bozza salvata. Mancano ancora ${validationErrors.length} elementi per generare il programma.`
-            : 'Struttura salvata correttamente'
+            : 'Configurazione salvata correttamente'
         )
       }
       return true
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setSaveError(msg ?? 'Errore durante il salvataggio della struttura')
+      setSaveError(msg ?? 'Errore durante il salvataggio della configurazione')
       return false
     }
   }
 
   async function handleSaveStructure() {
     setSaveMessage('')
-    await persistStructure(true)
+    await persistConfiguration(true)
   }
 
   async function handleGenerateProgram() {
@@ -2108,7 +2180,7 @@ function AgeGroupConfigurationPanel({
       return
     }
 
-    const saved = await persistStructure(false)
+    const saved = await persistConfiguration(false)
     if (!saved) return
 
     try {
@@ -2301,7 +2373,7 @@ function AgeGroupConfigurationPanel({
                   <button
                     type="button"
                     onClick={() => void handleGenerateProgram()}
-                    disabled={generateProgram.isPending || !readiness.isReady}
+                    disabled={generateProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
                     className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {generateProgram.isPending ? 'Generazione...' : 'Salva e genera partite'}
@@ -2457,6 +2529,88 @@ function AgeGroupConfigurationPanel({
                 </div>
               </div>
 
+              <div className="mb-5 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Classifica e spareggi</p>
+                    <p className="mt-1 text-base font-black text-slate-950">Punteggi e criteri in caso di parità</p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      I punti classifica valgono sempre nell&apos;ordine qui sotto. In caso di pari punti, i criteri vengono applicati nell&apos;ordine che imposti.
+                    </p>
+                  </div>
+                  <div className="rounded-[1.2rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                    Ordine attuale: {formatTieBreakerSummary(scoringRules)}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-3">
+                  <FormField label="Punti vittoria">
+                    <input
+                      type="number"
+                      value={scoringRules.win_points}
+                      onChange={(e) => setScoringRules((current) => ({ ...current, win_points: Number(e.target.value || 0) }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                    />
+                  </FormField>
+                  <FormField label="Punti pareggio">
+                    <input
+                      type="number"
+                      value={scoringRules.draw_points}
+                      onChange={(e) => setScoringRules((current) => ({ ...current, draw_points: Number(e.target.value || 0) }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                    />
+                  </FormField>
+                  <FormField label="Punti sconfitta">
+                    <input
+                      type="number"
+                      value={scoringRules.loss_points}
+                      onChange={(e) => setScoringRules((current) => ({ ...current, loss_points: Number(e.target.value || 0) }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                    />
+                  </FormField>
+                </div>
+
+                <div className="mt-4 rounded-[1.3rem] border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Ordine spareggi</p>
+                  <p className="mt-1 text-sm text-slate-600">I punti restano sempre il primo criterio. Qui ordini solo gli spareggi successivi.</p>
+                  <div className="mt-4 space-y-3">
+                    {getTieBreakerCriteria(scoringRules).map((criterion, index) => {
+                      const option = RANKING_CRITERIA_OPTIONS.find((item) => item.key === criterion)
+                      if (!option) return null
+                      return (
+                        <div key={criterion} className="flex flex-col gap-3 rounded-[1.15rem] border border-slate-200 bg-slate-50 p-3 lg:flex-row lg:items-center lg:justify-between">
+                          <div>
+                            <p className="text-sm font-bold text-slate-900">{index + 1}. {option.label}</p>
+                            <p className="mt-1 text-sm text-slate-600">{option.description}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => updateRankingCriterionOrder(index, -1)}
+                              disabled={index === 0}
+                              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              Su
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateRankingCriterionOrder(index, 1)}
+                              disabled={index === getTieBreakerCriteria(scoringRules).length - 1}
+                              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              Giù
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="mt-4 rounded-[1.1rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    Il criterio “squadra più distante” usa la città della squadra e la sede del torneo per stimare i km. Se una città non è riconosciuta, quel criterio viene ignorato per quella parità.
+                  </div>
+                </div>
+              </div>
+
               {saveError && (
                 <div className="mt-4 rounded-[1.3rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   {saveError}
@@ -2494,6 +2648,10 @@ function AgeGroupConfigurationPanel({
               </div>
 
               <div className="mt-5 space-y-4">
+                <div className="rounded-[1.3rem] border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Fasi e schema</p>
+                  <p className="mt-1 text-sm text-slate-600">Qui definisci gironi, andata/ritorno, passaggi turno e tabelloni finali.</p>
+                </div>
                 {structure.phases.map((phase, index) => (
                   <div key={phase.id} className="overflow-hidden rounded-[1.6rem] border border-slate-200 bg-white shadow-sm">
                     <div className={`flex items-center justify-between gap-3 border-b px-4 py-3 ${
@@ -2753,16 +2911,16 @@ function AgeGroupConfigurationPanel({
                 <button
                   type="button"
                   onClick={() => void handleSaveStructure()}
-                  disabled={updateStructure.isPending}
+                  disabled={updateStructure.isPending || updateAgeGroup.isPending}
                   className="inline-flex items-center gap-2 rounded-xl bg-rugby-green px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-rugby-green-dark disabled:opacity-50"
                 >
                   <Save className="h-4 w-4" />
-                  {updateStructure.isPending ? 'Salvataggio...' : 'Salva bozza'}
+                  {updateStructure.isPending || updateAgeGroup.isPending ? 'Salvataggio...' : 'Salva bozza'}
                 </button>
                 <button
                   type="button"
                   onClick={() => void handleGenerateProgram()}
-                  disabled={generateProgram.isPending || !readiness.isReady}
+                  disabled={generateProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
                   className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Sparkles className="h-4 w-4" />
@@ -3201,6 +3359,52 @@ function serializeStructureForComparison(structure: StructureConfig) {
       referee_group_assignments: phase.referee_group_assignments,
     })),
   })
+}
+
+function normalizeScoringRules(value: unknown): AgeGroupScoringRules {
+  const input = (value && typeof value === 'object') ? value as Partial<AgeGroupScoringRules> : {}
+  return {
+    win_points: typeof input.win_points === 'number' ? input.win_points : DEFAULT_SCORING_RULES.win_points,
+    draw_points: typeof input.draw_points === 'number' ? input.draw_points : DEFAULT_SCORING_RULES.draw_points,
+    loss_points: typeof input.loss_points === 'number' ? input.loss_points : DEFAULT_SCORING_RULES.loss_points,
+    try_bonus: typeof input.try_bonus === 'boolean' ? input.try_bonus : DEFAULT_SCORING_RULES.try_bonus,
+    bonus_threshold: typeof input.bonus_threshold === 'number' ? input.bonus_threshold : DEFAULT_SCORING_RULES.bonus_threshold,
+    ranking_criteria: normalizeRankingCriteria(input.ranking_criteria),
+  }
+}
+
+function normalizeRankingCriteria(value: unknown): string[] {
+  const tieBreakers = Array.isArray(value)
+    ? value.filter((criterion): criterion is RankingCriterionKey => (
+      typeof criterion === 'string'
+      && criterion !== 'points'
+      && RANKING_CRITERIA_OPTIONS.some((option) => option.key === criterion)
+    ))
+    : []
+  const ordered = tieBreakers.length > 0
+    ? tieBreakers
+    : DEFAULT_SCORING_RULES.ranking_criteria.filter((criterion) => criterion !== 'points') as RankingCriterionKey[]
+  return ['points', ...ordered]
+}
+
+function getTieBreakerCriteria(scoringRules: AgeGroupScoringRules): RankingCriterionKey[] {
+  return scoringRules.ranking_criteria
+    .filter((criterion): criterion is RankingCriterionKey => criterion !== 'points' && RANKING_CRITERIA_OPTIONS.some((option) => option.key === criterion))
+}
+
+function serializeScoringRules(scoringRules: AgeGroupScoringRules) {
+  return JSON.stringify({
+    win_points: scoringRules.win_points,
+    draw_points: scoringRules.draw_points,
+    loss_points: scoringRules.loss_points,
+    ranking_criteria: normalizeRankingCriteria(scoringRules.ranking_criteria),
+  })
+}
+
+function formatTieBreakerSummary(scoringRules: AgeGroupScoringRules): string {
+  return getTieBreakerCriteria(scoringRules)
+    .map((criterion) => RANKING_CRITERIA_OPTIONS.find((option) => option.key === criterion)?.label ?? criterion)
+    .join(' → ')
 }
 
 function validateStructureConfig(structure: StructureConfig): string[] {

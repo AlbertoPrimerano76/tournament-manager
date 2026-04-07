@@ -2,11 +2,20 @@ import re
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.models.phase import Phase, PhaseStatus, PhaseType, Group, GroupTeam
 from app.models.match import Match, MatchStatus
-from app.models.tournament import TournamentAgeGroup
+from app.models.tournament import Tournament, TournamentAgeGroup
 from app.models.team import TournamentTeam, Team
-from app.services.standings import calculate_standings, MatchResult, TeamStats
+from app.models.organization import Organization
+from app.services.standings import (
+    MatchResult,
+    TeamStats,
+    calculate_standings,
+    normalize_ranking_criteria,
+    normalize_scoring_rules,
+    sort_team_stats,
+)
 
 
 def _match_winner_loser(match: Match) -> tuple[str | None, str | None]:
@@ -106,6 +115,21 @@ async def get_knockout_final_ranking(phase_id: str, db: AsyncSession) -> list[di
 
 async def get_phase_standings(phase_id: str, db: AsyncSession) -> dict[str, list[TeamStats]]:
     """Return standings per group for a GROUP_STAGE phase."""
+    phase_result = await db.execute(
+        select(Phase)
+        .options(
+            selectinload(Phase.tournament_age_group).selectinload(TournamentAgeGroup.tournament)
+        )
+        .where(Phase.id == phase_id)
+    )
+    phase = phase_result.scalar_one_or_none()
+    age_group = phase.tournament_age_group if phase else None
+    tournament = age_group.tournament if age_group else None
+    scoring_rules = normalize_scoring_rules(age_group.scoring_rules if age_group else None)
+    criteria = normalize_ranking_criteria(
+        (phase.advancement_config or {}).get("criteria") if phase else scoring_rules.get("ranking_criteria")
+    )
+
     result = await db.execute(
         select(Group).where(Group.phase_id == phase_id)
     )
@@ -117,16 +141,24 @@ async def get_phase_standings(phase_id: str, db: AsyncSession) -> dict[str, list
             select(GroupTeam)
             .join(TournamentTeam, TournamentTeam.id == GroupTeam.tournament_team_id)
             .join(Team, Team.id == TournamentTeam.team_id)
+            .join(Organization, Organization.id == Team.organization_id)
             .where(GroupTeam.group_id == group.id)
         )
         group_teams = gt_result.scalars().all()
         team_ids = [gt.tournament_team_id for gt in group_teams]
-        team_name_map_result = await db.execute(
-            select(TournamentTeam.id, Team.name)
+        team_metadata_result = await db.execute(
+            select(TournamentTeam.id, Team.name, Team.city, Organization.city)
             .join(Team, Team.id == TournamentTeam.team_id)
+            .join(Organization, Organization.id == Team.organization_id)
             .where(TournamentTeam.id.in_(team_ids))
         )
-        team_name_map = {team_id: team_name for team_id, team_name in team_name_map_result.all()}
+        team_metadata = {
+            team_id: {
+                "team_name": team_name,
+                "city": team_city or organization_city,
+            }
+            for team_id, team_name, team_city, organization_city in team_metadata_result.all()
+        }
 
         match_result = await db.execute(
             select(Match).where(
@@ -149,19 +181,14 @@ async def get_phase_standings(phase_id: str, db: AsyncSession) -> dict[str, list
             if m.home_team_id and m.away_team_id
         ]
 
-        # Get scoring rules from tournament age group
-        phase_result = await db.execute(select(Phase).where(Phase.id == phase_id))
-        phase = phase_result.scalar_one_or_none()
-
-        scoring_rules = {"win_points": 3, "draw_points": 1, "loss_points": 0}
-        criteria = ["points", "goal_diff", "goals_for", "head_to_head"]
-
-        if phase and phase.advancement_config:
-            criteria = phase.advancement_config.get("criteria", criteria)
-
-        group_standings = calculate_standings(team_ids, results, scoring_rules, criteria)
-        for row in group_standings:
-            row.team_name = team_name_map.get(row.team_id)
+        group_standings = calculate_standings(
+            team_ids,
+            results,
+            scoring_rules,
+            criteria,
+            team_metadata=team_metadata,
+            tournament_location=tournament.location if tournament else None,
+        )
 
         standings[group.id] = group_standings
 
@@ -189,6 +216,14 @@ async def get_qualified_teams(phase: Phase, db: AsyncSession) -> list[str]:
     config = phase.advancement_config or {}
     top_n = config.get("top_n_per_group", 2)
     best_third_count = config.get("best_third_count", 0)
+    criteria = normalize_ranking_criteria(config.get("criteria"))
+    age_group_result = await db.execute(
+        select(TournamentAgeGroup)
+        .options(selectinload(TournamentAgeGroup.tournament))
+        .where(TournamentAgeGroup.id == phase.tournament_age_group_id)
+    )
+    age_group = age_group_result.scalar_one_or_none()
+    scoring_rules = normalize_scoring_rules(age_group.scoring_rules if age_group else None)
 
     qualifiers = []
     thirds = []
@@ -200,7 +235,13 @@ async def get_qualified_teams(phase: Phase, db: AsyncSession) -> list[str]:
 
     # Sort thirds by points/goal_diff and take top N
     if best_third_count > 0 and thirds:
-        thirds.sort(key=lambda t: (-t.points, -t.goal_diff, -t.goals_for))
+        thirds = sort_team_stats(
+            thirds,
+            [],
+            scoring_rules,
+            criteria,
+            tournament_location=age_group.tournament.location if age_group and age_group.tournament else None,
+        )
         qualifiers.extend([t.team_id for t in thirds[:best_third_count]])
 
     return qualifiers

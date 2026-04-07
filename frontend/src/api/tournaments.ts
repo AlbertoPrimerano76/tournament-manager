@@ -31,14 +31,23 @@ export interface AgeGroup {
   display_name: string | null
   structure_template_name: string | null
   structure_config: Record<string, unknown> | null
-  scoring_rules: Record<string, unknown>
+  scoring_rules: AgeGroupScoringRules
+}
+
+export interface AgeGroupScoringRules {
+  win_points: number
+  draw_points: number
+  loss_points: number
+  try_bonus?: boolean
+  bonus_threshold?: number
+  ranking_criteria: string[]
 }
 
 export interface AgeGroupCreate {
   tournament_id: string
   age_group: 'U6' | 'U8' | 'U10' | 'U12'
   display_name?: string
-  scoring_rules?: Record<string, unknown>
+  scoring_rules?: AgeGroupScoringRules
 }
 
 export interface TournamentParticipant {
@@ -193,6 +202,7 @@ export interface StandingRow {
   tries_for: number
   tries_against: number
   try_diff: number
+  distance_km?: number | null
 }
 
 export interface AgeGroupStandingsPhase {
@@ -512,6 +522,34 @@ export function useUpdateAgeGroupStructure() {
       qc.invalidateQueries({ queryKey: ['admin-tournament-age-groups', tournamentId] })
       qc.invalidateQueries({ queryKey: ['tournament-age-groups'] })
       qc.invalidateQueries({ queryKey: ['age-group-participants', data.id] })
+    },
+  })
+}
+
+export function useUpdateAgeGroup() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      id,
+      tournamentId,
+      display_name,
+      scoring_rules,
+    }: {
+      id: string
+      tournamentId: string
+      display_name?: string | null
+      scoring_rules?: AgeGroupScoringRules
+    }) => {
+      const res = await apiClient.put<AgeGroup>(`/api/v1/admin/age-groups/${id}`, {
+        display_name,
+        scoring_rules,
+      })
+      return { data: res.data, tournamentId }
+    },
+    onSuccess: ({ data, tournamentId }) => {
+      qc.invalidateQueries({ queryKey: ['admin-tournament-age-groups', tournamentId] })
+      qc.invalidateQueries({ queryKey: ['tournament-age-groups'] })
+      qc.invalidateQueries({ queryKey: ['age-group-standings', data.id] })
     },
   })
 }

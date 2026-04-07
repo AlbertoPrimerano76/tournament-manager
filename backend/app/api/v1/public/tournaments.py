@@ -15,6 +15,25 @@ from app.services.program_builder import get_tournament_program, get_age_group_p
 router = APIRouter()
 
 
+def _serialize_standings_row(row):
+    return {
+        "team_id": row.team_id,
+        "team_name": row.team_name,
+        "points": row.points,
+        "played": row.played,
+        "wins": row.won,
+        "draws": row.drawn,
+        "losses": row.lost,
+        "goals_for": row.goals_for,
+        "goals_against": row.goals_against,
+        "goal_diff": row.goal_diff,
+        "tries_for": row.tries_for,
+        "tries_against": row.tries_against,
+        "try_diff": row.try_diff,
+        "distance_km": row.distance_km,
+    }
+
+
 def _serialize_tournament(tournament: Tournament) -> TournamentResponse:
     organization = tournament.organization
     return TournamentResponse(
@@ -119,7 +138,10 @@ async def get_standings(age_group_id: str, db: AsyncSession = Depends(get_db)):
             response[phase.id] = {
                 "phase_name": phase.name,
                 "phase_type": phase.phase_type,
-                "groups": phase_standings,
+                "groups": {
+                    group_id: [_serialize_standings_row(row) for row in rows]
+                    for group_id, rows in phase_standings.items()
+                },
             }
         else:
             final_ranking = await get_knockout_final_ranking(phase.id, db)

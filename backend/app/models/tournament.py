@@ -61,7 +61,14 @@ class TournamentAgeGroup(Base):
     structure_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     scoring_rules: Mapped[dict] = mapped_column(JSON, default=lambda: {
         "win_points": 3, "draw_points": 1, "loss_points": 0,
-        "try_bonus": False, "bonus_threshold": 4
+        "try_bonus": False, "bonus_threshold": 4,
+        "ranking_criteria": [
+            "points",
+            "head_to_head",
+            "try_diff",
+            "tries_for",
+            "distance_from_tournament",
+        ],
     })
 
     tournament: Mapped[Tournament] = relationship("Tournament", back_populates="age_groups")

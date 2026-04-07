@@ -1,5 +1,52 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from math import atan2, cos, radians, sin, sqrt
+import re
 from typing import Any
+
+
+DEFAULT_RANKING_CRITERIA = [
+    "points",
+    "head_to_head",
+    "try_diff",
+    "tries_for",
+    "distance_from_tournament",
+]
+
+ITALIAN_CITY_COORDINATES: dict[str, tuple[float, float]] = {
+    "ancona": (43.6158, 13.5189),
+    "arezzo": (43.4633, 11.8796),
+    "bari": (41.1171, 16.8719),
+    "belluno": (46.1408, 12.2156),
+    "benevento": (41.1298, 14.7826),
+    "bologna": (44.4949, 11.3426),
+    "cagliari": (39.2238, 9.1217),
+    "calvisano": (45.3484, 10.3436),
+    "catania": (37.5079, 15.0830),
+    "colorno": (44.9254, 10.3741),
+    "firenze": (43.7696, 11.2558),
+    "genova": (44.4056, 8.9463),
+    "laquila": (42.3498, 13.3995),
+    "livorno": (43.5485, 10.3106),
+    "lucca": (43.8429, 10.5027),
+    "milano": (45.4642, 9.1900),
+    "napoli": (40.8518, 14.2681),
+    "padova": (45.4064, 11.8768),
+    "palermo": (38.1157, 13.3615),
+    "parma": (44.8015, 10.3279),
+    "perugia": (43.1107, 12.3908),
+    "pisa": (43.7228, 10.4017),
+    "prato": (43.8777, 11.1022),
+    "roma": (41.9028, 12.4964),
+    "rovigo": (45.0703, 11.7901),
+    "siena": (43.3188, 11.3308),
+    "torino": (45.0703, 7.6869),
+    "treviso": (45.6669, 12.2430),
+    "trieste": (45.6495, 13.7768),
+    "udine": (46.0711, 13.2346),
+    "venezia": (45.4408, 12.3155),
+    "verona": (45.4384, 10.9916),
+    "vicenza": (45.5455, 11.5354),
+}
 
 
 @dataclass
@@ -13,12 +60,18 @@ class TeamStats:
     goals_for: int = 0
     goals_against: int = 0
     tries_for: int = 0
+    tries_against: int = 0
     bonus_points: int = 0
     points: int = 0
+    distance_km: float | None = None
 
     @property
     def goal_diff(self) -> int:
         return self.goals_for - self.goals_against
+
+    @property
+    def try_diff(self) -> int:
+        return self.tries_for - self.tries_against
 
 
 @dataclass
@@ -31,163 +84,319 @@ class MatchResult:
     away_tries: int = 0
 
 
+def normalize_scoring_rules(raw_rules: dict[str, Any] | None) -> dict[str, Any]:
+    rules = raw_rules or {}
+    return {
+        "win_points": int(rules.get("win_points", 3)),
+        "draw_points": int(rules.get("draw_points", 1)),
+        "loss_points": int(rules.get("loss_points", 0)),
+        "try_bonus": bool(rules.get("try_bonus", False)),
+        "bonus_threshold": int(rules.get("bonus_threshold", 4)),
+        "ranking_criteria": normalize_ranking_criteria(rules.get("ranking_criteria")),
+    }
+
+
+def normalize_ranking_criteria(raw_criteria: Any) -> list[str]:
+    allowed = {
+        "points",
+        "head_to_head",
+        "goal_diff",
+        "goals_for",
+        "try_diff",
+        "tries_for",
+        "distance_from_tournament",
+    }
+    if not isinstance(raw_criteria, list):
+        return DEFAULT_RANKING_CRITERIA.copy()
+
+    criteria: list[str] = ["points"]
+    for item in raw_criteria:
+        if not isinstance(item, str):
+            continue
+        if item not in allowed or item == "points" or item in criteria:
+            continue
+        criteria.append(item)
+
+    return criteria if len(criteria) > 1 else DEFAULT_RANKING_CRITERIA.copy()
+
+
 def calculate_standings(
     team_ids: list[str],
     results: list[MatchResult],
     scoring_rules: dict[str, Any],
     criteria: list[str] | None = None,
+    team_metadata: dict[str, dict[str, Any]] | None = None,
+    tournament_location: str | None = None,
 ) -> list[TeamStats]:
-    """
-    Calculate standings for a group of teams.
+    rules = normalize_scoring_rules(scoring_rules)
+    normalized_criteria = normalize_ranking_criteria(criteria or rules.get("ranking_criteria"))
+    stats = _build_stats(team_ids, results, rules, team_metadata, tournament_location)
+    return sort_team_stats(stats, results, rules, normalized_criteria, team_metadata, tournament_location)
 
-    scoring_rules: {win_points, draw_points, loss_points, try_bonus, bonus_threshold}
-    criteria: ordering criteria, e.g. ["points", "goal_diff", "goals_for", "head_to_head"]
-    """
-    if criteria is None:
-        criteria = ["points", "goal_diff", "goals_for", "head_to_head"]
 
-    win_pts = scoring_rules.get("win_points", 3)
-    draw_pts = scoring_rules.get("draw_points", 1)
-    loss_pts = scoring_rules.get("loss_points", 0)
-    try_bonus = scoring_rules.get("try_bonus", False)
-    bonus_threshold = scoring_rules.get("bonus_threshold", 4)
+def sort_team_stats(
+    teams: list[TeamStats],
+    results: list[MatchResult],
+    scoring_rules: dict[str, Any],
+    criteria: list[str] | None = None,
+    team_metadata: dict[str, dict[str, Any]] | None = None,
+    tournament_location: str | None = None,
+) -> list[TeamStats]:
+    rules = normalize_scoring_rules(scoring_rules)
+    normalized_criteria = normalize_ranking_criteria(criteria or rules.get("ranking_criteria"))
+    return _sort_by_criteria(
+        teams=list(teams),
+        results=results,
+        criteria=normalized_criteria,
+        scoring_rules=rules,
+        team_metadata=team_metadata,
+        tournament_location=tournament_location,
+    )
 
-    stats: dict[str, TeamStats] = {tid: TeamStats(team_id=tid) for tid in team_ids}
 
-    for r in results:
-        if r.home_team_id not in stats or r.away_team_id not in stats:
+def _build_stats(
+    team_ids: list[str],
+    results: list[MatchResult],
+    scoring_rules: dict[str, Any],
+    team_metadata: dict[str, dict[str, Any]] | None = None,
+    tournament_location: str | None = None,
+) -> list[TeamStats]:
+    stats: dict[str, TeamStats] = {}
+    for team_id in team_ids:
+        metadata = team_metadata.get(team_id, {}) if team_metadata else {}
+        stats[team_id] = TeamStats(
+            team_id=team_id,
+            team_name=metadata.get("team_name"),
+            distance_km=_extract_distance_km(metadata, tournament_location),
+        )
+
+    for result in results:
+        if result.home_team_id not in stats or result.away_team_id not in stats:
             continue
 
-        home = stats[r.home_team_id]
-        away = stats[r.away_team_id]
+        home = stats[result.home_team_id]
+        away = stats[result.away_team_id]
 
         home.played += 1
         away.played += 1
-        home.goals_for += r.home_score
-        home.goals_against += r.away_score
-        away.goals_for += r.away_score
-        away.goals_against += r.home_score
-        home.tries_for += r.home_tries
-        away.tries_for += r.away_tries
+        home.goals_for += result.home_score
+        home.goals_against += result.away_score
+        away.goals_for += result.away_score
+        away.goals_against += result.home_score
+        home.tries_for += result.home_tries
+        home.tries_against += result.away_tries
+        away.tries_for += result.away_tries
+        away.tries_against += result.home_tries
 
-        if r.home_score > r.away_score:
+        if result.home_score > result.away_score:
             home.won += 1
             away.lost += 1
-            home.points += win_pts
-            away.points += loss_pts
-        elif r.home_score < r.away_score:
+            home.points += scoring_rules["win_points"]
+            away.points += scoring_rules["loss_points"]
+        elif result.home_score < result.away_score:
             away.won += 1
             home.lost += 1
-            away.points += win_pts
-            home.points += loss_pts
+            away.points += scoring_rules["win_points"]
+            home.points += scoring_rules["loss_points"]
         else:
             home.drawn += 1
             away.drawn += 1
-            home.points += draw_pts
-            away.points += draw_pts
+            home.points += scoring_rules["draw_points"]
+            away.points += scoring_rules["draw_points"]
 
-        # Try bonus points
-        if try_bonus:
-            if r.home_tries >= bonus_threshold:
+        if scoring_rules["try_bonus"]:
+            if result.home_tries >= scoring_rules["bonus_threshold"]:
                 home.bonus_points += 1
                 home.points += 1
-            if r.away_tries >= bonus_threshold:
+            if result.away_tries >= scoring_rules["bonus_threshold"]:
                 away.bonus_points += 1
                 away.points += 1
 
-    team_list = list(stats.values())
-    return _sort_standings(team_list, results, criteria)
+    return list(stats.values())
 
 
-def _sort_standings(
+def _sort_by_criteria(
     teams: list[TeamStats],
     results: list[MatchResult],
     criteria: list[str],
+    scoring_rules: dict[str, Any],
+    team_metadata: dict[str, dict[str, Any]] | None,
+    tournament_location: str | None,
 ) -> list[TeamStats]:
-    """Sort standings using configured criteria, handling ties with head-to-head."""
+    if len(teams) <= 1:
+        return teams
 
-    def get_key(t: TeamStats, crit: str) -> Any:
-        match crit:
-            case "points":
-                return t.points
-            case "goal_diff":
-                return t.goal_diff
-            case "goals_for":
-                return t.goals_for
-            case "tries_for":
-                return t.tries_for
-            case _:
-                return 0
+    if not criteria:
+        return sorted(teams, key=_final_sort_key)
 
-    non_hth_criteria = [c for c in criteria if c != "head_to_head"]
-    hth_position = criteria.index("head_to_head") if "head_to_head" in criteria else len(criteria)
+    criterion = criteria[0]
+    remaining = criteria[1:]
 
-    def primary_sort_key(t: TeamStats):
-        # Only use criteria before head_to_head for primary sort
-        pre_hth = [c for c in non_hth_criteria if criteria.index(c) < hth_position]
-        return tuple(-get_key(t, c) for c in pre_hth)
+    if criterion == "head_to_head":
+        return _sort_by_head_to_head(teams, results, remaining, scoring_rules, team_metadata, tournament_location)
 
-    teams.sort(key=primary_sort_key)
+    grouped: dict[float, list[TeamStats]] = {}
+    for team in teams:
+        value = _criterion_value(team, criterion)
+        grouped.setdefault(value, []).append(team)
 
-    # Now resolve ties within groups using head-to-head if applicable
-    if "head_to_head" in criteria:
-        teams = _resolve_ties_with_hth(teams, results, criteria)
-
-    return teams
-
-
-def _resolve_ties_with_hth(
-    teams: list[TeamStats],
-    results: list[MatchResult],
-    criteria: list[str],
-) -> list[TeamStats]:
-    """Find groups of tied teams and resolve using head-to-head sub-standings."""
-    hth_position = criteria.index("head_to_head")
-    pre_hth = [c for c in criteria if criteria.index(c) < hth_position]
-    post_hth = [c for c in criteria if criteria.index(c) > hth_position and c != "head_to_head"]
-
-    def pre_key(t):
-        vals = []
-        for c in pre_hth:
-            if c == "points":
-                vals.append(t.points)
-            elif c == "goal_diff":
-                vals.append(t.goal_diff)
-            elif c == "goals_for":
-                vals.append(t.goals_for)
-        return tuple(vals)
-
-    result_list = []
-    teams_sorted = sorted(teams, key=lambda t: tuple(-v for v in pre_key(t)))
-
-    i = 0
-    while i < len(teams_sorted):
-        # Find group with same pre-HtH values
-        j = i + 1
-        while j < len(teams_sorted) and pre_key(teams_sorted[j]) == pre_key(teams_sorted[i]):
-            j += 1
-
-        tied_group = teams_sorted[i:j]
-
-        if len(tied_group) == 1:
-            result_list.extend(tied_group)
+    ordered: list[TeamStats] = []
+    for value in sorted(grouped.keys(), reverse=True):
+        bucket = grouped[value]
+        if len(bucket) == 1:
+            ordered.extend(bucket)
         else:
-            # Resolve tie using head-to-head
-            tied_ids = {t.team_id for t in tied_group}
-            hth_results = [r for r in results if r.home_team_id in tied_ids and r.away_team_id in tied_ids]
-
-            # Use default scoring — head-to-head uses same win/draw/loss point logic
-            scoring_rules_default = {"win_points": 3, "draw_points": 1, "loss_points": 0}
-            hth_stats = calculate_standings(
-                list(tied_ids), hth_results, scoring_rules_default,
-                criteria=post_hth if post_hth else ["goals_for"]
+            ordered.extend(
+                _sort_by_criteria(bucket, results, remaining, scoring_rules, team_metadata, tournament_location)
             )
 
-            # Map back to original TeamStats objects
-            hth_order = {s.team_id: idx for idx, s in enumerate(hth_stats)}
-            tied_group_sorted = sorted(tied_group, key=lambda t: hth_order.get(t.team_id, 999))
-            result_list.extend(tied_group_sorted)
+    return ordered
 
-        i = j
 
-    return result_list
+def _sort_by_head_to_head(
+    teams: list[TeamStats],
+    results: list[MatchResult],
+    remaining: list[str],
+    scoring_rules: dict[str, Any],
+    team_metadata: dict[str, dict[str, Any]] | None,
+    tournament_location: str | None,
+) -> list[TeamStats]:
+    tied_ids = {team.team_id for team in teams}
+    hth_results = [
+        result
+        for result in results
+        if result.home_team_id in tied_ids and result.away_team_id in tied_ids
+    ]
+    if not hth_results:
+        return _sort_by_criteria(teams, results, remaining, scoring_rules, team_metadata, tournament_location)
+
+    hth_stats = _build_stats(list(tied_ids), hth_results, scoring_rules, team_metadata, tournament_location)
+    ordered_hth = _sort_by_criteria(
+        hth_stats,
+        hth_results,
+        ["points", *[criterion for criterion in remaining if criterion != "head_to_head"]],
+        scoring_rules,
+        team_metadata,
+        tournament_location,
+    )
+    hth_by_team = {team.team_id: team for team in ordered_hth}
+    hth_criteria = ["points", *[criterion for criterion in remaining if criterion != "head_to_head"]]
+
+    grouped: dict[tuple[float, ...], list[TeamStats]] = {}
+    for team in teams:
+        hth_team = hth_by_team.get(team.team_id)
+        if hth_team is None:
+            key = tuple()
+        else:
+            key = tuple(_criterion_value(hth_team, criterion) for criterion in hth_criteria)
+        grouped.setdefault(key, []).append(team)
+
+    ordered: list[TeamStats] = []
+    for key in sorted(grouped.keys(), reverse=True):
+        bucket = grouped[key]
+        if len(bucket) == 1:
+            ordered.extend(bucket)
+        else:
+            ordered.extend(
+                _sort_by_criteria(bucket, results, remaining, scoring_rules, team_metadata, tournament_location)
+            )
+    return ordered
+
+
+def _criterion_value(team: TeamStats, criterion: str) -> float:
+    match criterion:
+        case "points":
+            return float(team.points)
+        case "goal_diff":
+            return float(team.goal_diff)
+        case "goals_for":
+            return float(team.goals_for)
+        case "try_diff":
+            return float(team.try_diff)
+        case "tries_for":
+            return float(team.tries_for)
+        case "distance_from_tournament":
+            return float(team.distance_km or 0)
+        case _:
+            return 0.0
+
+
+def _final_sort_key(team: TeamStats) -> tuple[str, str]:
+    return ((team.team_name or "").lower(), team.team_id)
+
+
+def _extract_distance_km(metadata: dict[str, Any], tournament_location: str | None) -> float | None:
+    raw_distance = metadata.get("distance_km")
+    if isinstance(raw_distance, (int, float)):
+        return float(raw_distance)
+
+    city = metadata.get("city")
+    if not isinstance(city, str) or not city.strip() or not tournament_location:
+        return None
+
+    return _estimate_distance_km(city, tournament_location)
+
+
+def _estimate_distance_km(origin: str, destination: str) -> float | None:
+    origin_coords = _resolve_coordinates(origin)
+    destination_coords = _resolve_coordinates(destination)
+    if origin_coords is None or destination_coords is None:
+        return None
+    return _haversine_km(origin_coords, destination_coords)
+
+
+def _resolve_coordinates(value: str) -> tuple[float, float] | None:
+    normalized = _normalize_place_name(value)
+    if not normalized:
+        return None
+
+    if normalized in ITALIAN_CITY_COORDINATES:
+        return ITALIAN_CITY_COORDINATES[normalized]
+
+    for part in re.split(r"[,/()-]", normalized):
+        candidate = part.strip()
+        if candidate in ITALIAN_CITY_COORDINATES:
+            return ITALIAN_CITY_COORDINATES[candidate]
+
+    for city, coords in ITALIAN_CITY_COORDINATES.items():
+        if city in normalized:
+            return coords
+
+    return None
+
+
+def _normalize_place_name(value: str) -> str:
+    cleaned = value.strip().lower()
+    replacements = str.maketrans({
+        "à": "a",
+        "á": "a",
+        "è": "e",
+        "é": "e",
+        "ì": "i",
+        "í": "i",
+        "ò": "o",
+        "ó": "o",
+        "ù": "u",
+        "ú": "u",
+        "'": "",
+        "’": "",
+        ".": " ",
+    })
+    cleaned = cleaned.translate(replacements)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.replace(" ", "")
+
+
+def _haversine_km(origin: tuple[float, float], destination: tuple[float, float]) -> float:
+    lat1, lon1 = origin
+    lat2, lon2 = destination
+    radius_km = 6371.0
+
+    d_lat = radians(lat2 - lat1)
+    d_lon = radians(lon2 - lon1)
+    a = (
+        sin(d_lat / 2) ** 2
+        + cos(radians(lat1)) * cos(radians(lat2)) * sin(d_lon / 2) ** 2
+    )
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return round(radius_km * c, 1)

@@ -69,7 +69,14 @@ class AgeGroupCreate(BaseModel):
     display_name: str | None = None
     scoring_rules: dict = {
         "win_points": 3, "draw_points": 1, "loss_points": 0,
-        "try_bonus": False, "bonus_threshold": 4
+        "try_bonus": False, "bonus_threshold": 4,
+        "ranking_criteria": [
+            "points",
+            "head_to_head",
+            "try_diff",
+            "tries_for",
+            "distance_from_tournament",
+        ],
     }
 
 
