@@ -19,15 +19,15 @@ export default function TournamentPage() {
   const { data: fields, isLoading: loadingFields } = usePublicTournamentFields(slug!)
   const { data: organization, isLoading: loadingOrg } = usePublicTournamentOrganization(slug!)
 
+  useEffect(() => {
+    if (slug && tournament?.slug && tournament.slug !== slug) {
+      navigate(`/tornei/${tournament.slug}`, { replace: true })
+    }
+  }, [navigate, slug, tournament?.slug])
+
   if (loadingT || loadingAG || loadingFields || loadingOrg || loadingProgram) return <LoadingSpinner className="py-16" />
   if (errorT) return <ErrorMessage message="Evento non trovato" />
   if (!tournament) return null
-
-  useEffect(() => {
-    if (slug && tournament.slug !== slug) {
-      navigate(`/tornei/${tournament.slug}`, { replace: true })
-    }
-  }, [navigate, slug, tournament.slug])
 
   const theme = getTournamentTheme(tournament)
   const heroMedia = tournament.venue_map_url ?? tournament.logo_url ?? null
