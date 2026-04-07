@@ -449,71 +449,81 @@ function SecurityQuestionsModal({ user, onClose }: { user: AppUser; onClose: () 
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
-      <div className="fixed inset-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-[1.8rem] bg-white p-6 shadow-2xl">
-        <div className="mb-5 flex items-start justify-between gap-4">
-          <div>
-            <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900">
-              <ShieldQuestion className="h-5 w-5 text-emerald-700" />
-              Domande di sicurezza
-            </h3>
-            <p className="mt-1 text-sm text-slate-500">{user.email}</p>
-          </div>
-          <button onClick={onClose} className="rounded-lg p-1 hover:bg-gray-100">
-            <X className="h-4 w-4 text-gray-400" />
-          </button>
-        </div>
-
-        {isLoading || !data ? (
-          <div className="py-10 text-center text-sm text-slate-500">Caricamento domande di sicurezza...</div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className={`rounded-xl px-4 py-3 text-sm ${
-              data.configured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'
-            }`}>
-              {data.configured
-                ? 'Le domande sono già configurate. Puoi aggiornarle da qui.'
-                : 'Questo account non ha ancora completato le domande di sicurezza.'}
-            </div>
-            {error && <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
-            {message && <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div>}
-
-            <div className="space-y-4">
-              {questions.map((question, index) => (
-                <div key={question.question_key} className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-800">
-                    {index + 1}. {question.question_label}
-                  </label>
-                  <input
-                    type="text"
-                    value={answers[question.question_key] || ''}
-                    onChange={(e) => setAnswers((current) => ({ ...current, [question.question_key]: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rugby-green"
-                    placeholder="Inserisci la risposta segreta"
-                    autoComplete="off"
-                  />
+      <div className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-50 overflow-y-auto px-4 py-6 sm:px-6 sm:py-10">
+        <div className="flex min-h-full items-center justify-center">
+          <div className="w-full max-w-2xl overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_40px_120px_-45px_rgba(15,23,42,0.65)]">
+            <div className="border-b border-slate-100 bg-white px-6 py-5 sm:px-7">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900">
+                    <ShieldQuestion className="h-5 w-5 text-emerald-700" />
+                    Domande di sicurezza
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">{user.email}</p>
                 </div>
-              ))}
+                <button onClick={onClose} className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
-              >
-                Chiudi
-              </button>
-              <button
-                type="submit"
-                disabled={saveMutation.isPending || !allFilled}
-                className="flex-1 rounded-xl bg-rugby-green px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-rugby-green-dark disabled:opacity-50"
-              >
-                {saveMutation.isPending ? 'Salvataggio...' : 'Salva domande'}
-              </button>
+            <div className="max-h-[calc(100vh-8rem)] overflow-y-auto bg-white px-6 py-5 sm:px-7">
+              {isLoading || !data ? (
+                <div className="py-10 text-center text-sm text-slate-500">Caricamento domande di sicurezza...</div>
+              ) : (
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className={`rounded-2xl border px-4 py-3 text-sm ${
+                    data.configured
+                      ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                      : 'border-amber-100 bg-amber-50 text-amber-800'
+                  }`}>
+                    {data.configured
+                      ? 'Le domande sono già configurate. Puoi aggiornarle da qui.'
+                      : 'Questo account non ha ancora completato le domande di sicurezza.'}
+                  </div>
+                  {error && <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>}
+                  {message && <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div>}
+
+                  <div className="space-y-4">
+                    {questions.map((question, index) => (
+                      <div key={question.question_key} className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4">
+                        <label className="mb-2 block text-sm font-semibold text-slate-800">
+                          {index + 1}. {question.question_label}
+                        </label>
+                        <input
+                          type="text"
+                          value={answers[question.question_key] || ''}
+                          onChange={(e) => setAnswers((current) => ({ ...current, [question.question_key]: e.target.value }))}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                          placeholder="Inserisci la risposta segreta"
+                          autoComplete="off"
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                    >
+                      Chiudi
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={saveMutation.isPending || !allFilled}
+                      className="flex-1 rounded-xl bg-rugby-green px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-rugby-green-dark disabled:opacity-50"
+                    >
+                      {saveMutation.isPending ? 'Salvataggio...' : 'Salva domande'}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
-          </form>
-        )}
+          </div>
+        </div>
       </div>
     </>
   )
