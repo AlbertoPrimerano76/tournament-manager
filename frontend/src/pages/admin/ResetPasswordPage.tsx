@@ -1,8 +1,9 @@
 import { FormEvent, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { KeyRound, Trophy } from 'lucide-react'
+import { KeyRound } from 'lucide-react'
 
 import { apiClient } from '@/api/client'
+import AppLogo from '@/components/AppLogo'
 import PasswordStrengthField from '@/components/PasswordStrengthField'
 import { isStrongPassword } from '@/lib/passwordStrength'
 
@@ -54,8 +55,8 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-rugby-green/10 rounded-full mb-3">
-            <Trophy className="h-8 w-8 text-rugby-green" />
+          <div className="inline-flex items-center justify-center w-20 h-20 mb-3">
+            <AppLogo className="h-20 w-20 drop-shadow-[0_16px_30px_rgba(16,62,49,0.18)]" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Nuova Password</h1>
           <p className="text-gray-500 text-sm mt-1">Primo accesso o reset password</p>

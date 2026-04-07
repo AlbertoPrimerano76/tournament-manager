@@ -1,0 +1,40 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="112" fill="#103E31"/>
+  <rect x="1" y="1" width="510" height="510" rx="111" stroke="#0A2F26" stroke-opacity="0.6" stroke-width="2"/>
+
+  <g opacity="0.88" fill="#86A88A">
+    <path d="M93 165H171V181H109V208H93V165Z"/>
+    <path d="M93 249H171V265H109V292H93V249Z"/>
+    <path d="M93 333H171V349H109V376H93V333Z"/>
+    <path d="M419 165H341V181H403V208H419V165Z"/>
+    <path d="M419 249H341V265H403V292H419V249Z"/>
+    <path d="M419 333H341V349H403V376H419V333Z"/>
+    <path d="M166 208H231V224H182V292H166V208Z"/>
+    <path d="M166 292H231V308H182V376H166V292Z"/>
+    <path d="M346 208H281V224H330V292H346V208Z"/>
+    <path d="M346 292H281V308H330V376H346V292Z"/>
+  </g>
+
+  <g>
+    <path d="M232 116C196 148 171 202 171 256C171 310 196 364 232 396C198 378 162 329 162 256C162 183 198 134 232 116Z" fill="#D7DEC9"/>
+    <path d="M280 116C316 148 341 202 341 256C341 310 316 364 280 396C314 378 350 329 350 256C350 183 314 134 280 116Z" fill="#EFE7D8"/>
+    <path d="M256 104C212 104 184 180 184 256C184 332 212 408 256 408C300 408 328 332 328 256C328 180 300 104 256 104Z" fill="#FFF8EC"/>
+    <path d="M226 118C209 153 198 201 198 256C198 311 209 359 226 394" stroke="#1D5A48" stroke-width="8" stroke-linecap="round"/>
+    <path d="M286 118C303 153 314 201 314 256C314 311 303 359 286 394" stroke="#1D5A48" stroke-width="8" stroke-linecap="round"/>
+    <path d="M251 109C238 151 231 200 231 256C231 312 238 361 251 403" stroke="#194F40" stroke-width="6" stroke-linecap="round"/>
+    <path d="M261 109C274 151 281 200 281 256C281 312 274 361 261 403" stroke="#194F40" stroke-width="6" stroke-linecap="round"/>
+  </g>
+
+  <g stroke="#D8A622" stroke-width="7" stroke-linecap="round">
+    <path d="M214 179L230 175"/>
+    <path d="M206 211L225 207"/>
+    <path d="M201 244L221 240"/>
+    <path d="M200 277L219 273"/>
+  </g>
+
+  <g fill="#E6B437">
+    <rect x="247" y="374" width="18" height="53" rx="4"/>
+    <rect x="182" y="426" width="148" height="16" rx="4"/>
+    <rect x="215" y="401" width="82" height="14" rx="4"/>
+  </g>
+</svg>

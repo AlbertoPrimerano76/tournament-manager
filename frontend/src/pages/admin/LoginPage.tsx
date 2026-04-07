@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { Trophy } from 'lucide-react'
+import AppLogo from '@/components/AppLogo'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -29,8 +29,8 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-rugby-green/10 rounded-full mb-3">
-            <Trophy className="h-8 w-8 text-rugby-green" />
+          <div className="inline-flex items-center justify-center w-20 h-20 mb-3">
+            <AppLogo className="h-20 w-20 drop-shadow-[0_16px_30px_rgba(16,62,49,0.18)]" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Admin Login</h1>
           <p className="text-gray-500 text-sm mt-1">Rugby Tournament Manager</p>
