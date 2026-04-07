@@ -336,8 +336,11 @@ async def generate_program_for_age_group(
 ):
     try:
         await generate_age_group_program(ag_id, db)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Age group not found")
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "Age group not found":
+            raise HTTPException(status_code=404, detail=detail)
+        raise HTTPException(status_code=422, detail=detail)
 
     program = await get_age_group_program(ag_id, db)
     if not program:

@@ -360,6 +360,8 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
         return age_group
 
     participants = sorted(age_group.tournament_teams, key=lambda item: item.team.name.lower())
+    if len(participants) < 2:
+        raise ValueError("Servono almeno 2 squadre nella categoria per generare le partite")
     match_slot_length = _slot_delta(age_group)
     current_entries: list[dict[str, Any]] = [
         {
@@ -369,6 +371,8 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
         }
         for team in participants
     ]
+
+    total_created_matches = 0
 
     for phase_index, phase_config in enumerate(phases_config):
         phase_type = PhaseType[phase_config.get("phase_type", "GROUP_STAGE")]
@@ -462,6 +466,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                             )
                             db.add(match)
                             created_group_matches.append(match)
+                            total_created_matches += 1
                             match_index += 1
                         slot_index += 1
 
@@ -555,6 +560,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                     )
                     db.add(match)
                     created_knockout_matches.append(match)
+                    total_created_matches += 1
                     match_position += 1
                     knockout_slot_index += 1
                     winners.append({"label": f"Vincente {round_name} {pair_index + 1}"})
@@ -576,6 +582,9 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
         )
 
         current_entries = next_entries
+
+    if total_created_matches == 0:
+        raise ValueError("La formula non produce nessuna partita con le squadre attualmente inserite")
 
     await _sync_tournament_dates_from_generated_program(age_group)
     await db.commit()
@@ -616,6 +625,8 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
     await db.flush()
 
     participants = sorted(age_group.tournament_teams, key=lambda item: item.team.name.lower())
+    if len(participants) < 2:
+        raise ValueError("Servono almeno 2 squadre nella categoria per generare le partite")
     match_slot_length = _slot_delta(age_group)
     current_entries: list[dict[str, Any]] = [
         {
@@ -634,6 +645,8 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                 [group.name for group in sorted(phase.groups, key=lambda item: item.group_order)],
                 phase.advancement_config,
             )
+
+    total_created_matches = 0
 
     for relative_index, phase_config in enumerate(phases_config[start_index:], start=start_index):
         phase_type = PhaseType[phase_config.get("phase_type", "GROUP_STAGE")]
@@ -723,6 +736,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                             )
                             db.add(match)
                             created_group_matches.append(match)
+                            total_created_matches += 1
                             match_index += 1
                         slot_index += 1
 
@@ -800,6 +814,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                     )
                     db.add(match)
                     created_knockout_matches.append(match)
+                    total_created_matches += 1
                     match_position += 1
                     knockout_slot_index += 1
                     winners.append({"label": f"Vincente {round_name} {pair_index + 1}"})
@@ -813,6 +828,9 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
         await db.flush()
         _assign_cross_group_referees(created_knockout_matches, {"all": [team.id for team in participants]}, participants)
         current_entries = next_entries
+
+    if total_created_matches == 0:
+        raise ValueError("La formula non produce nessuna partita con le squadre attualmente inserite")
 
     await _sync_tournament_dates_from_generated_program(age_group)
     await db.commit()
