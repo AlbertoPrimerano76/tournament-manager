@@ -333,6 +333,81 @@ def _source_entries_from_group_phase(group_names: list[str], config: dict[str, A
     return labels
 
 
+def _source_entries_for_group_blocks(
+    group_names: list[str],
+    slot_labels_by_group: dict[str, list[str]] | None,
+) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    slot_labels_by_group = slot_labels_by_group or {}
+
+    for group_name in group_names:
+        group_labels = slot_labels_by_group.get(group_name, [])
+        for rank, _ in enumerate(group_labels, start=1):
+            entries.append({
+                "label": f"{_ordinal_it(rank)} {group_name}",
+                "rank": rank,
+                "group_name": group_name,
+            })
+
+    return entries
+
+
+def _next_phase_entries_from_group_phase(
+    group_names: list[str],
+    config: dict[str, Any] | None,
+    slot_labels_by_group: dict[str, list[str]] | None,
+    next_phase_config: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if (
+        isinstance(next_phase_config, dict)
+        and next_phase_config.get("phase_type") == "KNOCKOUT"
+        and next_phase_config.get("bracket_mode") == "group_blocks"
+        and len(group_names) == 2
+    ):
+        return _source_entries_for_group_blocks(group_names, slot_labels_by_group)
+
+    return _source_entries_from_group_phase(group_names, config)
+
+
+def _build_group_block_buckets(entries: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
+    group_names = sorted({
+        str(entry.get("group_name"))
+        for entry in entries
+        if entry.get("group_name")
+    })
+    if len(group_names) != 2:
+        return [("Tabellone principale", entries)]
+
+    grouped_by_rank: dict[int, dict[str, dict[str, Any]]] = defaultdict(dict)
+    for entry in entries:
+        rank = int(entry.get("rank") or 0)
+        group_name = entry.get("group_name")
+        if rank <= 0 or group_name not in group_names:
+            continue
+        grouped_by_rank[rank][group_name] = entry
+
+    carry_matches: list[tuple[str, list[dict[str, Any]]]] = []
+    ordered_ranks = sorted(grouped_by_rank.keys())
+    bucket_start_rank = 1
+
+    while bucket_start_rank <= (ordered_ranks[-1] if ordered_ranks else 0):
+        current_rank_entries = grouped_by_rank.get(bucket_start_rank, {})
+        next_rank_entries = grouped_by_rank.get(bucket_start_rank + 1, {})
+        bucket_entries = [
+            current_rank_entries.get(group_names[0]),
+            current_rank_entries.get(group_names[1]),
+            next_rank_entries.get(group_names[0]),
+            next_rank_entries.get(group_names[1]),
+        ]
+        bucket_entries = [entry for entry in bucket_entries if entry]
+        if bucket_entries:
+            placement_rank = ((bucket_start_rank - 1) * len(group_names)) + 1
+            carry_matches.append((f"Piazzamento {_ordinal_it(placement_rank)}", bucket_entries))
+        bucket_start_rank += 2
+
+    return carry_matches or [("Tabellone principale", entries)]
+
+
 def _pair_seed_entries(entries: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any] | None]]:
     ordered = entries[:]
     pairs: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
@@ -390,6 +465,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
     total_created_matches = 0
 
     for phase_index, phase_config in enumerate(phases_config):
+        next_phase_config = phases_config[phase_index + 1] if phase_index + 1 < len(phases_config) else None
         phase_type = PhaseType[phase_config.get("phase_type", "GROUP_STAGE")]
         phase = Phase(
             tournament_age_group_id=age_group.id,
@@ -511,9 +587,11 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                 **(phase.advancement_config or {}),
                 "group_slot_labels": slot_labels_by_group,
             }
-            current_entries = _source_entries_from_group_phase(
+            current_entries = _next_phase_entries_from_group_phase(
                 [group.name for group in groups],
                 phase.advancement_config,
+                {group.name: slot_labels_by_group.get(group.id, []) for group in groups},
+                next_phase_config,
             )
             continue
 
@@ -526,6 +604,8 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             carry_matches: list[tuple[str, list[dict[str, Any]]]] = []
             for rank in ordered_ranks:
                 carry_matches.append((f"Piazzamento {_ordinal_it(rank)}", buckets[rank]))
+        elif bracket_mode == "group_blocks":
+            carry_matches = _build_group_block_buckets(current_entries)
         else:
             carry_matches = [("Tabellone principale", current_entries)]
 
@@ -656,14 +736,23 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
         if phase.phase_order >= phase_order:
             break
         if phase.phase_type == PhaseType.GROUP_STAGE:
-            current_entries = _source_entries_from_group_phase(
-                [group.name for group in sorted(phase.groups, key=lambda item: item.group_order)],
+            next_phase_config = phases_config[phase.phase_order] if phase.phase_order < len(phases_config) else None
+            sorted_groups = sorted(phase.groups, key=lambda item: item.group_order)
+            slot_labels = (phase.advancement_config or {}).get("group_slot_labels", {})
+            current_entries = _next_phase_entries_from_group_phase(
+                [group.name for group in sorted_groups],
                 phase.advancement_config,
+                {
+                    group.name: slot_labels.get(group.id, [])
+                    for group in sorted_groups
+                },
+                next_phase_config,
             )
 
     total_created_matches = 0
 
     for relative_index, phase_config in enumerate(phases_config[start_index:], start=start_index):
+        next_phase_config = phases_config[relative_index + 1] if relative_index + 1 < len(phases_config) else None
         phase_type = PhaseType[phase_config.get("phase_type", "GROUP_STAGE")]
         phase = Phase(
             tournament_age_group_id=age_group.id,
@@ -772,7 +861,12 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
 
             _assign_cross_group_referees(created_group_matches, phase_group_team_ids, participants, referee_source_group_ids)
             phase.advancement_config = {**(phase.advancement_config or {}), "group_slot_labels": slot_labels_by_group}
-            current_entries = _source_entries_from_group_phase([group.name for group in groups], phase.advancement_config)
+            current_entries = _next_phase_entries_from_group_phase(
+                [group.name for group in groups],
+                phase.advancement_config,
+                {group.name: slot_labels_by_group.get(group.id, []) for group in groups},
+                next_phase_config,
+            )
             continue
 
         bracket_mode = (phase.seeding_source or {}).get("bracket_mode", "standard")
@@ -784,6 +878,8 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             carry_matches: list[tuple[str, list[dict[str, Any]]]] = []
             for rank in ordered_ranks:
                 carry_matches.append((f"Piazzamento {_ordinal_it(rank)}", buckets[rank]))
+        elif bracket_mode == "group_blocks":
+            carry_matches = _build_group_block_buckets(current_entries)
         else:
             carry_matches = [("Tabellone principale", current_entries)]
 

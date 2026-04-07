@@ -1276,7 +1276,7 @@ type StructurePhase = {
   qualifiers_per_group: number | null
   best_extra_teams: number | null
   next_phase_type: '' | 'GROUP_STAGE' | 'KNOCKOUT'
-  bracket_mode: 'standard' | 'placement'
+  bracket_mode: 'standard' | 'placement' | 'group_blocks'
   group_field_assignments: Record<string, PlayingFieldConfig[]>
   referee_group_assignments: Record<string, string[]>
   notes: string
@@ -1471,6 +1471,52 @@ const BUILTIN_TEMPLATES: Array<{
           group_field_assignments: {},
           referee_group_assignments: {},
           notes: 'Bracket principale e bracket di piazzamento',
+        },
+      ],
+    },
+  },
+  {
+    name: '2 gironi + finali per blocchi',
+    description: 'Top 4 per il titolo, poi 5-8, 9-12 e cosi via con semifinali e finali dedicate.',
+    config: {
+      expected_teams: null,
+      schedule: {
+        start_time: '09:30',
+        match_duration_minutes: 12,
+        interval_minutes: 8,
+        playing_fields: [],
+      },
+      notes: '',
+      phases: [
+        {
+          id: 'phase-1',
+          name: 'Gironi iniziali',
+          phase_type: 'GROUP_STAGE',
+          round_trip_mode: 'single',
+          num_groups: 2,
+          group_sizes: '6,6',
+          qualifiers_per_group: null,
+          best_extra_teams: null,
+          next_phase_type: 'KNOCKOUT',
+          bracket_mode: 'group_blocks',
+          group_field_assignments: {},
+          referee_group_assignments: {},
+          notes: 'Le prime quattro giocano per 1-4, le successive per 5-8, 9-12 e cosi via.',
+        },
+        {
+          id: 'phase-2',
+          name: 'Semifinali e finali di piazzamento',
+          phase_type: 'KNOCKOUT',
+          round_trip_mode: 'single',
+          num_groups: null,
+          group_sizes: '',
+          qualifiers_per_group: null,
+          best_extra_teams: null,
+          next_phase_type: '',
+          bracket_mode: 'group_blocks',
+          group_field_assignments: {},
+          referee_group_assignments: {},
+          notes: 'Incrocio tra i due gironi a blocchi di quattro squadre.',
         },
       ],
     },
@@ -2659,7 +2705,9 @@ function AgeGroupConfigurationPanel({
                         ? 'border-sky-200 bg-sky-50'
                         : phase.bracket_mode === 'placement'
                           ? 'border-fuchsia-200 bg-fuchsia-50'
-                          : 'border-rose-200 bg-rose-50'
+                          : phase.bracket_mode === 'group_blocks'
+                            ? 'border-violet-200 bg-violet-50'
+                            : 'border-rose-200 bg-rose-50'
                     }`}>
                       <div>
                         <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Fase {index + 1}</p>
@@ -2748,24 +2796,37 @@ function AgeGroupConfigurationPanel({
                             </select>
                           </FormField>
                           {phase.next_phase_type ? (
-                            <>
-                              <FormField label="Qualificate per girone">
-                                <input
-                                  type="number"
-                                  value={phase.qualifiers_per_group ?? ''}
-                                  onChange={(e) => setPhase(index, { qualifiers_per_group: e.target.value ? Number(e.target.value) : null })}
-                                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
-                                />
-                              </FormField>
-                              <FormField label="Migliori extra qualificate" hint="Secondi o terzi migliori">
-                                <input
-                                  type="number"
-                                  value={phase.best_extra_teams ?? ''}
-                                  onChange={(e) => setPhase(index, { best_extra_teams: e.target.value ? Number(e.target.value) : null })}
-                                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
-                                />
-                              </FormField>
-                            </>
+                            (() => {
+                              const nextPhase = structure.phases[index + 1]
+                              const usesGroupBlocks = nextPhase?.phase_type === 'KNOCKOUT' && nextPhase.bracket_mode === 'group_blocks'
+                              if (usesGroupBlocks) {
+                                return (
+                                  <div className="rounded-[1.2rem] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 sm:col-span-2">
+                                    Tutte le squadre passano automaticamente alla fase successiva. Il sistema crea semifinali e finali per 1-4, 5-8, 9-12 e cosi via.
+                                  </div>
+                                )
+                              }
+                              return (
+                                <>
+                                  <FormField label="Qualificate per girone">
+                                    <input
+                                      type="number"
+                                      value={phase.qualifiers_per_group ?? ''}
+                                      onChange={(e) => setPhase(index, { qualifiers_per_group: e.target.value ? Number(e.target.value) : null })}
+                                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                                    />
+                                  </FormField>
+                                  <FormField label="Migliori extra qualificate" hint="Secondi o terzi migliori">
+                                    <input
+                                      type="number"
+                                      value={phase.best_extra_teams ?? ''}
+                                      onChange={(e) => setPhase(index, { best_extra_teams: e.target.value ? Number(e.target.value) : null })}
+                                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                                    />
+                                  </FormField>
+                                </>
+                              )
+                            })()
                           ) : (
                             <div className="rounded-[1.2rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 sm:col-span-2">
                               Questa fase si chiude con la classifica finale del girone. Non servono qualificate.
@@ -2782,6 +2843,7 @@ function AgeGroupConfigurationPanel({
                             >
                               <option value="standard">Eliminazione standard</option>
                               <option value="placement">Tabelloni piazzamento mini rugby</option>
+                              <option value="group_blocks">2 gironi: blocchi 1-4, 5-8, 9-12</option>
                             </select>
                           </FormField>
                           <FormField label="Fase successiva">
@@ -3206,10 +3268,12 @@ function VisualTemplateMini({ config }: { config: StructureConfig }) {
               ? 'border-sky-200 bg-sky-50'
               : phase.bracket_mode === 'placement'
                 ? 'border-fuchsia-200 bg-fuchsia-50'
+                : phase.bracket_mode === 'group_blocks'
+                  ? 'border-violet-200 bg-violet-50'
                 : 'border-rose-200 bg-rose-50'
           }`}>
             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
-              {phase.phase_type === 'GROUP_STAGE' ? 'Gironi' : phase.bracket_mode === 'placement' ? 'Piazzamenti' : 'Finali'}
+              {phase.phase_type === 'GROUP_STAGE' ? 'Gironi' : phase.bracket_mode === 'placement' ? 'Piazzamenti' : phase.bracket_mode === 'group_blocks' ? 'Blocchi' : 'Finali'}
             </p>
             <p className="mt-1 text-sm font-semibold text-slate-900">{phase.name}</p>
           </div>
@@ -3295,6 +3359,8 @@ function describeKnockoutEstimate(phase: StructurePhase): string {
   if (phase.phase_type !== 'KNOCKOUT') return ''
   return phase.bracket_mode === 'placement'
     ? 'Piazzamenti su tutti i ranghi qualificati'
+    : phase.bracket_mode === 'group_blocks'
+      ? 'Blocchi 1-4, 5-8, 9-12 con incrocio tra due gironi'
     : 'Tabellone a eliminazione diretta'
 }
 
@@ -3457,8 +3523,10 @@ function validateStructureConfig(structure: StructureConfig): string[] {
       const groupSizes = parseGroupSizes(phase.group_sizes)
       const totalTeamsInGroups = groupSizes.reduce((sum, size) => sum + size, 0)
       const hasNextPhase = !!phase.next_phase_type
-      const qualifiers = hasNextPhase ? (phase.qualifiers_per_group ?? 0) : 0
-      const extras = hasNextPhase ? (phase.best_extra_teams ?? 0) : 0
+      const nextPhase = structure.phases[index + 1]
+      const usesGroupBlocks = nextPhase?.phase_type === 'KNOCKOUT' && nextPhase.bracket_mode === 'group_blocks'
+      const qualifiers = hasNextPhase && !usesGroupBlocks ? (phase.qualifiers_per_group ?? 0) : 0
+      const extras = hasNextPhase && !usesGroupBlocks ? (phase.best_extra_teams ?? 0) : 0
 
       if (!phase.num_groups || phase.num_groups <= 0) {
         errors.push(`${phaseLabel}: il numero gironi deve essere maggiore di zero.`)
@@ -3498,7 +3566,7 @@ function validateStructureConfig(structure: StructureConfig): string[] {
         errors.push(`${phaseLabel}: servono almeno ${phase.num_groups} campi di gioco per distribuire i gironi automaticamente.`)
       }
 
-      if (hasNextPhase && qualifiers <= 0 && extras <= 0) {
+      if (hasNextPhase && !usesGroupBlocks && qualifiers <= 0 && extras <= 0) {
         errors.push(`${phaseLabel}: indica almeno una squadra qualificata verso la fase successiva.`)
       }
 
@@ -3514,6 +3582,14 @@ function validateStructureConfig(structure: StructureConfig): string[] {
             errors.push(`${phaseLabel}: assegna almeno un girone arbitro a ${groupName}.`)
           }
         }
+      }
+    }
+    if (phase.phase_type === 'KNOCKOUT' && phase.bracket_mode === 'group_blocks') {
+      const previousPhase = index > 0 ? structure.phases[index - 1] : null
+      if (!previousPhase || previousPhase.phase_type !== 'GROUP_STAGE') {
+        errors.push(`${phaseLabel}: i blocchi 1-4, 5-8 richiedono una fase a gironi subito prima.`)
+      } else if ((previousPhase.num_groups ?? 0) !== 2) {
+        errors.push(`${phaseLabel}: i blocchi 1-4, 5-8 funzionano solo con 2 gironi.`)
       }
     }
   })
@@ -3586,7 +3662,11 @@ function normalizePhase(value: unknown, index: number): StructurePhase {
     qualifiers_per_group: typeof input.qualifiers_per_group === 'number' ? input.qualifiers_per_group : null,
     best_extra_teams: typeof input.best_extra_teams === 'number' ? input.best_extra_teams : null,
     next_phase_type: input.next_phase_type === 'GROUP_STAGE' || input.next_phase_type === 'KNOCKOUT' ? input.next_phase_type : '',
-    bracket_mode: input.bracket_mode === 'placement' ? 'placement' : 'standard',
+    bracket_mode: input.bracket_mode === 'placement'
+      ? 'placement'
+      : input.bracket_mode === 'group_blocks'
+        ? 'group_blocks'
+        : 'standard',
     group_field_assignments: normalizeGroupFieldAssignments((input as { group_field_assignments?: unknown }).group_field_assignments),
     referee_group_assignments: normalizeRefereeGroupAssignments((input as { referee_group_assignments?: unknown }).referee_group_assignments),
     notes: typeof input.notes === 'string' ? input.notes : '',
@@ -3670,6 +3750,8 @@ function StructurePreviewCard({
                 ? 'border-sky-200 bg-sky-50'
                 : phase.bracket_mode === 'placement'
                   ? 'border-fuchsia-200 bg-fuchsia-50'
+                  : phase.bracket_mode === 'group_blocks'
+                    ? 'border-violet-200 bg-violet-50'
                   : 'border-rose-200 bg-rose-50'
             }`}>
               <div className="flex items-start justify-between gap-3">
@@ -3682,9 +3764,11 @@ function StructurePreviewCard({
                     ? 'bg-sky-600 text-white'
                     : phase.bracket_mode === 'placement'
                       ? 'bg-fuchsia-600 text-white'
+                      : phase.bracket_mode === 'group_blocks'
+                        ? 'bg-violet-600 text-white'
                       : 'bg-rose-600 text-white'
                 }`}>
-                  {phase.phase_type === 'GROUP_STAGE' ? 'Gironi' : phase.bracket_mode === 'placement' ? 'Piazzamenti' : 'Finali'}
+                  {phase.phase_type === 'GROUP_STAGE' ? 'Gironi' : phase.bracket_mode === 'placement' ? 'Piazzamenti' : phase.bracket_mode === 'group_blocks' ? 'Blocchi piazzamento' : 'Finali'}
                 </span>
               </div>
 
@@ -3712,8 +3796,13 @@ function StructurePreviewCard({
                     <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
                       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Passano avanti</p>
                       <p className="mt-1 text-sm font-semibold text-slate-800">
-                        {phase.qualifiers_per_group ? `${phase.qualifiers_per_group} per girone` : 'Da definire'}
-                        {phase.best_extra_teams ? ` + ${phase.best_extra_teams} migliori extra` : ''}
+                        {(() => {
+                          const nextPhase = structure.phases[index + 1]
+                          if (nextPhase?.phase_type === 'KNOCKOUT' && nextPhase.bracket_mode === 'group_blocks') {
+                            return 'Tutte le squadre, divise in blocchi 1-4, 5-8, 9-12'
+                          }
+                          return `${phase.qualifiers_per_group ? `${phase.qualifiers_per_group} per girone` : 'Da definire'}${phase.best_extra_teams ? ` + ${phase.best_extra_teams} migliori extra` : ''}`
+                        })()}
                       </p>
                     </div>
                   </>
@@ -3722,7 +3811,11 @@ function StructurePreviewCard({
                     <div className="rounded-xl border border-white/80 bg-white/85 px-3 py-2">
                       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Tabellone</p>
                       <p className="mt-1 text-sm font-semibold text-slate-900">
-                        {phase.bracket_mode === 'placement' ? 'Piazzamenti mini rugby' : 'Eliminazione standard'}
+                        {phase.bracket_mode === 'placement'
+                          ? 'Piazzamenti mini rugby'
+                          : phase.bracket_mode === 'group_blocks'
+                            ? 'Due gironi con blocchi 1-4, 5-8, 9-12'
+                            : 'Eliminazione standard'}
                       </p>
                     </div>
                     <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
