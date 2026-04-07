@@ -15,8 +15,8 @@ LOCAL_UPLOAD_DIR = Path("uploads")
 
 
 def _supabase_configured() -> bool:
-    url = settings.SUPABASE_URL or ""
-    key = settings.SUPABASE_KEY or ""
+    url = settings.supabase_url or ""
+    key = settings.supabase_key or ""
     return bool(url and key and "your-project" not in url and "your-anon-key" not in key)
 
 
@@ -53,35 +53,46 @@ async def upload_image(
     filename = f"{uuid.uuid4()}.webp"
 
     if _supabase_configured():
+        if not settings.has_valid_supabase_key_format:
+            raise HTTPException(
+                status_code=503,
+                detail="SUPABASE_KEY non valido: usa una key Supabase valida (`sb_secret_...` oppure JWT legacy integra), senza virgolette o spazi extra.",
+            )
         # ── Supabase Storage ──────────────────────────────────────────────────
-        url = settings.SUPABASE_URL
+        url = settings.supabase_url
         path = f"{folder}/{filename}"
         storage_url = f"{url}/storage/v1/object/{settings.SUPABASE_BUCKET}/{path}"
+        headers = {
+            "apikey": settings.supabase_key,
+            "Content-Type": "image/webp",
+            "x-upsert": "true",
+        }
+        if settings.supabase_key_kind == "jwt":
+            headers["Authorization"] = f"Bearer {settings.supabase_key}"
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.post(
                     storage_url,
                     content=processed,
-                    headers={
-                        "Authorization": f"Bearer {settings.SUPABASE_KEY}",
-                        "Content-Type": "image/webp",
-                        "x-upsert": "true",
-                    },
+                    headers=headers,
                 )
         except httpx.RequestError as e:
             raise HTTPException(status_code=502, detail=f"Impossibile raggiungere lo storage: {e}")
 
         if resp.status_code not in (200, 201):
+            detail = resp.text[:200]
+            if "Invalid Compact JWS" in detail:
+                detail = "SUPABASE_KEY rifiutata da Supabase: la chiave configurata non e' un JWT valido."
             raise HTTPException(
                 status_code=502,
-                detail=f"Errore storage ({resp.status_code}): {resp.text[:200]}"
+                detail=f"Errore storage ({resp.status_code}): {detail}"
             )
         public_url = f"{url}/storage/v1/object/public/{settings.SUPABASE_BUCKET}/{path}"
     else:
         if settings.is_production:
             raise HTTPException(
                 status_code=503,
-                detail="Storage immagini non configurato in produzione. Imposta SUPABASE_URL e SUPABASE_KEY.",
+                detail="Storage immagini non configurato in produzione. Imposta SUPABASE_URL e una SUPABASE_KEY valida.",
             )
         # ── Local fallback (development) ─────────────────────────────────────
         dest_dir = LOCAL_UPLOAD_DIR / folder

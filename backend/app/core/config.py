@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
 
+    @staticmethod
+    def _clean_optional(value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip().strip('"').strip("'").strip()
+        return cleaned or None
+
     @property
     def allowed_origins_list(self) -> list[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
@@ -59,6 +66,32 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT.lower() == "production"
+
+    @property
+    def supabase_url(self) -> Optional[str]:
+        return self._clean_optional(self.SUPABASE_URL)
+
+    @property
+    def supabase_key(self) -> Optional[str]:
+        return self._clean_optional(self.SUPABASE_KEY)
+
+    @property
+    def supabase_key_kind(self) -> Optional[str]:
+        key = self.supabase_key
+        if not key:
+            return None
+        if key.startswith("sb_secret_"):
+            return "secret"
+        if key.startswith("sb_publishable_"):
+            return "publishable"
+        parts = key.split(".")
+        if len(parts) == 3 and all(parts):
+            return "jwt"
+        return "unknown"
+
+    @property
+    def has_valid_supabase_key_format(self) -> bool:
+        return self.supabase_key_kind in {"secret", "publishable", "jwt"}
 
     def validate_production_settings(self) -> None:
         if not self.is_production:
