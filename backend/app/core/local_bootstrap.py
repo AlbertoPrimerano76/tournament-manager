@@ -39,13 +39,12 @@ async def bootstrap_local_environment() -> None:
     is_sqlite = settings.DATABASE_URL.startswith("sqlite")
     is_development = settings.ENVIRONMENT.lower() == "development"
 
-    if is_sqlite or is_development:
-        async with engine.begin() as conn:
+    async with engine.begin() as conn:
+        if is_sqlite or is_development:
             await conn.run_sync(Base.metadata.create_all)
-            if is_development:
-                await _ensure_development_schema(conn)
-            if is_sqlite:
-                await _ensure_alembic_version(conn)
+        await _ensure_development_schema(conn)
+        if is_sqlite:
+            await _ensure_alembic_version(conn)
 
     async with AsyncSessionLocal() as session:
         if is_sqlite or is_development:
