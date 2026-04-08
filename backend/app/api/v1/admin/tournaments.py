@@ -24,7 +24,7 @@ from app.schemas.structure import (
 )
 from app.schemas.tournament_template import TournamentTemplateCreate, TournamentTemplateResponse
 from app.schemas.program import AgeGroupProgramResponse, GroupTeamMoveRequest, MatchParticipantsUpdate
-from app.services.program_builder import generate_age_group_program, get_age_group_program, regenerate_age_group_from_phase, reset_and_generate_age_group_program
+from app.services.program_builder import generate_age_group_program, get_age_group_program, regenerate_age_group_from_phase, reset_and_generate_age_group_program, reset_age_group_program
 
 router = APIRouter()
 
@@ -366,6 +366,21 @@ async def reset_and_generate_program_for_age_group(
     if not program:
         raise HTTPException(status_code=404, detail="Age group not found")
     return program
+
+
+@router.delete("/age-groups/{ag_id}/program", status_code=204)
+async def delete_program_for_age_group(
+    ag_id: str,
+    _: User = Depends(require_editor),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        await reset_age_group_program(ag_id, db)
+    except ValueError as exc:
+        detail = str(exc)
+        if detail == "Age group not found":
+            raise HTTPException(status_code=404, detail=detail)
+        raise HTTPException(status_code=422, detail=detail)
 
 
 @router.post("/age-groups/{ag_id}/phases/{phase_order}/regenerate", response_model=AgeGroupProgramResponse)

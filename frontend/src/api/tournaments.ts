@@ -627,6 +627,23 @@ export function useResetAndGenerateAgeGroupProgram() {
   })
 }
 
+export function useDeleteAgeGroupProgram() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (ageGroupId: string) => {
+      await apiClient.delete(`/api/v1/admin/age-groups/${ageGroupId}/program`)
+      return ageGroupId
+    },
+    onSuccess: (_, ageGroupId) => {
+      qc.invalidateQueries({ queryKey: ['admin-age-group-program', ageGroupId] })
+      qc.invalidateQueries({ queryKey: ['age-group-program', ageGroupId] })
+      qc.invalidateQueries({ queryKey: ['tournament-program'] })
+      qc.invalidateQueries({ queryKey: ['age-group-matches', ageGroupId] })
+      qc.invalidateQueries({ queryKey: ['tournament-age-groups'] })
+    },
+  })
+}
+
 export function useRegenerateAgeGroupPhase() {
   const qc = useQueryClient()
   return useMutation({
