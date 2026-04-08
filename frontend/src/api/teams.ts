@@ -4,6 +4,7 @@ import { apiClient } from './client'
 export interface Team {
   id: string
   organization_id: string
+  tournament_id: string | null
   name: string
   short_name: string | null
   logo_url: string | null
@@ -13,6 +14,7 @@ export interface Team {
 
 export interface TeamCreate {
   organization_id: string
+  tournament_id?: string | null
   name: string
   short_name?: string
   logo_url?: string
@@ -34,11 +36,13 @@ export interface TournamentTeamCreate {
   notes?: string
 }
 
-export function useAdminTeams(organizationId?: string) {
+export function useAdminTeams(organizationId?: string, tournamentId?: string) {
   return useQuery({
-    queryKey: ['teams', organizationId ?? 'all'],
+    queryKey: ['teams', organizationId ?? 'all', tournamentId ?? 'global'],
     queryFn: async () => {
-      const params = organizationId ? { organization_id: organizationId } : {}
+      const params: Record<string, string> = {}
+      if (organizationId) params.organization_id = organizationId
+      if (tournamentId) params.tournament_id = tournamentId
       const res = await apiClient.get<Team[]>('/api/v1/admin/teams', { params })
       return res.data
     },

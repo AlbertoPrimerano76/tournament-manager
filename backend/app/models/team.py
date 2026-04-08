@@ -9,6 +9,7 @@ class Team(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     organization_id: Mapped[str] = mapped_column(String(36), ForeignKey("organizations.id"), nullable=False)
+    tournament_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("tournaments.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     short_name: Mapped[str | None] = mapped_column(String(10), nullable=True)
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -16,6 +17,7 @@ class Team(Base):
     colors: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     organization: Mapped["Organization"] = relationship("Organization", back_populates="teams")  # type: ignore
+    tournament: Mapped["Tournament | None"] = relationship("Tournament")  # type: ignore
     tournament_teams: Mapped[list["TournamentTeam"]] = relationship("TournamentTeam", back_populates="team")
 
 

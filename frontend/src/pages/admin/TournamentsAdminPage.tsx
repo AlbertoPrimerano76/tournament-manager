@@ -9,7 +9,7 @@ import {
 } from '@/api/tournaments'
 import { apiClient } from '@/api/client'
 import { useAdminOrganizations, useCreateOrganization } from '@/api/organizations'
-import { useAdminTeams, useCreateTeam, useEnrollTournamentTeam, useUnenrollTournamentTeam } from '@/api/teams'
+import { useAdminTeams, useCreateTeam, useEnrollTournamentTeam, useUnenrollTournamentTeam, useUpdateTeam } from '@/api/teams'
 import { useOrganizationFields } from '@/api/fields'
 import ImageUpload from '@/components/shared/ImageUpload'
 import AgeGroupProgramView from '@/components/program/AgeGroupProgramView'
@@ -1314,6 +1314,8 @@ type ScheduleConfig = {
   playing_fields: PlayingFieldConfig[]
 }
 
+type CategoryWizardStep = 'squadre' | 'formula'
+
 type StructureConfig = {
   expected_teams: number | null
   schedule: ScheduleConfig
@@ -1649,11 +1651,11 @@ function AgeGroupsManagerPanel({ tournament }: { tournament: Tournament }) {
         </div>
       )}
 
-      <div className="rounded-[1.6rem] border border-amber-200 bg-[linear-gradient(180deg,_#fff8e8_0%,_#fffdf5_100%)] p-5 shadow-sm">
-        <p className="text-xs font-bold uppercase tracking-[0.22em] text-amber-600">Passo 1</p>
-        <h3 className="mt-2 text-xl font-black text-slate-900">Aggiungi le categorie dell&apos;evento</h3>
+      <div className="rounded-[1.6rem] border border-slate-200 bg-[linear-gradient(180deg,_#ffffff_0%,_#f8fafc_100%)] p-5 shadow-sm">
+        <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Categorie evento</p>
+        <h3 className="mt-2 text-xl font-black text-slate-900">Aggiungi, modifica o rimuovi le categorie</h3>
         <p className="mt-2 text-sm leading-6 text-slate-600">
-          Seleziona subito le categorie presenti. Dopo l’aggiunta potrai entrare in configurazione oppure direttamente nella gestione operativa.
+          Per ogni categoria puoi entrare nel wizard guidato: prima squadre partecipanti, poi formula e generazione.
         </p>
       </div>
 
@@ -1682,32 +1684,35 @@ function AgeGroupsManagerPanel({ tournament }: { tournament: Tournament }) {
                 </span>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => void handleToggle(option)}
-                  className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
-                    selected ? 'bg-white/80 text-current' : 'bg-rugby-green text-white hover:bg-rugby-green-dark'
-                  }`}
-                >
-                  {selected && <Trash2 className="h-4 w-4" />}
-                  {selected ? 'Rimuovi' : 'Aggiungi categoria'}
-                </button>
+                {!selected && (
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => void handleToggle(option)}
+                    className="inline-flex items-center gap-2 rounded-xl bg-rugby-green px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-rugby-green-dark"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Aggiungi categoria
+                  </button>
+                )}
                 {activeGroup && (
                   <>
                     <button
                       type="button"
                       onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${activeGroup.id}`)}
-                      className="rounded-xl border border-current/20 px-3 py-2 text-sm font-semibold"
+                      className="inline-flex items-center gap-2 rounded-xl border border-current/20 px-3 py-2 text-sm font-semibold"
                     >
-                      Formula e squadre
+                      <Pencil className="h-4 w-4" />
+                      Modifica
                     </button>
                     <button
                       type="button"
-                      onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${activeGroup.id}/gestione`)}
-                      className="rounded-xl border border-current/20 bg-white/75 px-3 py-2 text-sm font-semibold"
+                      disabled={isPending}
+                      onClick={() => void handleToggle(option)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-current/20 bg-white/75 px-3 py-2 text-sm font-semibold"
                     >
-                      Risultati e ritardi
+                      <Trash2 className="h-4 w-4" />
+                      Rimuovi
                     </button>
                   </>
                 )}
@@ -1764,14 +1769,7 @@ function AgeGroupQuickCard({ tournament, group }: { tournament: Tournament; grou
             onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${group.id}`)}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
           >
-            Formula e squadre
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${group.id}/gestione`)}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
-          >
-            Risultati e ritardi
+            Apri wizard
           </button>
         </div>
       </div>
@@ -1982,7 +1980,7 @@ function AgeGroupConfigurationScreen({
 }) {
   const { data: ageGroups, isLoading } = useAdminTournamentAgeGroups(tournament.id)
   const ageGroup = ageGroups?.find((item) => item.id === ageGroupId) ?? null
-  const [activeTab, setActiveTab] = useState<'formula' | 'squadre' | 'template'>('squadre')
+  const [activeStep, setActiveStep] = useState<CategoryWizardStep>('squadre')
 
   if (isLoading) {
     return <div className="py-12 text-center text-sm text-slate-500">Caricamento categoria...</div>
@@ -1996,10 +1994,9 @@ function AgeGroupConfigurationScreen({
     )
   }
 
-  const tabs: Array<{ id: 'formula' | 'squadre' | 'template'; label: string }> = [
-    { id: 'squadre', label: 'Squadre' },
-    { id: 'formula', label: 'Formula' },
-    { id: 'template', label: 'Template' },
+  const steps: Array<{ id: CategoryWizardStep; label: string; description: string }> = [
+    { id: 'squadre', label: 'Squadre', description: 'Definisci quante sono e inseriscile.' },
+    { id: 'formula', label: 'Formula', description: 'Durata, campi, fasi e generazione.' },
   ]
 
   return (
@@ -2013,7 +2010,7 @@ function AgeGroupConfigurationScreen({
             <h1 className="mt-2 text-3xl font-black text-slate-950">{ageGroup.display_name || ageGroup.age_group}</h1>
             <p className="mt-1 text-sm text-slate-500">{tournament.name}</p>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-              Pagina dedicata alla configurazione della categoria. Risultati, ritardi e cambi gironi stanno in una pagina operativa separata.
+              Configurazione guidata della categoria: prima le squadre partecipanti, poi la formula completa del torneo.
             </p>
             {tournament.event_type === 'GATHERING' && (
               <p className="mt-3 inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-sky-700">
@@ -2023,33 +2020,29 @@ function AgeGroupConfigurationScreen({
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
-              to={`/admin/tornei/${tournament.id}/categorie/${ageGroup.id}/gestione`}
-              className="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
-            >
-              Risultati e ritardi
-            </Link>
-            <Link
-              to="/admin/tornei"
+              to={`/admin/tornei/${tournament.id}/modifica`}
               className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
             >
-              Torna ai tornei
+              Esci
             </Link>
           </div>
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-2">
-          {tabs.map((tab) => (
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          {steps.map((step, index) => (
             <button
-              key={tab.id}
+              key={step.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-slate-900 text-white'
-                  : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              onClick={() => setActiveStep(step.id)}
+              className={`rounded-[1.4rem] border p-4 text-left transition-colors ${
+                activeStep === step.id
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               }`}
             >
-              {tab.label}
+              <p className={`text-xs font-bold uppercase tracking-[0.16em] ${activeStep === step.id ? 'text-white/70' : 'text-slate-400'}`}>{`Passo ${index + 1}`}</p>
+              <p className="mt-2 text-lg font-black">{step.label}</p>
+              <p className={`mt-1 text-sm ${activeStep === step.id ? 'text-white/80' : 'text-slate-500'}`}>{step.description}</p>
             </button>
           ))}
         </div>
@@ -2058,7 +2051,8 @@ function AgeGroupConfigurationScreen({
       <AgeGroupConfigurationPanel
         tournament={tournament}
         ageGroup={ageGroup}
-        activeTab={activeTab}
+        activeTab={activeStep}
+        onStepChange={setActiveStep}
         pageMode
       />
     </div>
@@ -2191,20 +2185,23 @@ function AgeGroupConfigurationPanel({
   tournament,
   ageGroup,
   activeTab,
+  onStepChange,
   pageMode = false,
 }: {
   tournament: Tournament
   ageGroup: AgeGroup
-  activeTab?: 'formula' | 'squadre' | 'template'
+  activeTab?: CategoryWizardStep
+  onStepChange?: (step: CategoryWizardStep) => void
   pageMode?: boolean
 }) {
   const { data: participants } = useAgeGroupParticipants(ageGroup.id)
   const { data: program } = useAdminAgeGroupProgram(ageGroup.id)
-  const { data: teams } = useAdminTeams()
+  const { data: teams } = useAdminTeams(tournament.organization_id, tournament.id)
   const { data: organizations } = useAdminOrganizations()
   const { data: facilities } = useOrganizationFields(tournament.organization_id)
   const { data: templates } = useStructureTemplates(ageGroup.age_group, tournament.organization_id)
   const createTeam = useCreateTeam()
+  const updateTeam = useUpdateTeam()
   const enrollTeam = useEnrollTournamentTeam()
   const unenrollTeam = useUnenrollTournamentTeam()
   const updateStructure = useUpdateAgeGroupStructure()
@@ -2217,6 +2214,9 @@ function AgeGroupConfigurationPanel({
   const [selectedOrganizationId, setSelectedOrganizationId] = useState('')
   const [newTeamName, setNewTeamName] = useState('')
   const [newTeamShortName, setNewTeamShortName] = useState('')
+  const [editingTeamId, setEditingTeamId] = useState('')
+  const [editingTeamName, setEditingTeamName] = useState('')
+  const [editingTeamShortName, setEditingTeamShortName] = useState('')
   const [templateName, setTemplateName] = useState('')
   const [templateDescription, setTemplateDescription] = useState('')
   const [selectedTemplateName, setSelectedTemplateName] = useState(ageGroup.structure_template_name ?? '')
@@ -2312,6 +2312,7 @@ function AgeGroupConfigurationPanel({
     try {
       const createdTeam = await createTeam.mutateAsync({
         organization_id: organization.id,
+        tournament_id: tournament.id,
         name: newTeamName.trim(),
         short_name: newTeamShortName.trim() || undefined,
       })
@@ -2326,6 +2327,28 @@ function AgeGroupConfigurationPanel({
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setTeamError(msg ?? 'Errore durante la creazione della squadra')
+    }
+  }
+
+  async function handleUpdateParticipantTeam(teamId: string) {
+    if (!editingTeamName.trim()) return
+    setTeamError('')
+    setTeamMessage('')
+    try {
+      await updateTeam.mutateAsync({
+        id: teamId,
+        data: {
+          name: editingTeamName.trim(),
+          short_name: editingTeamShortName.trim() || undefined,
+        },
+      })
+      setEditingTeamId('')
+      setEditingTeamName('')
+      setEditingTeamShortName('')
+      setTeamMessage('Squadra aggiornata correttamente')
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setTeamError(msg ?? 'Errore durante l’aggiornamento della squadra')
     }
   }
 
@@ -2348,34 +2371,6 @@ function AgeGroupConfigurationPanel({
         ranking_criteria: ['points', ...next],
       }
     })
-  }
-
-  function applyGatheringPreset(mode: 'single' | 'double' | 'triple') {
-    const groupCount = mode === 'single' ? 1 : mode === 'double' ? 2 : 3
-    const defaultSizes = Array.from({ length: groupCount }, () => Math.max(Math.floor((structure.expected_teams ?? Math.max(participants?.length ?? 0, groupCount)) / groupCount), 1))
-    defaultSizes[0] += Math.max((structure.expected_teams ?? Math.max(participants?.length ?? 0, groupCount)) - defaultSizes.reduce((sum, value) => sum + value, 0), 0)
-    setStructure((current) => ({
-      ...current,
-      notes: current.notes || 'Raggruppamento impostato con sola fase a gironi, senza finali.',
-      phases: [
-        {
-          ...makeEmptyPhase(1),
-          name: groupCount === 1 ? 'Girone unico' : 'Gironi di giornata',
-          phase_type: 'GROUP_STAGE',
-          round_trip_mode: 'single',
-          num_groups: groupCount,
-          group_sizes: defaultSizes.join(','),
-          qualifiers_per_group: null,
-          best_extra_teams: null,
-          next_phase_type: '',
-          bracket_mode: 'standard',
-          notes: 'Raggruppamento senza fase finale.',
-          group_field_assignments: {},
-          referee_group_assignments: {},
-        },
-      ],
-    }))
-    setSelectedTemplateName('')
   }
 
   async function persistConfiguration(showSuccessMessage = true) {
@@ -2717,7 +2712,7 @@ function AgeGroupConfigurationPanel({
     })
   }
 
-  const currentTab = activeTab ?? 'formula'
+  const currentTab = activeTab ?? 'squadre'
 
   return (
     <div className="space-y-5">
@@ -2834,31 +2829,11 @@ function AgeGroupConfigurationPanel({
                 )}
               </div>
 
-              {isGathering && (
-                <div className="mb-5 rounded-[1.5rem] border border-sky-200 bg-sky-50 p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Configurazione guidata raggruppamento</p>
-                  <p className="mt-2 text-sm text-sky-900">
-                    Di solito un raggruppamento usa una o più fasi a gironi senza classifica finale. Puoi partire da un preset rapido e poi rifinire i dettagli.
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <button type="button" onClick={() => applyGatheringPreset('single')} className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm">
-                      Girone unico
-                    </button>
-                    <button type="button" onClick={() => applyGatheringPreset('double')} className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm">
-                      2 gironi senza finali
-                    </button>
-                    <button type="button" onClick={() => applyGatheringPreset('triple')} className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm">
-                      3 gironi senza finali
-                    </button>
-                  </div>
-                </div>
-              )}
-
               <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Preset rapidi</p>
-                <p className="mt-1 text-sm text-slate-600">Parti da un modello rapido e poi rifinisci calendario, gironi e qualificazioni.</p>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Template formula</p>
+                <p className="mt-1 text-sm text-slate-600">Se vuoi, parti da una struttura già esistente. Altrimenti definisci le fasi da zero qui sotto.</p>
                 <div className="mt-3 grid gap-3 lg:grid-cols-3">
-                  {BUILTIN_TEMPLATES.filter((template) => !template.age_group || template.age_group === ageGroup.age_group).map((template) => (
+                  {allTemplates.map((template) => (
                     <button
                       key={template.name}
                       type="button"
@@ -2871,7 +2846,7 @@ function AgeGroupConfigurationPanel({
                     >
                       <p className="text-sm font-bold text-slate-900">{template.name}</p>
                       <p className="mt-1 text-sm leading-6 text-slate-500">{template.description}</p>
-                      <VisualTemplateMini config={template.config} />
+                      <VisualTemplateMini config={normalizeStructureConfig(template.config)} />
                     </button>
                   ))}
                 </div>
@@ -3558,7 +3533,46 @@ function AgeGroupConfigurationPanel({
                 </FormField>
               </div>
 
+              <div className="mt-5 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-base font-black text-slate-950">Salva come template</p>
+                <p className="mt-1 text-sm leading-6 text-slate-500">Riutilizza questa formula su altri tornei e altre categorie, senza squadre ma con struttura e passaggi.</p>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <FormField label="Nome template">
+                    <input
+                      value={templateName}
+                      onChange={(e) => setTemplateName(e.target.value)}
+                      placeholder="Es. Girone unico 4 squadre andata/ritorno"
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                    />
+                  </FormField>
+                  <FormField label="Descrizione breve">
+                    <input
+                      value={templateDescription}
+                      onChange={(e) => setTemplateDescription(e.target.value)}
+                      placeholder="Template di prova"
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                    />
+                  </FormField>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveAsTemplate()}
+                  disabled={!templateName.trim() || createTemplate.isPending}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-white disabled:opacity-50"
+                >
+                  <Save className="h-4 w-4" />
+                  Salva template
+                </button>
+              </div>
+
               <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-200 pt-4">
+                <button
+                  type="button"
+                  onClick={() => onStepChange?.('squadre')}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  Indietro
+                </button>
                 <button
                   type="button"
                   onClick={() => void handleSaveStructure()}
@@ -3728,18 +3742,89 @@ function AgeGroupConfigurationPanel({
 
               <div className="mt-5 space-y-3">
                 {participants && participants.length > 0 ? participants.map((participant) => (
-                  <div key={participant.id} className="flex items-center justify-between rounded-[1.35rem] border border-slate-200 bg-[linear-gradient(135deg,_#ffffff_0%,_#f8fafc_100%)] px-4 py-3 shadow-sm">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{participant.team_name}</p>
-                      {participant.city && <p className="text-xs text-slate-500">{participant.city}</p>}
+                  <div key={participant.id} className="rounded-[1.35rem] border border-slate-200 bg-[linear-gradient(135deg,_#ffffff_0%,_#f8fafc_100%)] px-4 py-4 shadow-sm">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        {editingTeamId === participant.team_id ? (
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <input
+                              value={editingTeamName}
+                              onChange={(e) => setEditingTeamName(e.target.value)}
+                              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                            />
+                            <input
+                              value={editingTeamShortName}
+                              onChange={(e) => setEditingTeamShortName(e.target.value)}
+                              placeholder="Nome breve"
+                              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                            />
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm font-semibold text-slate-900">{participant.team_name}</p>
+                              {participant.is_tournament_team && (
+                                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700">
+                                  Solo questo torneo
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                              <span>{participant.organization_name || 'Società'}</span>
+                              {participant.city && <span>· {participant.city}</span>}
+                              {participant.team_short_name && <span>· {participant.team_short_name}</span>}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {participant.is_tournament_team && editingTeamId !== participant.team_id && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingTeamId(participant.team_id)
+                              setEditingTeamName(participant.team_name)
+                              setEditingTeamShortName(participant.team_short_name ?? '')
+                            }}
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                          >
+                            <Pencil className="h-4 w-4" />
+                            Modifica
+                          </button>
+                        )}
+                        {editingTeamId === participant.team_id && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void handleUpdateParticipantTeam(participant.team_id)}
+                              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white"
+                            >
+                              <Save className="h-4 w-4" />
+                              Salva
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingTeamId('')
+                                setEditingTeamName('')
+                                setEditingTeamShortName('')
+                              }}
+                              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                            >
+                              Annulla
+                            </button>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => unenrollTeam.mutate({ id: participant.id, ageGroupId: ageGroup.id })}
+                          className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Rimuovi
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => unenrollTeam.mutate({ id: participant.id, ageGroupId: ageGroup.id })}
-                      className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
                   </div>
                 )) : (
                   <div className="rounded-[1.35rem] border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
@@ -3747,87 +3832,23 @@ function AgeGroupConfigurationPanel({
                   </div>
                 )}
               </div>
+
+              <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
+                <button
+                  type="button"
+                  onClick={() => onStepChange?.('formula')}
+                  disabled={remainingSlots !== 0}
+                  className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </section>
           )}
 
         </div>
-
-        {currentTab === 'template' && (
-        <div className="space-y-5">
-          <section className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Passo 3</p>
-            <p className="mt-1 text-lg font-black text-slate-950">Template struttura</p>
-            <p className="mt-1 text-sm leading-6 text-slate-500">Applica un modello esistente oppure salva questa configurazione per riusarla.</p>
-
-            <div className="mt-4 grid gap-2">
-              {allTemplates.map((template) => {
-                const name = template.name
-                const description = template.description ?? ('description' in template ? template.description : '')
-                return (
-                  <button
-                    key={name}
-                    type="button"
-                    onClick={() => void handleApplyTemplate(template)}
-                    className={`rounded-[1.25rem] border px-4 py-3 text-left transition-colors ${
-                      selectedTemplateName === name
-                        ? 'border-emerald-300 bg-emerald-50'
-                        : 'border-slate-200 bg-slate-50 hover:bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-bold text-slate-900">{name}</p>
-                        {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-slate-300" />
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-
-          <section className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-base font-black text-slate-950">Salva come template</p>
-            <p className="mt-1 text-sm leading-6 text-slate-500">Riutilizza questa formula su altri tornei e altre categorie.</p>
-            <div className="mt-4 grid gap-3">
-              <FormField label="Nome template">
-                <input
-                  value={templateName}
-                  onChange={(e) => setTemplateName(e.target.value)}
-                  placeholder="Es. 2 gironi + semifinali"
-                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
-                />
-              </FormField>
-              <FormField label="Descrizione breve">
-                <input
-                  value={templateDescription}
-                  onChange={(e) => setTemplateDescription(e.target.value)}
-                  placeholder="Torneo rapido con finali"
-                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
-                />
-              </FormField>
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleSaveAsTemplate()}
-              disabled={!templateName.trim() || createTemplate.isPending}
-              className="mt-4 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-white disabled:opacity-50"
-            >
-              <Save className="h-4 w-4" />
-              Salva template
-            </button>
-          </section>
-
-          <section className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-base font-black text-slate-950">Controllo manuale</p>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Dopo il salvataggio potrai continuare a intervenire manualmente su squadre, gironi, piazzamenti e risultati.
-            </p>
-          </section>
-        </div>
-        )}
       </div>
     </div>
   )

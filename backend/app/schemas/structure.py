@@ -33,6 +33,10 @@ class TournamentParticipantResponse(BaseModel):
     team_id: str
     team_name: str
     team_short_name: str | None
+    organization_id: str
+    organization_name: str | None
+    tournament_id: str | None
+    is_tournament_team: bool
     team_logo_url: str | None
     city: str | None
     contact_name: str | None

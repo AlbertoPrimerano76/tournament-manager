@@ -93,6 +93,9 @@ async def _ensure_development_schema(conn: AsyncConnection) -> None:
         user_columns = {
             row[1] for row in (await conn.exec_driver_sql("PRAGMA table_info(users)")).fetchall()
         }
+        team_columns = {
+            row[1] for row in (await conn.exec_driver_sql("PRAGMA table_info(teams)")).fetchall()
+        }
         field_columns = {
             row[1] for row in (await conn.exec_driver_sql("PRAGMA table_info(fields)")).fetchall()
         }
@@ -134,6 +137,10 @@ async def _ensure_development_schema(conn: AsyncConnection) -> None:
         if "updated_at" not in user_columns:
             await conn.exec_driver_sql(
                 "ALTER TABLE users ADD COLUMN updated_at DATETIME"
+            )
+        if "tournament_id" not in team_columns:
+            await conn.exec_driver_sql(
+                "ALTER TABLE teams ADD COLUMN tournament_id VARCHAR(36)"
             )
         if "organization_id" not in field_columns:
             await conn.exec_driver_sql(
@@ -218,6 +225,9 @@ async def _ensure_development_schema(conn: AsyncConnection) -> None:
         )
         await conn.exec_driver_sql(
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE"
+        )
+        await conn.exec_driver_sql(
+            "ALTER TABLE teams ADD COLUMN IF NOT EXISTS tournament_id VARCHAR(36)"
         )
         await conn.exec_driver_sql(
             "ALTER TABLE fields ADD COLUMN IF NOT EXISTS organization_id VARCHAR(36)"

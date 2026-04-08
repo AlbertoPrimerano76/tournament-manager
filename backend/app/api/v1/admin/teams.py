@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from app.core.database import get_db
 from app.core.deps import require_editor
 from app.models.organization import Organization
@@ -14,12 +14,17 @@ router = APIRouter()
 @router.get("/teams", response_model=list[TeamResponse])
 async def list_teams(
     organization_id: str | None = None,
+    tournament_id: str | None = None,
     _: User = Depends(require_editor),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Team)
     if organization_id:
         query = query.where(Team.organization_id == organization_id)
+    if tournament_id:
+        query = query.where(or_(Team.tournament_id.is_(None), Team.tournament_id == tournament_id))
+    else:
+        query = query.where(Team.tournament_id.is_(None))
     result = await db.execute(query.order_by(Team.name))
     return result.scalars().all()
 
@@ -97,5 +102,11 @@ async def unenroll_team(
     tt = result.scalar_one_or_none()
     if not tt:
         raise HTTPException(status_code=404, detail="Tournament team not found")
+    team = await db.get(Team, tt.team_id)
     await db.delete(tt)
+    await db.flush()
+    if team and team.tournament_id:
+        remaining_links = await db.execute(select(TournamentTeam.id).where(TournamentTeam.team_id == team.id).limit(1))
+        if remaining_links.scalar_one_or_none() is None:
+            await db.delete(team)
     await db.commit()

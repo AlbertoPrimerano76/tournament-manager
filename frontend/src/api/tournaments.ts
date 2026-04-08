@@ -56,6 +56,10 @@ export interface TournamentParticipant {
   team_id: string
   team_name: string
   team_short_name: string | null
+  organization_id: string
+  organization_name: string | null
+  tournament_id: string | null
+  is_tournament_team: boolean
   team_logo_url: string | null
   city: string | null
   contact_name: string | null

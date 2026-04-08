@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 class TeamCreate(BaseModel):
     organization_id: str
+    tournament_id: str | None = None
     name: str
     short_name: str | None = None
     logo_url: str | None = None
@@ -21,6 +22,7 @@ class TeamUpdate(BaseModel):
 class TeamResponse(BaseModel):
     id: str
     organization_id: str
+    tournament_id: str | None
     name: str
     short_name: str | None
     logo_url: str | None
