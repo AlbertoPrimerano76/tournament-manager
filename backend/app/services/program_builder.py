@@ -537,6 +537,41 @@ def _queue_group_phase_advancements(
     return queued
 
 
+def _queue_knockout_phase_advancements(
+    phase_order: int,
+    phase_config: dict[str, Any],
+    phases_config: list[dict[str, Any]],
+    phase_order_map: dict[str, int],
+    winner_entries: list[dict[str, Any]],
+    loser_entries: list[dict[str, Any]],
+) -> dict[int, list[dict[str, Any]]]:
+    queued: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    routes = phase_config.get("advancement_routes")
+
+    if isinstance(routes, list) and routes:
+        for route in routes:
+            if not isinstance(route, dict):
+                continue
+            target_phase_id = route.get("target_phase_id")
+            if not isinstance(target_phase_id, str) or not target_phase_id:
+                continue
+            target_phase_order = phase_order_map.get(target_phase_id)
+            if target_phase_order is None or target_phase_order <= phase_order:
+                continue
+            source_mode = route.get("source_mode")
+            if source_mode == "knockout_winner":
+                queued[target_phase_order].extend(winner_entries)
+            elif source_mode == "knockout_loser":
+                queued[target_phase_order].extend(loser_entries)
+        return queued
+
+    next_phase_type = phase_config.get("next_phase_type")
+    next_phase_order = phase_order + 1
+    if isinstance(next_phase_type, str) and next_phase_type and next_phase_order <= len(phases_config):
+        queued[next_phase_order].extend(winner_entries)
+    return queued
+
+
 def _build_group_block_buckets(entries: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
     group_names = sorted({
         str(entry.get("group_name"))
@@ -771,6 +806,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             },
             seeding_source={
                 "bracket_mode": phase_config.get("bracket_mode", "standard"),
+                "knockout_progression": phase_config.get("knockout_progression", "full_bracket"),
                 "next_phase_type": phase_config.get("next_phase_type") or "",
             },
         )
@@ -911,10 +947,13 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             carry_matches = [("Tabellone principale", current_entries)]
 
         next_entries: list[dict[str, Any]] = []
+        knockout_winner_entries: list[dict[str, Any]] = []
+        knockout_loser_entries: list[dict[str, Any]] = []
         match_position = 1
         knockout_lanes = _knockout_lanes(age_group, phase_config) or [{"field_name": None, "field_number": None}]
         knockout_slot_index = 0
         created_knockout_matches: list[Match] = []
+        knockout_progression = (phase.seeding_source or {}).get("knockout_progression", "full_bracket")
 
         for bucket_name, bucket_entries in carry_matches:
             if not bucket_entries:
@@ -960,6 +999,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                 round_entries = padded
                 round_size = bracket_size
                 round_order = 1
+                stop_after_first_round = knockout_progression == "single_round"
 
                 while round_size >= 2:
                     pairs = _pair_seed_entries(round_entries)
@@ -994,12 +1034,19 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                         if scheduled_at:
                             phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
                         knockout_slot_index += 1
-                        winners.append({"label": f"Vincente {round_name} {pair_index + 1}"})
+                        winner_entry = {"label": f"Vincente {round_name} {pair_index + 1}"}
+                        winners.append(winner_entry)
+                        if stop_after_first_round:
+                            knockout_winner_entries.append(winner_entry)
+                            if away_entry and away_label != "Bye":
+                                knockout_loser_entries.append({"label": f"Perdente {round_name} {pair_index + 1}"})
 
                     round_entries = winners
                     round_size = len(round_entries)
                     round_order += 1
 
+                    if stop_after_first_round:
+                        break
                     if round_size <= 1:
                         break
 
@@ -1013,9 +1060,16 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
         )
 
         current_entries = next_entries
-        next_phase_type = phase_config.get("next_phase_type")
-        if isinstance(next_phase_type, str) and next_phase_type and (phase_order + 1) <= len(phases_config):
-            queued_entries_by_phase[phase_order + 1].extend(current_entries)
+        queued_knockout_advancements = _queue_knockout_phase_advancements(
+            phase_order,
+            phase_config,
+            phases_config,
+            phase_order_map,
+            knockout_winner_entries or current_entries,
+            knockout_loser_entries,
+        )
+        for target_phase_order, target_entries in queued_knockout_advancements.items():
+            queued_entries_by_phase[target_phase_order].extend(target_entries)
         previous_phase_end = phase_end
 
     if total_created_matches == 0:
@@ -1130,9 +1184,19 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             for target_phase_order, target_entries in queued_advancements.items():
                 queued_entries_by_phase[target_phase_order].extend(target_entries)
         else:
-            next_phase_type = (phase.seeding_source or {}).get("next_phase_type")
-            if isinstance(next_phase_type, str) and next_phase_type and (phase.phase_order + 1) <= len(phases_config):
-                queued_entries_by_phase[phase.phase_order + 1].extend(current_entries)
+            queued_knockout_advancements = _queue_knockout_phase_advancements(
+                phase.phase_order,
+                {
+                    "advancement_routes": (phase.advancement_config or {}).get("advancement_routes", []),
+                    "next_phase_type": (phase.seeding_source or {}).get("next_phase_type"),
+                },
+                phases_config,
+                phase_order_map,
+                current_entries,
+                [],
+            )
+            for target_phase_order, target_entries in queued_knockout_advancements.items():
+                queued_entries_by_phase[target_phase_order].extend(target_entries)
         phase_match_times = [match.scheduled_at for match in phase.matches if match.scheduled_at]
         if phase_match_times:
             previous_phase_end = max(phase_match_times) + match_slot_length
@@ -1161,6 +1225,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             },
             seeding_source={
                 "bracket_mode": phase_config.get("bracket_mode", "standard"),
+                "knockout_progression": phase_config.get("knockout_progression", "full_bracket"),
                 "next_phase_type": phase_config.get("next_phase_type") or "",
             },
         )
@@ -1288,10 +1353,13 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             carry_matches = [("Tabellone principale", current_entries)]
 
         next_entries: list[dict[str, Any]] = []
+        knockout_winner_entries: list[dict[str, Any]] = []
+        knockout_loser_entries: list[dict[str, Any]] = []
         match_position = 1
         knockout_lanes = _knockout_lanes(age_group, phase_config) or [{"field_name": None, "field_number": None}]
         knockout_slot_index = 0
         created_knockout_matches: list[Match] = []
+        knockout_progression = (phase.seeding_source or {}).get("knockout_progression", "full_bracket")
 
         for bucket_name, bucket_entries in carry_matches:
             if not bucket_entries:
@@ -1333,6 +1401,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                 round_entries = padded
                 round_size = bracket_size
                 round_order = 1
+                stop_after_first_round = knockout_progression == "single_round"
 
                 while round_size >= 2:
                     pairs = _pair_seed_entries(round_entries)
@@ -1366,10 +1435,17 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                         if scheduled_at:
                             phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
                         knockout_slot_index += 1
-                        winners.append({"label": f"Vincente {round_name} {pair_index + 1}"})
+                        winner_entry = {"label": f"Vincente {round_name} {pair_index + 1}"}
+                        winners.append(winner_entry)
+                        if stop_after_first_round:
+                            knockout_winner_entries.append(winner_entry)
+                            if away_entry and away_label != "Bye":
+                                knockout_loser_entries.append({"label": f"Perdente {round_name} {pair_index + 1}"})
                     round_entries = winners
                     round_size = len(round_entries)
                     round_order += 1
+                    if stop_after_first_round:
+                        break
                     if round_size <= 1:
                         break
             next_entries.extend(bucket_entries)
@@ -1377,9 +1453,16 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
         await db.flush()
         _assign_cross_group_referees(created_knockout_matches, {"all": [team.id for team in participants]}, participants)
         current_entries = next_entries
-        next_phase_type = phase_config.get("next_phase_type")
-        if isinstance(next_phase_type, str) and next_phase_type and (phase_order_number + 1) <= len(phases_config):
-            queued_entries_by_phase[phase_order_number + 1].extend(current_entries)
+        queued_knockout_advancements = _queue_knockout_phase_advancements(
+            phase_order_number,
+            phase_config,
+            phases_config,
+            phase_order_map,
+            knockout_winner_entries or current_entries,
+            knockout_loser_entries,
+        )
+        for target_phase_order, target_entries in queued_knockout_advancements.items():
+            queued_entries_by_phase[target_phase_order].extend(target_entries)
         previous_phase_end = phase_end
 
     if total_created_matches == 0:

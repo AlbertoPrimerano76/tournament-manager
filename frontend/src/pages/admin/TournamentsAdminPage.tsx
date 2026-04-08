@@ -1277,6 +1277,7 @@ type StructurePhase = {
   phase_date: string
   start_time: string
   round_trip_mode: 'single' | 'double'
+  knockout_progression: 'full_bracket' | 'single_round'
   num_groups: number | null
   group_sizes: string
   qualifiers_per_group: number | null
@@ -1293,7 +1294,7 @@ type StructurePhase = {
 type AdvancementRoute = {
   id: string
   target_phase_id: string
-  source_mode: 'group_rank' | 'best_extra'
+  source_mode: 'group_rank' | 'best_extra' | 'knockout_winner' | 'knockout_loser'
   source_groups: string[]
   rank_from: number | null
   rank_to: number | null
@@ -1390,6 +1391,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_date: '',
           start_time: '',
           round_trip_mode: 'single',
+          knockout_progression: 'full_bracket',
           num_groups: 1,
           group_sizes: '',
           qualifiers_per_group: null,
@@ -1425,6 +1427,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_date: '',
           start_time: '',
           round_trip_mode: 'single',
+          knockout_progression: 'full_bracket',
           num_groups: 2,
           group_sizes: '4,4',
           qualifiers_per_group: 2,
@@ -1444,6 +1447,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_date: '',
           start_time: '',
           round_trip_mode: 'single',
+          knockout_progression: 'full_bracket',
           num_groups: null,
           group_sizes: '',
           qualifiers_per_group: null,
@@ -1479,6 +1483,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_date: '',
           start_time: '',
           round_trip_mode: 'single',
+          knockout_progression: 'full_bracket',
           num_groups: 4,
           group_sizes: '4,4,4,4',
           qualifiers_per_group: 1,
@@ -1498,6 +1503,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_date: '',
           start_time: '',
           round_trip_mode: 'single',
+          knockout_progression: 'full_bracket',
           num_groups: null,
           group_sizes: '',
           qualifiers_per_group: null,
@@ -1533,6 +1539,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_date: '',
           start_time: '',
           round_trip_mode: 'single',
+          knockout_progression: 'full_bracket',
           num_groups: 2,
           group_sizes: '6,6',
           qualifiers_per_group: null,
@@ -1552,6 +1559,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_date: '',
           start_time: '',
           round_trip_mode: 'single',
+          knockout_progression: 'full_bracket',
           num_groups: null,
           group_sizes: '',
           qualifiers_per_group: null,
@@ -2465,6 +2473,7 @@ function AgeGroupConfigurationPanel({
 
   function addAdvancementRoute(phaseIndex: number) {
     setStructure((current) => {
+      const sourcePhase = current.phases[phaseIndex]
       const nextPhase = current.phases[phaseIndex + 1]
       return {
         ...current,
@@ -2474,7 +2483,10 @@ function AgeGroupConfigurationPanel({
               ...phase,
               advancement_routes: [
                 ...phase.advancement_routes,
-                makeAdvancementRoute({ targetPhaseId: nextPhase?.id ?? '' }),
+                makeAdvancementRoute({
+                  targetPhaseId: nextPhase?.id ?? '',
+                  sourceMode: sourcePhase?.phase_type === 'KNOCKOUT' ? 'knockout_winner' : 'group_rank',
+                }),
               ],
             }
             : phase
@@ -2502,6 +2514,12 @@ function AgeGroupConfigurationPanel({
               nextRoute.rank_from = nextRoute.rank_from ?? 1
               nextRoute.rank_to = nextRoute.rank_to ?? nextRoute.rank_from ?? 1
               nextRoute.extra_count = null
+            }
+            if (patch.source_mode === 'knockout_winner' || patch.source_mode === 'knockout_loser') {
+              nextRoute.rank_from = null
+              nextRoute.rank_to = null
+              nextRoute.extra_count = null
+              nextRoute.source_groups = []
             }
             return nextRoute
           }),
@@ -3309,20 +3327,24 @@ function AgeGroupConfigurationPanel({
                               <option value="group_blocks">2 gironi: blocchi 1-4, 5-8, 9-12</option>
                             </select>
                           </FormField>
-                          <FormField label="Fase successiva">
+                          <FormField label="Sviluppo fase">
                             <select
-                              value={phase.next_phase_type}
-                              onChange={(e) => setPhase(index, { next_phase_type: e.target.value as StructurePhase['next_phase_type'] })}
+                              value={phase.knockout_progression}
+                              onChange={(e) => setPhase(index, { knockout_progression: e.target.value as StructurePhase['knockout_progression'] })}
                               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
                             >
-                              <option value="">Nessuna fase successiva</option>
-                              <option value="GROUP_STAGE">Ancora gironi</option>
-                              <option value="KNOCKOUT">Ancora eliminazione</option>
+                              <option value="full_bracket">Tabellone completo nella fase</option>
+                              <option value="single_round">Solo un turno, poi instradamento</option>
                             </select>
                           </FormField>
                           {phase.bracket_mode === 'group_blocks' && (
                             <div className="rounded-[1.2rem] border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900 sm:col-span-2">
                               Questa modalità crea per ogni blocco: semifinali incrociate, finale 1-2 e finale 3-4. Lo stesso schema si ripete per 5-8, 9-12 e gli altri piazzamenti.
+                            </div>
+                          )}
+                          {phase.knockout_progression === 'single_round' && (
+                            <div className="rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:col-span-2">
+                              Questa fase genera un solo turno. Poi puoi mandare vincenti e perdenti verso nuove fasi: semifinali, finale 1-2, finale 3-4, piazzamenti, altri gironi.
                             </div>
                           )}
                         </div>
@@ -3436,6 +3458,77 @@ function AgeGroupConfigurationPanel({
                               )
                             })}
                           </div>
+                        </div>
+                      )}
+
+                      {phase.phase_type === 'KNOCKOUT' && phase.knockout_progression === 'single_round' && (
+                        <div className="mt-4 rounded-[1.3rem] border border-slate-200 bg-slate-50 p-4">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Instradamento dopo il turno</p>
+                              <p className="mt-1 text-sm text-slate-600">
+                                Decidi dove vanno le vincenti e le perdenti di questo turno singolo.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => addAdvancementRoute(index)}
+                              disabled={structure.phases.slice(index + 1).length === 0}
+                              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              <Plus className="h-4 w-4" />
+                              Aggiungi instradamento
+                            </button>
+                          </div>
+
+                          {phase.advancement_routes.length === 0 ? (
+                            <div className="mt-4 rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                              Se lasci vuoto, il turno si chiude qui.
+                            </div>
+                          ) : (
+                            <div className="mt-4 space-y-3">
+                              {phase.advancement_routes.map((route) => {
+                                const availableTargets = structure.phases.slice(index + 1)
+                                return (
+                                  <div key={route.id} className="rounded-[1.15rem] border border-slate-200 bg-white p-3">
+                                    <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_220px_auto] lg:items-end">
+                                      <FormField label="Destinazione">
+                                        <select
+                                          value={route.target_phase_id}
+                                          onChange={(e) => setAdvancementRoute(index, route.id, { target_phase_id: e.target.value })}
+                                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                                        >
+                                          <option value="">Seleziona fase</option>
+                                          {availableTargets.map((targetPhase, targetIndex) => (
+                                            <option key={targetPhase.id} value={targetPhase.id}>
+                                              {`Fase ${index + targetIndex + 2} · ${targetPhase.name} · ${targetPhase.phase_type === 'GROUP_STAGE' ? 'Gironi' : 'Eliminazione'}`}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </FormField>
+                                      <FormField label="Chi va avanti">
+                                        <select
+                                          value={route.source_mode}
+                                          onChange={(e) => setAdvancementRoute(index, route.id, { source_mode: e.target.value as AdvancementRoute['source_mode'] })}
+                                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                                        >
+                                          <option value="knockout_winner">Vincenti del turno</option>
+                                          <option value="knockout_loser">Perdenti del turno</option>
+                                        </select>
+                                      </FormField>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeAdvancementRoute(index, route.id)}
+                                        className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -3878,7 +3971,16 @@ function estimateKnockoutMatches(phase: StructurePhase): number {
     const sizes = parseGroupSizes(phase.group_sizes)
     return sizes.reduce((total, size) => total + (size >= 4 ? 4 : size === 2 ? 1 : 0), 0)
   }
+  if (phase.knockout_progression === 'single_round') {
+    const entrants = Math.max(parseGroupSizes(phase.group_sizes).reduce((sum, value) => sum + value, 0), 0)
+    return entrants > 1 ? Math.ceil(_nextPowerOfTwoUi(entrants) / 2) : 0
+  }
   return 0
+}
+
+function _nextPowerOfTwoUi(value: number): number {
+  if (value <= 1) return 1
+  return 2 ** Math.ceil(Math.log2(value))
 }
 
 function estimatePhaseEndTime(structure: StructureConfig, phaseIndex: number, participantCount: number): string | null {
@@ -3946,6 +4048,9 @@ function estimateGroupStageMatches(phase: StructurePhase): number | null {
 
 function describeKnockoutEstimate(phase: StructurePhase): string {
   if (phase.phase_type !== 'KNOCKOUT') return ''
+  if (phase.knockout_progression === 'single_round') {
+    return 'Un solo turno con vincenti/perdenti instradabili verso altre fasi'
+  }
   return phase.bracket_mode === 'placement'
     ? 'Piazzamenti su tutti i ranghi qualificati'
     : phase.bracket_mode === 'group_blocks'
@@ -4005,6 +4110,7 @@ function serializeStructureForComparison(structure: StructureConfig) {
       phase_date: phase.phase_date,
       start_time: phase.start_time,
       round_trip_mode: phase.round_trip_mode,
+      knockout_progression: phase.knockout_progression,
       num_groups: phase.num_groups,
       group_sizes: phase.group_sizes,
       qualifiers_per_group: phase.qualifiers_per_group,
@@ -4195,6 +4301,18 @@ function validateStructureConfig(structure: StructureConfig): string[] {
     if (phase.phase_type === 'KNOCKOUT' && phase.knockout_field_assignments.length === 0) {
       errors.push(`${phaseLabel}: assegna almeno un campo alla fase a eliminazione.`)
     }
+    if (phase.phase_type === 'KNOCKOUT' && phase.knockout_progression === 'single_round') {
+      for (const route of phase.advancement_routes) {
+        const targetPhase = structure.phases.slice(index + 1).find((candidate) => candidate.id === route.target_phase_id)
+        if (!targetPhase) {
+          errors.push(`${phaseLabel}: ogni instradamento KO deve puntare a una fase successiva.`)
+          continue
+        }
+        if (route.source_mode !== 'knockout_winner' && route.source_mode !== 'knockout_loser') {
+          errors.push(`${phaseLabel}: nel turno singolo puoi instradare solo vincenti o perdenti.`)
+        }
+      }
+    }
   })
 
   return errors
@@ -4363,6 +4481,7 @@ function normalizePhase(value: unknown, index: number): StructurePhase {
     phase_date: typeof (input as { phase_date?: unknown }).phase_date === 'string' ? ((input as { phase_date?: string }).phase_date ?? '') : '',
     start_time: typeof (input as { start_time?: unknown }).start_time === 'string' ? ((input as { start_time?: string }).start_time ?? '') : '',
     round_trip_mode: input.round_trip_mode === 'double' ? 'double' : 'single',
+    knockout_progression: input.knockout_progression === 'single_round' ? 'single_round' : 'full_bracket',
     num_groups: typeof input.num_groups === 'number' ? input.num_groups : null,
     group_sizes: typeof input.group_sizes === 'string' ? input.group_sizes : '',
     qualifiers_per_group: typeof input.qualifiers_per_group === 'number' ? input.qualifiers_per_group : null,
@@ -4408,7 +4527,13 @@ function normalizeAdvancementRoutes(value: unknown): AdvancementRoute[] {
       return {
         id: typeof input.id === 'string' ? input.id : `adv-route-${index}-${Date.now()}`,
         target_phase_id: typeof input.target_phase_id === 'string' ? input.target_phase_id : '',
-        source_mode: input.source_mode === 'best_extra' ? 'best_extra' : 'group_rank',
+        source_mode: input.source_mode === 'best_extra'
+          ? 'best_extra'
+          : input.source_mode === 'knockout_winner'
+            ? 'knockout_winner'
+            : input.source_mode === 'knockout_loser'
+              ? 'knockout_loser'
+              : 'group_rank',
         source_groups: Array.isArray(input.source_groups)
           ? input.source_groups.filter((item): item is string => typeof item === 'string' && item.length > 0)
           : [],
@@ -4439,6 +4564,7 @@ function makeEmptyPhase(index: number): StructurePhase {
     phase_date: '',
     start_time: '',
     round_trip_mode: 'single',
+    knockout_progression: 'full_bracket',
     num_groups: null,
     group_sizes: '',
     qualifiers_per_group: null,
@@ -4593,7 +4719,13 @@ function StructurePreviewCard({
                     <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
                       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Esito</p>
                       <p className="mt-1 text-sm font-semibold text-slate-800">
-                        {describeKnockoutEstimate(phase)}
+                        {phase.knockout_progression === 'single_round' && phase.advancement_routes.length > 0
+                          ? phase.advancement_routes.map((route) => {
+                            const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
+                            const outcome = route.source_mode === 'knockout_loser' ? 'Perdenti' : 'Vincenti'
+                            return `${outcome} -> ${targetPhase?.name ?? 'fase da definire'}`
+                          }).join(' | ')
+                          : describeKnockoutEstimate(phase)}
                       </p>
                     </div>
                   </>
