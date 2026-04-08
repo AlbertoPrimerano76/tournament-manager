@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useQueries } from '@tanstack/react-query'
 import {
   useAdminTournaments, useCreateTournament, useUpdateTournament, useDeleteTournament,
   useAdminTournamentAgeGroups, useCreateAgeGroup, useDeleteAgeGroup,
   useAgeGroupParticipants, useStructureTemplates, useUpdateAgeGroupStructure,
   useUpdateAgeGroup, useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, useGenerateAgeGroupProgram, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate, type AgeGroupScoringRules,
 } from '@/api/tournaments'
+import { apiClient } from '@/api/client'
 import { useAdminOrganizations, useCreateOrganization } from '@/api/organizations'
 import { useAdminTeams, useCreateTeam, useEnrollTournamentTeam, useUnenrollTournamentTeam } from '@/api/teams'
 import { useOrganizationFields } from '@/api/fields'
 import ImageUpload from '@/components/shared/ImageUpload'
 import AgeGroupProgramView from '@/components/program/AgeGroupProgramView'
-import { Calendar, MapPin, Globe, Pencil, Trash2, X, Plus, Eye, EyeOff, Layers3, Users, Save, ArrowRight, ExternalLink, Sparkles } from 'lucide-react'
+import { Calendar, MapPin, Globe, Pencil, Trash2, X, Plus, Eye, EyeOff, Layers3, Users, Save, ArrowRight, ExternalLink, Sparkles, AlertTriangle, Clock3 } from 'lucide-react'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
 import { useAuth } from '@/context/AuthContext'
@@ -462,6 +464,8 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
           <AgeGroupsOperationsPanel tournament={tournament} />
         </div>
       </section>
+
+      <TournamentFieldSchedulePanel tournament={tournament} />
     </div>
   )
 }
@@ -1781,6 +1785,130 @@ function AgeGroupsOperationsPanel({ tournament }: { tournament: Tournament }) {
   )
 }
 
+type FieldScheduleEntry = {
+  id: string
+  ageGroupId: string
+  ageGroupLabel: string
+  phaseName: string
+  groupName: string | null
+  scheduledAt: string
+  endsAt: Date
+  fieldName: string
+  fieldNumber: number | null
+  homeLabel: string
+  awayLabel: string
+  overlap: boolean
+}
+
+function TournamentFieldSchedulePanel({ tournament }: { tournament: Tournament }) {
+  const { data: ageGroups, isLoading, error } = useAdminTournamentAgeGroups(tournament.id)
+  const programQueries = useQueries({
+    queries: (ageGroups ?? []).map((ageGroup) => ({
+      queryKey: ['admin-age-group-program', ageGroup.id, 'field-schedule'],
+      queryFn: async () => {
+        const res = await apiClient.get<AgeGroupProgram>(`/api/v1/admin/age-groups/${ageGroup.id}/program`)
+        return res.data
+      },
+      enabled: Boolean(ageGroup.id),
+    })),
+  })
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        Errore nel caricamento del calendario campi.
+      </div>
+    )
+  }
+
+  const isProgramsLoading = programQueries.some((query) => query.isLoading)
+  const programs = programQueries.map((query) => query.data).filter((item): item is AgeGroupProgram => Boolean(item))
+  const scheduleByField = buildTournamentFieldSchedule(ageGroups ?? [], programs)
+  const fieldEntries = Object.entries(scheduleByField)
+  const overlapCount = fieldEntries.reduce((total, [, entries]) => total + entries.filter((entry) => entry.overlap).length, 0)
+
+  return (
+    <section className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
+      <div className="border-b border-slate-200 px-6 py-5">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Campi</p>
+        <h2 className="mt-1 text-2xl font-black text-slate-950">Calendario per impianto e campo</h2>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+          Vista unica del torneo per controllare chi gioca su ogni campo in ogni orario ed evidenziare subito eventuali sovrapposizioni.
+        </p>
+        {overlapCount > 0 && (
+          <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700">
+            <AlertTriangle className="h-4 w-4" />
+            {overlapCount} {overlapCount === 1 ? 'sovrapposizione rilevata' : 'sovrapposizioni rilevate'}
+          </div>
+        )}
+      </div>
+
+      <div className="p-6">
+        {isLoading || isProgramsLoading ? (
+          <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-500">
+            Caricamento calendario campi...
+          </div>
+        ) : fieldEntries.length === 0 ? (
+          <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-500">
+            Nessuna partita con campo assegnato nel torneo.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {fieldEntries.map(([fieldKey, entries]) => (
+              <div key={fieldKey} className="overflow-hidden rounded-[1.6rem] border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-200 bg-[linear-gradient(135deg,_#ffffff_0%,_#f8fafc_100%)] px-5 py-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Impianto e campo</p>
+                      <h3 className="mt-1 text-lg font-black text-slate-950">{fieldKey}</h3>
+                    </div>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">
+                      <Clock3 className="h-3.5 w-3.5" />
+                      {entries.length} {entries.length === 1 ? 'partita programmata' : 'partite programmate'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="divide-y divide-slate-100">
+                  {entries.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className={`grid gap-3 px-5 py-4 md:grid-cols-[110px_minmax(0,1fr)_200px] md:items-center ${
+                        entry.overlap ? 'bg-amber-50/70' : 'bg-white'
+                      }`}
+                    >
+                      <div>
+                        <p className="text-sm font-black text-slate-950">{format(new Date(entry.scheduledAt), 'HH:mm', { locale: it })}</p>
+                        <p className="mt-1 text-xs text-slate-500">{format(new Date(entry.scheduledAt), 'EEE d MMM', { locale: it })}</p>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-900">{entry.homeLabel} vs {entry.awayLabel}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {entry.ageGroupLabel} · {entry.phaseName}{entry.groupName ? ` · ${entry.groupName}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+                          fino alle {format(entry.endsAt, 'HH:mm', { locale: it })}
+                        </span>
+                        {entry.overlap && (
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                            sovrapposta
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
 function StatusPill({
   label,
   tone,
@@ -2393,13 +2521,31 @@ function AgeGroupConfigurationPanel({
   }
 
   function removePlayingField(index: number) {
-    setStructure((current) => ({
-      ...current,
-      schedule: {
-        ...current.schedule,
-        playing_fields: current.schedule.playing_fields.filter((_, playingFieldIndex) => playingFieldIndex !== index),
-      },
-    }))
+    setStructure((current) => {
+      const removedField = current.schedule.playing_fields[index]
+      if (!removedField) return current
+      const isRemovedField = (field: PlayingFieldConfig) => (
+        field.field_name === removedField.field_name && field.field_number === removedField.field_number
+      )
+
+      return {
+        ...current,
+        schedule: {
+          ...current.schedule,
+          playing_fields: current.schedule.playing_fields.filter((_, playingFieldIndex) => playingFieldIndex !== index),
+        },
+        phases: current.phases.map((phase) => ({
+          ...phase,
+          group_field_assignments: Object.fromEntries(
+            Object.entries(phase.group_field_assignments).map(([groupName, assignments]) => [
+              groupName,
+              assignments.filter((field) => !isRemovedField(field)),
+            ]),
+          ),
+          knockout_field_assignments: phase.knockout_field_assignments.filter((field) => !isRemovedField(field)),
+        })),
+      }
+    })
   }
 
   const currentTab = activeTab ?? 'formula'
@@ -3719,6 +3865,67 @@ function hasProgramRecordedResults(program: AgeGroupProgram | undefined) {
     || match.away_tries !== null
     || match.status === 'COMPLETED'
   )) > 0
+}
+
+function buildTournamentFieldSchedule(ageGroups: AgeGroup[], programs: AgeGroupProgram[]) {
+  const ageGroupMap = new Map(ageGroups.map((ageGroup) => [ageGroup.id, ageGroup] as const))
+  const grouped = new Map<string, FieldScheduleEntry[]>()
+
+  for (const program of programs) {
+    const ageGroup = ageGroupMap.get(program.age_group_id)
+    const structure = normalizeStructureConfig(ageGroup?.structure_config)
+    const durationMinutes = structure.schedule.match_duration_minutes ?? 12
+    const ageGroupLabel = ageGroup?.display_name || ageGroup?.age_group || program.display_name || program.age_group
+
+    for (const day of program.days) {
+      for (const phase of day.phases) {
+        const allMatches = [
+          ...phase.groups.flatMap((group) => group.matches.map((match) => ({ ...match, group_name: group.name }))),
+          ...phase.knockout_matches,
+        ]
+        for (const match of allMatches) {
+          if (!match.scheduled_at || !match.field_name) continue
+          const startsAt = new Date(match.scheduled_at)
+          const endsAt = new Date(startsAt.getTime() + (durationMinutes * 60_000))
+          const fieldKey = `${match.field_name}${match.field_number ? ` · Campo ${match.field_number}` : ''}`
+          const entries = grouped.get(fieldKey) ?? []
+          entries.push({
+            id: match.id,
+            ageGroupId: program.age_group_id,
+            ageGroupLabel,
+            phaseName: phase.name,
+            groupName: match.group_name,
+            scheduledAt: match.scheduled_at,
+            endsAt,
+            fieldName: match.field_name,
+            fieldNumber: match.field_number,
+            homeLabel: match.home_label,
+            awayLabel: match.away_label,
+            overlap: false,
+          })
+          grouped.set(fieldKey, entries)
+        }
+      }
+    }
+  }
+
+  return Object.fromEntries(
+    [...grouped.entries()]
+      .map(([fieldKey, entries]): [string, FieldScheduleEntry[]] => {
+        const sortedEntries = [...entries].sort((left, right) => (
+          new Date(left.scheduledAt).getTime() - new Date(right.scheduledAt).getTime()
+        ))
+        let lastEndTime: number | null = null
+        const withOverlap = sortedEntries.map((entry) => {
+          const startTime = new Date(entry.scheduledAt).getTime()
+          const overlap = lastEndTime !== null && startTime < lastEndTime
+          lastEndTime = Math.max(lastEndTime ?? 0, entry.endsAt.getTime())
+          return { ...entry, overlap }
+        })
+        return [fieldKey, withOverlap]
+      })
+      .sort((left, right) => left[0].localeCompare(right[0])),
+  ) as Record<string, FieldScheduleEntry[]>
 }
 
 function normalizeStructureConfig(value: unknown): StructureConfig {
