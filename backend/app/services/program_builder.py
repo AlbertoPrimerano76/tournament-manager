@@ -121,6 +121,7 @@ def _schedule_playing_fields(age_group: TournamentAgeGroup) -> list[dict[str, An
         return []
 
     playing_fields: list[dict[str, Any]] = []
+    seen: set[tuple[str, int | None]] = set()
     for raw_field in raw_fields:
         if not isinstance(raw_field, dict):
             continue
@@ -128,10 +129,15 @@ def _schedule_playing_fields(age_group: TournamentAgeGroup) -> list[dict[str, An
         field_number = raw_field.get("field_number")
         if not field_name:
             continue
-        playing_fields.append({
+        normalized_field = {
             "field_name": str(field_name),
             "field_number": int(field_number) if isinstance(field_number, int) else None,
-        })
+        }
+        field_key = (normalized_field["field_name"], normalized_field["field_number"])
+        if field_key in seen:
+            continue
+        seen.add(field_key)
+        playing_fields.append(normalized_field)
     return playing_fields
 
 
@@ -211,6 +217,7 @@ def _group_lanes(
         raw_assignments = {}
     raw_lanes = raw_assignments.get(group_name, [])
     lanes: list[dict[str, Any]] = []
+    seen: set[tuple[str, int | None]] = set()
     if isinstance(raw_lanes, list):
         for lane in raw_lanes:
             if not isinstance(lane, dict):
@@ -219,10 +226,15 @@ def _group_lanes(
             field_number = lane.get("field_number")
             if not field_name:
                 continue
-            lanes.append({
+            normalized_lane = {
                 "field_name": str(field_name),
                 "field_number": int(field_number) if isinstance(field_number, int) else None,
-            })
+            }
+            lane_key = (normalized_lane["field_name"], normalized_lane["field_number"])
+            if lane_key in seen:
+                continue
+            seen.add(lane_key)
+            lanes.append(normalized_lane)
     if lanes:
         return lanes
 
