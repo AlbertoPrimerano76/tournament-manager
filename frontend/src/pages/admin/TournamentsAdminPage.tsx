@@ -2029,6 +2029,7 @@ function AgeGroupConfigurationPanel({
   pageMode?: boolean
 }) {
   const { data: participants } = useAgeGroupParticipants(ageGroup.id)
+  const { data: program } = useAdminAgeGroupProgram(ageGroup.id)
   const { data: teams } = useAdminTeams()
   const { data: organizations } = useAdminOrganizations()
   const { data: facilities } = useOrganizationFields(tournament.organization_id)
@@ -2094,6 +2095,7 @@ function AgeGroupConfigurationPanel({
     || (ageGroup.structure_template_name ?? '') !== selectedTemplateName
   const isScoringDirty = serializeScoringRules(normalizeScoringRules(ageGroup.scoring_rules)) !== serializeScoringRules(scoringRules)
   const readiness = buildGenerationReadiness(structure, participants?.length ?? 0, validationErrors, isStructureDirty || isScoringDirty)
+  const hasRecordedResults = hasProgramRecordedResults(program)
 
   async function handleAddTeam() {
     if (!selectedTeamId) return
@@ -2446,12 +2448,18 @@ function AgeGroupConfigurationPanel({
                   <button
                     type="button"
                     onClick={() => void handleGenerateProgram()}
-                    disabled={generateProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
+                    disabled={generateProgram.isPending || updateAgeGroup.isPending || !readiness.isReady || hasRecordedResults}
                     className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {generateProgram.isPending ? 'Generazione...' : 'Salva e genera partite'}
+                    {generateProgram.isPending ? 'Generazione...' : program?.generated ? 'Salva e rigenera partite' : 'Salva e genera partite'}
                   </button>
                 </div>
+
+                {hasRecordedResults && (
+                  <div className="mt-4 rounded-[1.2rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                    Hai già inserito almeno un risultato in questa categoria. La rigenerazione massiva è bloccata per non perdere dati.
+                  </div>
+                )}
 
                 {readiness.blockers.length > 0 && (
                   <div className="mt-4 space-y-1 text-sm text-amber-900">
@@ -3042,11 +3050,11 @@ function AgeGroupConfigurationPanel({
                 <button
                   type="button"
                   onClick={() => void handleGenerateProgram()}
-                  disabled={generateProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
+                  disabled={generateProgram.isPending || updateAgeGroup.isPending || !readiness.isReady || hasRecordedResults}
                   className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Sparkles className="h-4 w-4" />
-                  {generateProgram.isPending ? 'Generazione...' : 'Salva e genera partite'}
+                  {generateProgram.isPending ? 'Generazione...' : program?.generated ? 'Salva e rigenera partite' : 'Salva e genera partite'}
                 </button>
               </div>
             </div>
@@ -3676,6 +3684,17 @@ function countProgramMatches(
       return phaseTotal + (predicate ? allMatches.filter(predicate).length : allMatches.length)
     }, 0)
   ), 0)
+}
+
+function hasProgramRecordedResults(program: AgeGroupProgram | undefined) {
+  if (!program) return false
+  return countProgramMatches(program, (match) => (
+    match.home_score !== null
+    || match.away_score !== null
+    || match.home_tries !== null
+    || match.away_tries !== null
+    || match.status === 'COMPLETED'
+  )) > 0
 }
 
 function normalizeStructureConfig(value: unknown): StructureConfig {

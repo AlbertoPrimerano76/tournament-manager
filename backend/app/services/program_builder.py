@@ -29,6 +29,20 @@ AUTO_SEED_PREFIX = "AUTOSEED::"
 LOCAL_TIMEZONE = ZoneInfo("Europe/Rome")
 
 
+def _age_group_has_recorded_results(age_group: TournamentAgeGroup) -> bool:
+    for phase in age_group.phases:
+        for match in phase.matches:
+            if match.result_entered_at is not None:
+                return True
+            if match.home_score is not None or match.away_score is not None:
+                return True
+            if match.home_tries is not None or match.away_tries is not None:
+                return True
+            if match.status == MatchStatus.COMPLETED:
+                return True
+    return False
+
+
 def parse_group_sizes(raw: str | None, fallback_groups: int, total_teams: int) -> list[int]:
     values = [
         int(item.strip())
@@ -479,6 +493,9 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
     if not age_group:
         raise ValueError("Age group not found")
 
+    if age_group.phases and _age_group_has_recorded_results(age_group):
+        raise ValueError("Non puoi rigenerare tutto il programma dopo aver inserito risultati. Usa rigenerazione per fase o modifiche manuali.")
+
     for phase in list(age_group.phases):
         await db.delete(phase)
     await db.flush()
@@ -773,6 +790,9 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
     age_group = result.scalar_one_or_none()
     if not age_group:
         raise ValueError("Age group not found")
+
+    if _age_group_has_recorded_results(age_group):
+        raise ValueError("Non puoi rigenerare una fase dopo aver inserito risultati nella categoria.")
 
     structure = age_group.structure_config or {}
     phases_config = structure.get("phases", [])
