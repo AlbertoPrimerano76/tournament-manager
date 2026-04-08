@@ -431,10 +431,6 @@ def _build_knockout_block_rounds(
             (bucket_entries[0], bucket_entries[3]),
             (bucket_entries[1], bucket_entries[2]),
         ]
-        finals = [
-            ({"label": f"Vincente {bucket_name} · Semifinale 1"}, {"label": f"Vincente {bucket_name} · Semifinale 2"}),
-            ({"label": f"Perdente {bucket_name} · Semifinale 1"}, {"label": f"Perdente {bucket_name} · Semifinale 2"}),
-        ]
         return [
             (f"{bucket_name} · Semifinali", semifinals, [
                 {"label": f"Vincente {bucket_name} · Semifinale 1"},
@@ -442,7 +438,16 @@ def _build_knockout_block_rounds(
                 {"label": f"Perdente {bucket_name} · Semifinale 1"},
                 {"label": f"Perdente {bucket_name} · Semifinale 2"},
             ]),
-            (f"{bucket_name} · Finali", finals, bucket_entries),
+            (
+                f"{bucket_name} · Finale 3°/4° posto",
+                [({"label": f"Perdente {bucket_name} · Semifinale 1"}, {"label": f"Perdente {bucket_name} · Semifinale 2"})],
+                bucket_entries,
+            ),
+            (
+                f"{bucket_name} · Finale 1°/2° posto",
+                [({"label": f"Vincente {bucket_name} · Semifinale 1"}, {"label": f"Vincente {bucket_name} · Semifinale 2"})],
+                bucket_entries,
+            ),
         ]
 
     if len(bucket_entries) == 2:
