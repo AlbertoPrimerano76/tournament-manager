@@ -5,7 +5,7 @@ import {
   useAdminTournaments, useCreateTournament, useUpdateTournament, useDeleteTournament,
   useAdminTournamentAgeGroups, useCreateAgeGroup, useDeleteAgeGroup,
   useAgeGroupParticipants, useStructureTemplates, useUpdateAgeGroupStructure,
-  useUpdateAgeGroup, useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, useGenerateAgeGroupProgram, useResetAndGenerateAgeGroupProgram, useDeleteAgeGroupProgram, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate, type AgeGroupScoringRules,
+  useUpdateAgeGroup, useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, useGenerateAgeGroupProgram, useDeleteAgeGroupProgram, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate, type AgeGroupScoringRules,
 } from '@/api/tournaments'
 import { apiClient } from '@/api/client'
 import { useAdminOrganizations, useCreateOrganization } from '@/api/organizations'
@@ -2169,7 +2169,6 @@ function AgeGroupConfigurationPanel({
   const updateAgeGroup = useUpdateAgeGroup()
   const createTemplate = useCreateStructureTemplate()
   const generateProgram = useGenerateAgeGroupProgram()
-  const resetAndGenerateProgram = useResetAndGenerateAgeGroupProgram()
   const deleteProgram = useDeleteAgeGroupProgram()
 
   const [selectedTeamId, setSelectedTeamId] = useState('')
@@ -2379,28 +2378,6 @@ function AgeGroupConfigurationPanel({
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setSaveError(msg ?? 'Errore durante la generazione del programma')
-    }
-  }
-
-  async function handleResetAndGenerateProgram() {
-    setSaveError('')
-    setSaveMessage('')
-
-    if (!readiness.isReady) {
-      setSaveError(readiness.blockers[0] ?? 'Completa la configurazione prima di generare le partite')
-      return
-    }
-
-    const saved = await persistConfiguration(false)
-    if (!saved) return
-
-    try {
-      const nextProgram = await resetAndGenerateProgram.mutateAsync(ageGroup.id)
-      const totalMatches = countProgramMatches(nextProgram)
-      setSaveMessage(`Programma ricreato da zero${totalMatches > 0 ? ` · ${totalMatches} partite create` : ''}`)
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setSaveError(msg ?? 'Errore durante il reset del programma')
     }
   }
 
@@ -2655,10 +2632,10 @@ function AgeGroupConfigurationPanel({
                   <button
                     type="button"
                     onClick={() => void handleGenerateProgram()}
-                    disabled={generateProgram.isPending || resetAndGenerateProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
+                    disabled={generateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
                     className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {generateProgram.isPending ? 'Generazione...' : hasRecordedResults ? 'Salva e aggiorna partite future' : program?.generated ? 'Salva e rigenera partite' : 'Salva e genera partite'}
+                    {generateProgram.isPending ? 'Rigenerazione...' : program?.generated ? 'Rigenera' : 'Genera'}
                   </button>
                 </div>
 
@@ -2666,19 +2643,11 @@ function AgeGroupConfigurationPanel({
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => void handleResetAndGenerateProgram()}
-                      disabled={generateProgram.isPending || resetAndGenerateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
-                      className="inline-flex items-center justify-center rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {resetAndGenerateProgram.isPending ? 'Ricreazione...' : 'Cancella tutte le partite e rigenera'}
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => void handleDeleteProgram()}
-                      disabled={generateProgram.isPending || resetAndGenerateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending}
+                      disabled={generateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending}
                       className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {deleteProgram.isPending ? 'Cancellazione...' : 'Cancella tutte le partite'}
+                      {deleteProgram.isPending ? 'Cancellazione...' : 'Cancella tutto'}
                     </button>
                   </div>
                 )}
@@ -2691,7 +2660,7 @@ function AgeGroupConfigurationPanel({
 
                 {program?.generated && (
                   <div className="mt-4 rounded-[1.2rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
-                    Se il calendario è rimasto sporco da configurazioni precedenti, usa il reset totale: cancella tutte le partite della categoria e le ricrea da zero con la formula attuale.
+                    `Cancella tutto` svuota completamente il calendario della categoria. `Rigenera` ricrea le partite usando solo la formula attuale.
                   </div>
                 )}
 
@@ -3284,32 +3253,21 @@ function AgeGroupConfigurationPanel({
                 <button
                   type="button"
                   onClick={() => void handleGenerateProgram()}
-                  disabled={generateProgram.isPending || resetAndGenerateProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
+                  disabled={generateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
                   className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Sparkles className="h-4 w-4" />
-                  {generateProgram.isPending ? 'Generazione...' : hasRecordedResults ? 'Salva e aggiorna partite future' : program?.generated ? 'Salva e rigenera partite' : 'Salva e genera partite'}
+                  {generateProgram.isPending ? 'Rigenerazione...' : program?.generated ? 'Rigenera' : 'Genera'}
                 </button>
                 {program?.generated && (
                   <button
                     type="button"
-                    onClick={() => void handleResetAndGenerateProgram()}
-                    disabled={generateProgram.isPending || resetAndGenerateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
-                    className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    {resetAndGenerateProgram.isPending ? 'Ricreazione...' : 'Azzera partite e rigenera'}
-                  </button>
-                )}
-                {program?.generated && (
-                  <button
-                    type="button"
                     onClick={() => void handleDeleteProgram()}
-                    disabled={generateProgram.isPending || resetAndGenerateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending}
+                    disabled={generateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending}
                     className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Trash2 className="h-4 w-4" />
-                    {deleteProgram.isPending ? 'Cancellazione...' : 'Cancella tutte le partite'}
+                    {deleteProgram.isPending ? 'Cancellazione...' : 'Cancella tutto'}
                   </button>
                 )}
               </div>
