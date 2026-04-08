@@ -198,6 +198,21 @@ def _phase_start_datetime(age_group: TournamentAgeGroup, phase_index: int) -> da
     return datetime.combine(base.date(), start, tzinfo=LOCAL_TIMEZONE)
 
 
+def _resolve_phase_start(
+    age_group: TournamentAgeGroup,
+    phase_index: int,
+    phase_config: dict[str, Any],
+    fallback_start: datetime | None,
+) -> datetime | None:
+    base = _phase_date(age_group, phase_index)
+    if not base:
+        return fallback_start
+    explicit_start = phase_config.get("start_time")
+    if isinstance(explicit_start, str) and explicit_start:
+        return datetime.combine(base.date(), _parse_start_time(explicit_start), tzinfo=LOCAL_TIMEZONE)
+    return fallback_start or _phase_start_datetime(age_group, phase_index)
+
+
 def _slot_delta(age_group: TournamentAgeGroup) -> timedelta:
     schedule = _schedule_settings(age_group)
     duration = int(schedule.get("match_duration_minutes") or 12)
@@ -534,10 +549,12 @@ def _build_knockout_block_rounds(
 
 async def _sync_future_age_group_matches(age_group: TournamentAgeGroup, phases_config: list[dict[str, Any]], db: AsyncSession) -> TournamentAgeGroup:
     match_slot_length = _slot_delta(age_group)
+    previous_phase_end: datetime | None = None
 
     for phase_index, phase in enumerate(sorted(age_group.phases, key=lambda item: item.phase_order)):
         phase_config = phases_config[phase_index] if phase_index < len(phases_config) and isinstance(phases_config[phase_index], dict) else {}
-        phase_start = _phase_start_datetime(age_group, phase_index)
+        phase_start = _resolve_phase_start(age_group, phase_index, phase_config, previous_phase_end)
+        phase_end = phase_start
 
         if phase.phase_type == PhaseType.GROUP_STAGE:
             groups = sorted(phase.groups, key=lambda item: item.group_order)
@@ -560,6 +577,8 @@ async def _sync_future_age_group_matches(age_group: TournamentAgeGroup, phases_c
                     match.scheduled_at = slot_time
                     match.field_name = lane.get("field_name")
                     match.field_number = lane.get("field_number")
+                    if slot_time:
+                        phase_end = max(phase_end or slot_time, slot_time + match_slot_length)
                     phase_lane_slot_counters[lane_counter_key] = slot_index + 1
         else:
             lanes = _knockout_lanes(age_group, phase_config) or [{"field_name": None, "field_number": None}]
@@ -575,6 +594,9 @@ async def _sync_future_age_group_matches(age_group: TournamentAgeGroup, phases_c
                 match.scheduled_at = slot_time
                 match.field_name = lane.get("field_name")
                 match.field_number = lane.get("field_number")
+                if slot_time:
+                    phase_end = max(phase_end or slot_time, slot_time + match_slot_length)
+        previous_phase_end = phase_end
 
     await _sync_tournament_dates_from_generated_program(age_group)
     await db.commit()
@@ -647,6 +669,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
     ]
 
     total_created_matches = 0
+    previous_phase_end: datetime | None = None
 
     for phase_index, phase_config in enumerate(phases_config):
         next_phase_config = phases_config[phase_index + 1] if phase_index + 1 < len(phases_config) else None
@@ -672,7 +695,8 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
         db.add(phase)
         await db.flush()
 
-        phase_start = _phase_start_datetime(age_group, phase_index)
+        phase_start = _resolve_phase_start(age_group, phase_index, phase_config, previous_phase_end)
+        phase_end = phase_start
 
         if phase_type == PhaseType.GROUP_STAGE:
             group_sizes = parse_group_sizes(
@@ -747,6 +771,8 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                             created_group_matches.append(match)
                             total_created_matches += 1
                             match_index += 1
+                            if slot_time:
+                                phase_end = max(phase_end or slot_time, slot_time + match_slot_length)
                             phase_lane_slot_counters[lane_counter_key] = slot_index + 1
 
             await db.flush()
@@ -781,6 +807,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                 {group.name: slot_labels_by_group.get(group.id, []) for group in groups},
                 next_phase_config,
             )
+            previous_phase_end = phase_end
             continue
 
         bracket_mode = (phase.seeding_source or {}).get("bracket_mode", "standard")
@@ -835,6 +862,8 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                         created_knockout_matches.append(match)
                         total_created_matches += 1
                         match_position += 1
+                        if scheduled_at:
+                            phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
                         knockout_slot_index += 1
             else:
                 bracket_size = _next_power_of_two(len(bucket_entries))
@@ -876,6 +905,8 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                         created_knockout_matches.append(match)
                         total_created_matches += 1
                         match_position += 1
+                        if scheduled_at:
+                            phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
                         knockout_slot_index += 1
                         winners.append({"label": f"Vincente {round_name} {pair_index + 1}"})
 
@@ -896,6 +927,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
         )
 
         current_entries = next_entries
+        previous_phase_end = phase_end
 
     if total_created_matches == 0:
         raise ValueError("La formula non produce nessuna partita con le squadre attualmente inserite")
@@ -981,6 +1013,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
         }
         for team in participants
     ]
+    previous_phase_end: datetime | None = None
 
     for phase in existing_phases:
         if phase.phase_order >= phase_order:
@@ -998,6 +1031,9 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                 },
                 next_phase_config,
             )
+        phase_match_times = [match.scheduled_at for match in phase.matches if match.scheduled_at]
+        if phase_match_times:
+            previous_phase_end = max(phase_match_times) + match_slot_length
 
     total_created_matches = 0
 
@@ -1025,7 +1061,8 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
         db.add(phase)
         await db.flush()
 
-        phase_start = _phase_start_datetime(age_group, relative_index)
+        phase_start = _resolve_phase_start(age_group, relative_index, phase_config, previous_phase_end)
+        phase_end = phase_start
 
         if phase_type == PhaseType.GROUP_STAGE:
             group_sizes = parse_group_sizes(
@@ -1096,6 +1133,8 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                             created_group_matches.append(match)
                             total_created_matches += 1
                             match_index += 1
+                            if slot_time:
+                                phase_end = max(phase_end or slot_time, slot_time + match_slot_length)
                             phase_lane_slot_counters[lane_counter_key] = slot_index + 1
 
             await db.flush()
@@ -1121,6 +1160,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                 {group.name: slot_labels_by_group.get(group.id, []) for group in groups},
                 next_phase_config,
             )
+            previous_phase_end = phase_end
             continue
 
         bracket_mode = (phase.seeding_source or {}).get("bracket_mode", "standard")
@@ -1174,6 +1214,8 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                         created_knockout_matches.append(match)
                         total_created_matches += 1
                         match_position += 1
+                        if scheduled_at:
+                            phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
                         knockout_slot_index += 1
             else:
                 bracket_size = _next_power_of_two(len(bucket_entries))
@@ -1211,6 +1253,8 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                         created_knockout_matches.append(match)
                         total_created_matches += 1
                         match_position += 1
+                        if scheduled_at:
+                            phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
                         knockout_slot_index += 1
                         winners.append({"label": f"Vincente {round_name} {pair_index + 1}"})
                     round_entries = winners
@@ -1223,6 +1267,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
         await db.flush()
         _assign_cross_group_referees(created_knockout_matches, {"all": [team.id for team in participants]}, participants)
         current_entries = next_entries
+        previous_phase_end = phase_end
 
     if total_created_matches == 0:
         raise ValueError("La formula non produce nessuna partita con le squadre attualmente inserite")

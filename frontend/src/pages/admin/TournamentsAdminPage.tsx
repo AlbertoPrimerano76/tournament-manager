@@ -1274,6 +1274,7 @@ type StructurePhase = {
   id: string
   name: string
   phase_type: 'GROUP_STAGE' | 'KNOCKOUT'
+  start_time: string
   round_trip_mode: 'single' | 'double'
   num_groups: number | null
   group_sizes: string
@@ -1374,6 +1375,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-1',
           name: 'Girone unico',
           phase_type: 'GROUP_STAGE',
+          start_time: '',
           round_trip_mode: 'single',
           num_groups: 1,
           group_sizes: '',
@@ -1406,6 +1408,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-1',
           name: 'Fase a gironi',
           phase_type: 'GROUP_STAGE',
+          start_time: '',
           round_trip_mode: 'single',
           num_groups: 2,
           group_sizes: '4,4',
@@ -1422,6 +1425,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-2',
           name: 'Finali',
           phase_type: 'KNOCKOUT',
+          start_time: '',
           round_trip_mode: 'single',
           num_groups: null,
           group_sizes: '',
@@ -1454,6 +1458,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-1',
           name: 'Gironi iniziali',
           phase_type: 'GROUP_STAGE',
+          start_time: '',
           round_trip_mode: 'single',
           num_groups: 4,
           group_sizes: '4,4,4,4',
@@ -1470,6 +1475,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-2',
           name: 'Fase finale e piazzamenti',
           phase_type: 'KNOCKOUT',
+          start_time: '',
           round_trip_mode: 'single',
           num_groups: null,
           group_sizes: '',
@@ -1502,6 +1508,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-1',
           name: 'Gironi iniziali',
           phase_type: 'GROUP_STAGE',
+          start_time: '',
           round_trip_mode: 'single',
           num_groups: 2,
           group_sizes: '6,6',
@@ -1518,6 +1525,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-2',
           name: 'Semifinali e finali di piazzamento',
           phase_type: 'KNOCKOUT',
+          start_time: '',
           round_trip_mode: 'single',
           num_groups: null,
           group_sizes: '',
@@ -2996,6 +3004,20 @@ function AgeGroupConfigurationPanel({
                           <option value="KNOCKOUT">Eliminazione</option>
                         </select>
                       </FormField>
+                      <FormField label="Orario inizio fase" hint="Vuoto = dopo la fase precedente">
+                        <input
+                          type="time"
+                          value={phase.start_time}
+                          onChange={(e) => setPhase(index, { start_time: e.target.value })}
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                        />
+                      </FormField>
+                      <div className="rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Fine fase stimata</p>
+                        <p className="mt-2 text-sm font-semibold text-slate-900">
+                          {estimatePhaseEndTime(structure, index, participants?.length ?? 0) ?? 'Da definire'}
+                        </p>
+                      </div>
                     </div>
 
                     <div className="px-4 pb-4">
@@ -3647,6 +3669,54 @@ function formatFacilityLabel(name: string, ageGroup: string | null | undefined) 
   return ageGroup ? `${name} · ${ageGroup}` : name
 }
 
+function estimatePhaseMatches(phase: StructurePhase): number {
+  if (phase.phase_type === 'GROUP_STAGE') return estimateGroupStageMatches(phase) ?? 0
+  return estimateKnockoutMatches(phase)
+}
+
+function estimateKnockoutMatches(phase: StructurePhase): number {
+  if (phase.phase_type !== 'KNOCKOUT') return 0
+  if (phase.bracket_mode === 'group_blocks') {
+    const sizes = parseGroupSizes(phase.group_sizes)
+    return sizes.reduce((total, size) => total + (size >= 4 ? 4 : size === 2 ? 1 : 0), 0)
+  }
+  return 0
+}
+
+function estimatePhaseEndTime(structure: StructureConfig, phaseIndex: number, participantCount: number): string | null {
+  const phase = structure.phases[phaseIndex]
+  if (!phase) return null
+  const slotMinutes = Math.max((structure.schedule.match_duration_minutes ?? 0), 1) + Math.max((structure.schedule.interval_minutes ?? 0), 0)
+  if (slotMinutes <= 0) return null
+  const fallbackStart = phaseIndex === 0
+    ? structure.schedule.start_time
+    : (estimatePhaseEndTime(structure, phaseIndex - 1, participantCount) ?? structure.schedule.start_time)
+  const startTime = phase.start_time || fallbackStart
+  if (!startTime) return null
+  const [hours, minutes] = startTime.split(':').map(Number)
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null
+  const totalParticipants = phase.phase_type === 'GROUP_STAGE'
+    ? participantCount
+    : Math.max(parseGroupSizes(phase.group_sizes).reduce((sum, value) => sum + value, 0), 0)
+  const estimatedMatches = phase.phase_type === 'KNOCKOUT' && phase.bracket_mode !== 'group_blocks'
+    ? Math.max(totalParticipants > 1 ? totalParticipants - 1 : 0, 0)
+    : estimatePhaseMatches(phase)
+  const lanes = phase.phase_type === 'KNOCKOUT'
+    ? Math.max(phase.knockout_field_assignments.length || structure.schedule.playing_fields.length, 1)
+    : Math.max(getPhaseLaneCount(phase, structure.schedule.playing_fields.length), 1)
+  const slotCount = estimatedMatches > 0 ? Math.ceil(estimatedMatches / lanes) : 0
+  const endMinutes = (hours * 60) + minutes + (slotCount * slotMinutes)
+  const normalizedHours = Math.floor(endMinutes / 60)
+  const normalizedMinutes = endMinutes % 60
+  return `${String(normalizedHours).padStart(2, '0')}:${String(normalizedMinutes).padStart(2, '0')}`
+}
+
+function getPhaseLaneCount(phase: StructurePhase, fallbackLaneCount: number): number {
+  if (phase.phase_type === 'KNOCKOUT') return phase.knockout_field_assignments.length || fallbackLaneCount
+  const assignedLaneCount = Object.values(phase.group_field_assignments).reduce((maxCount, assignments) => Math.max(maxCount, assignments.length), 0)
+  return assignedLaneCount || fallbackLaneCount
+}
+
 function buildAutoRefereeAssignments(
   phase: StructurePhase,
 ): Record<string, string[]> {
@@ -3734,6 +3804,7 @@ function serializeStructureForComparison(structure: StructureConfig) {
     phases: structure.phases.map((phase) => ({
       name: phase.name,
       phase_type: phase.phase_type,
+      start_time: phase.start_time,
       round_trip_mode: phase.round_trip_mode,
       num_groups: phase.num_groups,
       group_sizes: phase.group_sizes,
@@ -4053,6 +4124,7 @@ function normalizePhase(value: unknown, index: number): StructurePhase {
     id: typeof input.id === 'string' ? input.id : `phase-${index}`,
     name: typeof input.name === 'string' && input.name ? input.name : `Fase ${index}`,
     phase_type: input.phase_type === 'KNOCKOUT' ? 'KNOCKOUT' : 'GROUP_STAGE',
+    start_time: typeof (input as { start_time?: unknown }).start_time === 'string' ? ((input as { start_time?: string }).start_time ?? '') : '',
     round_trip_mode: input.round_trip_mode === 'double' ? 'double' : 'single',
     num_groups: typeof input.num_groups === 'number' ? input.num_groups : null,
     group_sizes: typeof input.group_sizes === 'string' ? input.group_sizes : '',
@@ -4107,6 +4179,7 @@ function makeEmptyPhase(index: number): StructurePhase {
     id: `phase-${index}-${Date.now()}`,
     name: `Fase ${index}`,
     phase_type: 'GROUP_STAGE',
+    start_time: '',
     round_trip_mode: 'single',
     num_groups: null,
     group_sizes: '',
