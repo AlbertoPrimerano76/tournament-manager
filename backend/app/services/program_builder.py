@@ -441,40 +441,100 @@ def _source_entries_from_group_phase(group_names: list[str], config: dict[str, A
     return labels
 
 
-def _source_entries_for_group_blocks(
+def _resolve_phase_order_map(phases_config: list[dict[str, Any]]) -> dict[str, int]:
+    phase_order_map: dict[str, int] = {}
+    for phase_index, phase_config in enumerate(phases_config, start=1):
+        phase_id = phase_config.get("id")
+        if isinstance(phase_id, str) and phase_id:
+            phase_order_map[phase_id] = phase_index
+    return phase_order_map
+
+
+def _entries_for_group_route(
+    route: dict[str, Any],
     group_names: list[str],
     slot_labels_by_group: dict[str, list[str]] | None,
 ) -> list[dict[str, Any]]:
-    entries: list[dict[str, Any]] = []
     slot_labels_by_group = slot_labels_by_group or {}
+    source_mode = str(route.get("source_mode") or "group_rank")
 
-    for group_name in group_names:
-        group_labels = slot_labels_by_group.get(group_name, [])
-        for rank, _ in enumerate(group_labels, start=1):
+    if source_mode == "best_extra":
+        extra_count = int(route.get("extra_count") or 0)
+        return [
+            {"label": f"Migliore extra {index + 1}", "rank": 999}
+            for index in range(max(extra_count, 0))
+        ]
+
+    selected_group_names = [
+        group_name
+        for group_name in route.get("source_groups", [])
+        if isinstance(group_name, str) and group_name in group_names
+    ] if isinstance(route.get("source_groups"), list) else []
+    effective_group_names = selected_group_names or group_names
+    rank_from = int(route.get("rank_from") or 0)
+    rank_to = int(route.get("rank_to") or 0)
+    if rank_from <= 0 or rank_to < rank_from:
+        return []
+
+    entries: list[dict[str, Any]] = []
+    for group_name in effective_group_names:
+        available_slots = len(slot_labels_by_group.get(group_name, []))
+        max_rank = min(rank_to, available_slots) if available_slots > 0 else rank_to
+        for rank in range(rank_from, max_rank + 1):
             entries.append({
                 "label": f"{_ordinal_it(rank)} {group_name}",
                 "rank": rank,
                 "group_name": group_name,
             })
-
     return entries
 
 
-def _next_phase_entries_from_group_phase(
+def _queue_group_phase_advancements(
+    phase_order: int,
     group_names: list[str],
     config: dict[str, Any] | None,
     slot_labels_by_group: dict[str, list[str]] | None,
-    next_phase_config: dict[str, Any] | None,
-) -> list[dict[str, Any]]:
+    phases_config: list[dict[str, Any]],
+    phase_order_map: dict[str, int],
+) -> dict[int, list[dict[str, Any]]]:
+    config = config or {}
+    queued: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    routes = config.get("advancement_routes")
+
+    if isinstance(routes, list) and routes:
+        for route in routes:
+            if not isinstance(route, dict):
+                continue
+            target_phase_id = route.get("target_phase_id")
+            if not isinstance(target_phase_id, str) or not target_phase_id:
+                continue
+            target_phase_order = phase_order_map.get(target_phase_id)
+            if target_phase_order is None or target_phase_order <= phase_order:
+                continue
+            queued[target_phase_order].extend(_entries_for_group_route(route, group_names, slot_labels_by_group))
+        return queued
+
+    next_phase_order = phase_order + 1
+    if next_phase_order > len(phases_config):
+        return queued
+    next_phase_config = phases_config[next_phase_order - 1] if next_phase_order - 1 < len(phases_config) else {}
     if (
         isinstance(next_phase_config, dict)
         and next_phase_config.get("phase_type") == "KNOCKOUT"
         and next_phase_config.get("bracket_mode") == "group_blocks"
-        and len(group_names) == 2
     ):
-        return _source_entries_for_group_blocks(group_names, slot_labels_by_group)
-
-    return _source_entries_from_group_phase(group_names, config)
+        legacy_route = {
+            "source_mode": "group_rank",
+            "rank_from": 1,
+            "rank_to": 99,
+            "source_groups": [],
+        }
+        legacy_entries = _entries_for_group_route(legacy_route, group_names, slot_labels_by_group)
+    else:
+        legacy_entries = _source_entries_from_group_phase(group_names, config)
+    if legacy_entries:
+        queued[next_phase_order].extend(legacy_entries)
+    return queued
 
 
 def _build_group_block_buckets(entries: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
@@ -673,7 +733,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
     if len(participants) < 2:
         raise ValueError("Servono almeno 2 squadre nella categoria per generare le partite")
     match_slot_length = _slot_delta(age_group)
-    current_entries: list[dict[str, Any]] = [
+    initial_entries: list[dict[str, Any]] = [
         {
             "label": _team_label(team),
             "tournament_team_id": team.id,
@@ -682,17 +742,23 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
         }
         for team in participants
     ]
+    queued_entries_by_phase: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    queued_entries_by_phase[1] = initial_entries
+    phase_order_map = _resolve_phase_order_map(phases_config)
 
     total_created_matches = 0
     previous_phase_end: datetime | None = None
 
     for phase_index, phase_config in enumerate(phases_config):
-        next_phase_config = phases_config[phase_index + 1] if phase_index + 1 < len(phases_config) else None
+        phase_order = phase_index + 1
+        current_entries = queued_entries_by_phase.pop(phase_order, [])
+        if not current_entries:
+            continue
         phase_type = PhaseType[phase_config.get("phase_type", "GROUP_STAGE")]
         phase = Phase(
             tournament_age_group_id=age_group.id,
-            phase_order=phase_index + 1,
-            name=phase_config.get("name") or f"Fase {phase_index + 1}",
+            phase_order=phase_order,
+            name=phase_config.get("name") or f"Fase {phase_order}",
             phase_type=phase_type,
             num_groups=phase_config.get("num_groups"),
             teams_per_group=None,
@@ -700,6 +766,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             advancement_config={
                 "top_n_per_group": phase_config.get("qualifiers_per_group") or 0,
                 "best_third_count": phase_config.get("best_extra_teams") or 0,
+                "advancement_routes": phase_config.get("advancement_routes") or [],
                 "notes": phase_config.get("notes") or "",
             },
             seeding_source={
@@ -816,12 +883,16 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                 **(phase.advancement_config or {}),
                 "group_slot_labels": slot_labels_by_group,
             }
-            current_entries = _next_phase_entries_from_group_phase(
+            queued_advancements = _queue_group_phase_advancements(
+                phase_order,
                 [group.name for group in groups],
                 phase.advancement_config,
                 {group.name: slot_labels_by_group.get(group.id, []) for group in groups},
-                next_phase_config,
+                phases_config,
+                phase_order_map,
             )
+            for target_phase_order, target_entries in queued_advancements.items():
+                queued_entries_by_phase[target_phase_order].extend(target_entries)
             previous_phase_end = phase_end
             continue
 
@@ -942,6 +1013,9 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
         )
 
         current_entries = next_entries
+        next_phase_type = phase_config.get("next_phase_type")
+        if isinstance(next_phase_type, str) and next_phase_type and (phase_order + 1) <= len(phases_config):
+            queued_entries_by_phase[phase_order + 1].extend(current_entries)
         previous_phase_end = phase_end
 
     if total_created_matches == 0:
@@ -1019,7 +1093,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
     if len(participants) < 2:
         raise ValueError("Servono almeno 2 squadre nella categoria per generare le partite")
     match_slot_length = _slot_delta(age_group)
-    current_entries: list[dict[str, Any]] = [
+    initial_entries: list[dict[str, Any]] = [
         {
             "label": _team_label(team),
             "tournament_team_id": team.id,
@@ -1028,24 +1102,37 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
         }
         for team in participants
     ]
+    queued_entries_by_phase: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    queued_entries_by_phase[1] = initial_entries
+    phase_order_map = _resolve_phase_order_map(phases_config)
     previous_phase_end: datetime | None = None
 
     for phase in existing_phases:
         if phase.phase_order >= phase_order:
             break
+        current_entries = queued_entries_by_phase.pop(phase.phase_order, [])
+        if not current_entries:
+            continue
         if phase.phase_type == PhaseType.GROUP_STAGE:
-            next_phase_config = phases_config[phase.phase_order] if phase.phase_order < len(phases_config) else None
             sorted_groups = sorted(phase.groups, key=lambda item: item.group_order)
             slot_labels = (phase.advancement_config or {}).get("group_slot_labels", {})
-            current_entries = _next_phase_entries_from_group_phase(
+            queued_advancements = _queue_group_phase_advancements(
+                phase.phase_order,
                 [group.name for group in sorted_groups],
                 phase.advancement_config,
                 {
                     group.name: slot_labels.get(group.id, [])
                     for group in sorted_groups
                 },
-                next_phase_config,
+                phases_config,
+                phase_order_map,
             )
+            for target_phase_order, target_entries in queued_advancements.items():
+                queued_entries_by_phase[target_phase_order].extend(target_entries)
+        else:
+            next_phase_type = (phase.seeding_source or {}).get("next_phase_type")
+            if isinstance(next_phase_type, str) and next_phase_type and (phase.phase_order + 1) <= len(phases_config):
+                queued_entries_by_phase[phase.phase_order + 1].extend(current_entries)
         phase_match_times = [match.scheduled_at for match in phase.matches if match.scheduled_at]
         if phase_match_times:
             previous_phase_end = max(phase_match_times) + match_slot_length
@@ -1053,12 +1140,15 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
     total_created_matches = 0
 
     for relative_index, phase_config in enumerate(phases_config[start_index:], start=start_index):
-        next_phase_config = phases_config[relative_index + 1] if relative_index + 1 < len(phases_config) else None
+        phase_order_number = relative_index + 1
+        current_entries = queued_entries_by_phase.pop(phase_order_number, [])
+        if not current_entries:
+            continue
         phase_type = PhaseType[phase_config.get("phase_type", "GROUP_STAGE")]
         phase = Phase(
             tournament_age_group_id=age_group.id,
-            phase_order=relative_index + 1,
-            name=phase_config.get("name") or f"Fase {relative_index + 1}",
+            phase_order=phase_order_number,
+            name=phase_config.get("name") or f"Fase {phase_order_number}",
             phase_type=phase_type,
             num_groups=phase_config.get("num_groups"),
             teams_per_group=None,
@@ -1066,6 +1156,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             advancement_config={
                 "top_n_per_group": phase_config.get("qualifiers_per_group") or 0,
                 "best_third_count": phase_config.get("best_extra_teams") or 0,
+                "advancement_routes": phase_config.get("advancement_routes") or [],
                 "notes": phase_config.get("notes") or "",
             },
             seeding_source={
@@ -1169,12 +1260,16 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
 
             _assign_cross_group_referees(created_group_matches, phase_group_team_ids, participants, referee_source_group_ids)
             phase.advancement_config = {**(phase.advancement_config or {}), "group_slot_labels": slot_labels_by_group}
-            current_entries = _next_phase_entries_from_group_phase(
+            queued_advancements = _queue_group_phase_advancements(
+                phase_order_number,
                 [group.name for group in groups],
                 phase.advancement_config,
                 {group.name: slot_labels_by_group.get(group.id, []) for group in groups},
-                next_phase_config,
+                phases_config,
+                phase_order_map,
             )
+            for target_phase_order, target_entries in queued_advancements.items():
+                queued_entries_by_phase[target_phase_order].extend(target_entries)
             previous_phase_end = phase_end
             continue
 
@@ -1282,6 +1377,9 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
         await db.flush()
         _assign_cross_group_referees(created_knockout_matches, {"all": [team.id for team in participants]}, participants)
         current_entries = next_entries
+        next_phase_type = phase_config.get("next_phase_type")
+        if isinstance(next_phase_type, str) and next_phase_type and (phase_order_number + 1) <= len(phases_config):
+            queued_entries_by_phase[phase_order_number + 1].extend(current_entries)
         previous_phase_end = phase_end
 
     if total_created_matches == 0:

@@ -1282,11 +1282,22 @@ type StructurePhase = {
   qualifiers_per_group: number | null
   best_extra_teams: number | null
   next_phase_type: '' | 'GROUP_STAGE' | 'KNOCKOUT'
+  advancement_routes: AdvancementRoute[]
   bracket_mode: 'standard' | 'placement' | 'group_blocks'
   group_field_assignments: Record<string, PlayingFieldConfig[]>
   knockout_field_assignments: PlayingFieldConfig[]
   referee_group_assignments: Record<string, string[]>
   notes: string
+}
+
+type AdvancementRoute = {
+  id: string
+  target_phase_id: string
+  source_mode: 'group_rank' | 'best_extra'
+  source_groups: string[]
+  rank_from: number | null
+  rank_to: number | null
+  extra_count: number | null
 }
 
 type PlayingFieldConfig = {
@@ -1384,6 +1395,7 @@ const BUILTIN_TEMPLATES: Array<{
           qualifiers_per_group: null,
           best_extra_teams: null,
           next_phase_type: '',
+          advancement_routes: [],
           bracket_mode: 'standard',
           group_field_assignments: {},
           knockout_field_assignments: [],
@@ -1418,6 +1430,7 @@ const BUILTIN_TEMPLATES: Array<{
           qualifiers_per_group: 2,
           best_extra_teams: 0,
           next_phase_type: 'KNOCKOUT',
+          advancement_routes: [],
           bracket_mode: 'standard',
           group_field_assignments: {},
           knockout_field_assignments: [],
@@ -1436,6 +1449,7 @@ const BUILTIN_TEMPLATES: Array<{
           qualifiers_per_group: null,
           best_extra_teams: null,
           next_phase_type: '',
+          advancement_routes: [],
           bracket_mode: 'standard',
           group_field_assignments: {},
           knockout_field_assignments: [],
@@ -1470,6 +1484,7 @@ const BUILTIN_TEMPLATES: Array<{
           qualifiers_per_group: 1,
           best_extra_teams: 1,
           next_phase_type: 'KNOCKOUT',
+          advancement_routes: [],
           bracket_mode: 'placement',
           group_field_assignments: {},
           knockout_field_assignments: [],
@@ -1488,6 +1503,7 @@ const BUILTIN_TEMPLATES: Array<{
           qualifiers_per_group: null,
           best_extra_teams: null,
           next_phase_type: '',
+          advancement_routes: [],
           bracket_mode: 'placement',
           group_field_assignments: {},
           knockout_field_assignments: [],
@@ -1522,6 +1538,7 @@ const BUILTIN_TEMPLATES: Array<{
           qualifiers_per_group: null,
           best_extra_teams: null,
           next_phase_type: 'KNOCKOUT',
+          advancement_routes: [],
           bracket_mode: 'group_blocks',
           group_field_assignments: {},
           knockout_field_assignments: [],
@@ -1540,6 +1557,7 @@ const BUILTIN_TEMPLATES: Array<{
           qualifiers_per_group: null,
           best_extra_teams: null,
           next_phase_type: '',
+          advancement_routes: [],
           bracket_mode: 'group_blocks',
           group_field_assignments: {},
           knockout_field_assignments: [],
@@ -2445,6 +2463,86 @@ function AgeGroupConfigurationPanel({
     }))
   }
 
+  function addAdvancementRoute(phaseIndex: number) {
+    setStructure((current) => {
+      const nextPhase = current.phases[phaseIndex + 1]
+      return {
+        ...current,
+        phases: current.phases.map((phase, currentPhaseIndex) => (
+          currentPhaseIndex === phaseIndex
+            ? {
+              ...phase,
+              advancement_routes: [
+                ...phase.advancement_routes,
+                makeAdvancementRoute({ targetPhaseId: nextPhase?.id ?? '' }),
+              ],
+            }
+            : phase
+        )),
+      }
+    })
+  }
+
+  function setAdvancementRoute(phaseIndex: number, routeId: string, patch: Partial<AdvancementRoute>) {
+    setStructure((current) => ({
+      ...current,
+      phases: current.phases.map((phase, currentPhaseIndex) => {
+        if (currentPhaseIndex !== phaseIndex) return phase
+        return {
+          ...phase,
+          advancement_routes: phase.advancement_routes.map((route) => {
+            if (route.id !== routeId) return route
+            const nextRoute = { ...route, ...patch }
+            if (patch.source_mode === 'best_extra') {
+              nextRoute.rank_from = null
+              nextRoute.rank_to = null
+              nextRoute.extra_count = nextRoute.extra_count ?? 1
+            }
+            if (patch.source_mode === 'group_rank') {
+              nextRoute.rank_from = nextRoute.rank_from ?? 1
+              nextRoute.rank_to = nextRoute.rank_to ?? nextRoute.rank_from ?? 1
+              nextRoute.extra_count = null
+            }
+            return nextRoute
+          }),
+        }
+      }),
+    }))
+  }
+
+  function removeAdvancementRoute(phaseIndex: number, routeId: string) {
+    setStructure((current) => ({
+      ...current,
+      phases: current.phases.map((phase, currentPhaseIndex) => (
+        currentPhaseIndex === phaseIndex
+          ? { ...phase, advancement_routes: phase.advancement_routes.filter((route) => route.id !== routeId) }
+          : phase
+      )),
+    }))
+  }
+
+  function toggleAdvancementRouteGroup(phaseIndex: number, routeId: string, groupName: string) {
+    setStructure((current) => ({
+      ...current,
+      phases: current.phases.map((phase, currentPhaseIndex) => {
+        if (currentPhaseIndex !== phaseIndex) return phase
+        return {
+          ...phase,
+          advancement_routes: phase.advancement_routes.map((route) => {
+            if (route.id !== routeId) return route
+            const selected = route.source_groups.includes(groupName)
+            return {
+              ...route,
+              source_groups: selected
+                ? route.source_groups.filter((item) => item !== groupName)
+                : [...route.source_groups, groupName],
+            }
+          }),
+        }
+      }),
+    }))
+  }
+
   function toggleGroupPlayingField(phaseIndex: number, groupName: string, playingField: PlayingFieldConfig) {
     setStructure((current) => ({
       ...current,
@@ -2516,10 +2614,18 @@ function AgeGroupConfigurationPanel({
   }
 
   function removePhase(index: number) {
-    setStructure((current) => ({
-      ...current,
-      phases: current.phases.filter((_, phaseIndex) => phaseIndex !== index),
-    }))
+    setStructure((current) => {
+      const removedPhase = current.phases[index]
+      return {
+        ...current,
+        phases: current.phases
+          .filter((_, phaseIndex) => phaseIndex !== index)
+          .map((phase) => ({
+            ...phase,
+            advancement_routes: phase.advancement_routes.filter((route) => route.target_phase_id !== removedPhase?.id),
+          })),
+      }
+    })
   }
 
   function addPlayingField() {
@@ -3064,58 +3170,131 @@ function AgeGroupConfigurationPanel({
                               {estimateGroupStageMatches(phase) ?? 0} incontri
                             </p>
                           </div>
-                          <FormField label="Fase successiva">
-                            <select
-                              value={phase.next_phase_type}
-                              onChange={(e) => setPhase(index, {
-                                next_phase_type: e.target.value as StructurePhase['next_phase_type'],
-                                qualifiers_per_group: e.target.value ? (phase.qualifiers_per_group ?? 1) : null,
-                                best_extra_teams: e.target.value ? (phase.best_extra_teams ?? 0) : null,
-                              })}
-                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
-                            >
-                              <option value="">Nessuna fase successiva</option>
-                              <option value="GROUP_STAGE">Ancora gironi</option>
-                              <option value="KNOCKOUT">Eliminazione diretta</option>
-                            </select>
-                          </FormField>
-                          {phase.next_phase_type ? (
-                            (() => {
-                              const nextPhase = structure.phases[index + 1]
-                              const usesGroupBlocks = nextPhase?.phase_type === 'KNOCKOUT' && nextPhase.bracket_mode === 'group_blocks'
-                              if (usesGroupBlocks) {
-                                return (
-                                  <div className="rounded-[1.2rem] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 sm:col-span-2">
-                                    Tutte le squadre passano automaticamente alla fase successiva. Il sistema crea semifinali e finali per 1-4, 5-8, 9-12 e cosi via.
-                                  </div>
-                                )
-                              }
-                              return (
-                                <>
-                                  <FormField label="Qualificate per girone">
-                                    <input
-                                      type="number"
-                                      value={phase.qualifiers_per_group ?? ''}
-                                      onChange={(e) => setPhase(index, { qualifiers_per_group: e.target.value ? Number(e.target.value) : null })}
-                                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
-                                    />
-                                  </FormField>
-                                  <FormField label="Migliori extra qualificate" hint="Secondi o terzi migliori">
-                                    <input
-                                      type="number"
-                                      value={phase.best_extra_teams ?? ''}
-                                      onChange={(e) => setPhase(index, { best_extra_teams: e.target.value ? Number(e.target.value) : null })}
-                                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
-                                    />
-                                  </FormField>
-                                </>
-                              )
-                            })()
-                          ) : (
-                            <div className="rounded-[1.2rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 sm:col-span-2">
-                              Questa fase si chiude con la classifica finale del girone. Non servono qualificate.
+                          <div className="rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3 sm:col-span-2">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                              <div>
+                                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Fasi successive</p>
+                                <p className="mt-1 text-sm text-slate-600">
+                                  Puoi chiudere il girone qui oppure instradare squadre verso una o più fasi successive, anche miste tra gironi ed eliminazione.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => addAdvancementRoute(index)}
+                                disabled={structure.phases.slice(index + 1).length === 0}
+                                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <Plus className="h-4 w-4" />
+                                Aggiungi instradamento
+                              </button>
                             </div>
-                          )}
+
+                            {phase.advancement_routes.length === 0 ? (
+                              <div className="mt-4 rounded-[1.1rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                                Questa fase può chiudersi qui: nessuna squadra va avanti finché non aggiungi un instradamento.
+                              </div>
+                            ) : (
+                              <div className="mt-4 space-y-3">
+                                {phase.advancement_routes.map((route) => {
+                                  const availableTargets = structure.phases.slice(index + 1)
+                                  return (
+                                    <div key={route.id} className="rounded-[1.15rem] border border-slate-200 bg-slate-50 p-3">
+                                      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_180px_auto] lg:items-end">
+                                        <FormField label="Destinazione">
+                                          <select
+                                            value={route.target_phase_id}
+                                            onChange={(e) => setAdvancementRoute(index, route.id, { target_phase_id: e.target.value })}
+                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                                          >
+                                            <option value="">Seleziona fase</option>
+                                            {availableTargets.map((targetPhase, targetIndex) => (
+                                              <option key={targetPhase.id} value={targetPhase.id}>
+                                                {`Fase ${index + targetIndex + 2} · ${targetPhase.name} · ${targetPhase.phase_type === 'GROUP_STAGE' ? 'Gironi' : 'Eliminazione'}`}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </FormField>
+                                        <FormField label="Origine">
+                                          <select
+                                            value={route.source_mode}
+                                            onChange={(e) => setAdvancementRoute(index, route.id, { source_mode: e.target.value as AdvancementRoute['source_mode'] })}
+                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                                          >
+                                            <option value="group_rank">Piazzamenti dei gironi</option>
+                                            <option value="best_extra">Migliori extra</option>
+                                          </select>
+                                        </FormField>
+                                        <button
+                                          type="button"
+                                          onClick={() => removeAdvancementRoute(index, route.id)}
+                                          className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
+                                      </div>
+
+                                      {route.source_mode === 'group_rank' ? (
+                                        <>
+                                          <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                            <FormField label="Dal piazzamento">
+                                              <input
+                                                type="number"
+                                                value={route.rank_from ?? ''}
+                                                onChange={(e) => setAdvancementRoute(index, route.id, { rank_from: e.target.value ? Number(e.target.value) : null })}
+                                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                                              />
+                                            </FormField>
+                                            <FormField label="Al piazzamento">
+                                              <input
+                                                type="number"
+                                                value={route.rank_to ?? ''}
+                                                onChange={(e) => setAdvancementRoute(index, route.id, { rank_to: e.target.value ? Number(e.target.value) : null })}
+                                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                                              />
+                                            </FormField>
+                                          </div>
+                                          <div className="mt-3">
+                                            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Gironi sorgente</p>
+                                            <p className="mt-1 text-sm text-slate-600">Se non selezioni nulla, il sistema prende tutti i gironi.</p>
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                              {buildGroupNames(phase).map((groupName) => {
+                                                const selected = route.source_groups.includes(groupName)
+                                                return (
+                                                  <button
+                                                    key={`${route.id}-${groupName}`}
+                                                    type="button"
+                                                    onClick={() => toggleAdvancementRouteGroup(index, route.id, groupName)}
+                                                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                                      selected
+                                                        ? 'bg-slate-900 text-white'
+                                                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                                                    }`}
+                                                  >
+                                                    {groupName}
+                                                  </button>
+                                                )
+                                              })}
+                                            </div>
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                          <FormField label="Numero migliori extra">
+                                            <input
+                                              type="number"
+                                              value={route.extra_count ?? ''}
+                                              onChange={(e) => setAdvancementRoute(index, route.id, { extra_count: e.target.value ? Number(e.target.value) : null })}
+                                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                                            />
+                                          </FormField>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       ) : (
                         <div className="grid gap-4 sm:grid-cols-2">
@@ -3831,6 +4010,14 @@ function serializeStructureForComparison(structure: StructureConfig) {
       qualifiers_per_group: phase.qualifiers_per_group,
       best_extra_teams: phase.best_extra_teams,
       next_phase_type: phase.next_phase_type,
+      advancement_routes: phase.advancement_routes.map((route) => ({
+        target_phase_id: route.target_phase_id,
+        source_mode: route.source_mode,
+        source_groups: route.source_groups,
+        rank_from: route.rank_from,
+        rank_to: route.rank_to,
+        extra_count: route.extra_count,
+      })),
       bracket_mode: phase.bracket_mode,
       notes: phase.notes,
       group_field_assignments: phase.group_field_assignments,
@@ -3946,11 +4133,7 @@ function validateStructureConfig(structure: StructureConfig): string[] {
     if (phase.phase_type === 'GROUP_STAGE') {
       const groupSizes = parseGroupSizes(phase.group_sizes)
       const totalTeamsInGroups = groupSizes.reduce((sum, size) => sum + size, 0)
-      const hasNextPhase = !!phase.next_phase_type
-      const nextPhase = structure.phases[index + 1]
-      const usesGroupBlocks = nextPhase?.phase_type === 'KNOCKOUT' && nextPhase.bracket_mode === 'group_blocks'
-      const qualifiers = hasNextPhase && !usesGroupBlocks ? (phase.qualifiers_per_group ?? 0) : 0
-      const extras = hasNextPhase && !usesGroupBlocks ? (phase.best_extra_teams ?? 0) : 0
+      const laterPhases = structure.phases.slice(index + 1)
 
       if (!phase.num_groups || phase.num_groups <= 0) {
         errors.push(`${phaseLabel}: il numero gironi deve essere maggiore di zero.`)
@@ -3964,30 +4147,8 @@ function validateStructureConfig(structure: StructureConfig): string[] {
         errors.push(`${phaseLabel}: il numero di valori in "squadre per girone" deve coincidere con i gironi.`)
       }
 
-      if (qualifiers < 0 || extras < 0) {
-        errors.push(`${phaseLabel}: qualificate ed extra non possono essere negative.`)
-      }
-
-      if (groupSizes.length > 0 && qualifiers > 0) {
-        const smallestGroup = Math.min(...groupSizes)
-        if (qualifiers > smallestGroup) {
-          errors.push(`${phaseLabel}: non puoi qualificare più squadre di quelle presenti nel girone più piccolo.`)
-        }
-      }
-
-      if (groupSizes.length > 0) {
-        const promotedTeams = (phase.num_groups ?? 0) * qualifiers + extras
-        if (promotedTeams > totalTeamsInGroups) {
-          errors.push(`${phaseLabel}: le squadre qualificate superano le squadre presenti nei gironi.`)
-        }
-      }
-
       if (structure.expected_teams && totalTeamsInGroups > 0 && totalTeamsInGroups !== structure.expected_teams) {
         errors.push(`${phaseLabel}: la somma delle squadre per girone deve essere ${structure.expected_teams}.`)
-      }
-
-      if (hasNextPhase && !usesGroupBlocks && qualifiers <= 0 && extras <= 0) {
-        errors.push(`${phaseLabel}: indica almeno una squadra qualificata verso la fase successiva.`)
       }
 
       const groupNames = Array.from({ length: phase.num_groups ?? 0 }, (_, groupIndex) => `Girone ${String.fromCharCode(65 + groupIndex)}`)
@@ -4001,13 +4162,34 @@ function validateStructureConfig(structure: StructureConfig): string[] {
           errors.push(`${phaseLabel}: assegna almeno un girone arbitro a ${groupName}.`)
         }
       }
+
+      for (const route of phase.advancement_routes) {
+        const targetPhase = laterPhases.find((candidate) => candidate.id === route.target_phase_id)
+        if (!targetPhase) {
+          errors.push(`${phaseLabel}: ogni instradamento deve puntare a una fase successiva.`)
+          continue
+        }
+        if (route.source_mode === 'group_rank') {
+          if (!route.rank_from || !route.rank_to || route.rank_from <= 0 || route.rank_to < route.rank_from) {
+            errors.push(`${phaseLabel}: ogni instradamento per piazzamento deve avere un intervallo valido.`)
+          }
+          if (groupSizes.length > 0 && route.rank_to && route.rank_to > Math.max(...groupSizes)) {
+            errors.push(`${phaseLabel}: un instradamento supera il numero di squadre presenti nei gironi.`)
+          }
+        }
+        if (route.source_mode === 'best_extra' && (!route.extra_count || route.extra_count <= 0)) {
+          errors.push(`${phaseLabel}: indica quante migliori extra vuoi instradare.`)
+        }
+      }
     }
     if (phase.phase_type === 'KNOCKOUT' && phase.bracket_mode === 'group_blocks') {
-      const previousPhase = index > 0 ? structure.phases[index - 1] : null
-      if (!previousPhase || previousPhase.phase_type !== 'GROUP_STAGE') {
-        errors.push(`${phaseLabel}: i blocchi 1-4, 5-8 richiedono una fase a gironi subito prima.`)
-      } else if ((previousPhase.num_groups ?? 0) !== 2) {
-        errors.push(`${phaseLabel}: i blocchi 1-4, 5-8 funzionano solo con 2 gironi.`)
+      const linkedGroupStage = structure.phases
+        .slice(0, index)
+        .find((candidate) => candidate.phase_type === 'GROUP_STAGE' && candidate.advancement_routes.some((route) => route.target_phase_id === phase.id))
+      if (!linkedGroupStage) {
+        errors.push(`${phaseLabel}: i blocchi 1-4, 5-8 richiedono almeno una fase a gironi che instradi qui le squadre.`)
+      } else if ((linkedGroupStage.num_groups ?? 0) !== 2) {
+        errors.push(`${phaseLabel}: i blocchi 1-4, 5-8 funzionano solo con una fase sorgente a 2 gironi.`)
       }
     }
     if (phase.phase_type === 'KNOCKOUT' && phase.knockout_field_assignments.length === 0) {
@@ -4109,9 +4291,38 @@ function buildTournamentFieldSchedule(ageGroups: AgeGroup[], programs: AgeGroupP
 
 function normalizeStructureConfig(value: unknown): StructureConfig {
   const input = (value && typeof value === 'object') ? value as Partial<StructureConfig> : {}
-  const phases = Array.isArray(input.phases) && input.phases.length > 0
+  const basePhases = Array.isArray(input.phases) && input.phases.length > 0
     ? input.phases.map((phase, index) => normalizePhase(phase, index + 1))
     : [makeEmptyPhase(1)]
+  const phases = basePhases.map((phase, index, phaseList) => {
+    if (phase.advancement_routes.length > 0) return phase
+    const nextPhase = phaseList[index + 1]
+    if (!nextPhase) return phase
+
+    const legacyRoutes: AdvancementRoute[] = []
+    if (nextPhase.phase_type === 'KNOCKOUT' && nextPhase.bracket_mode === 'group_blocks') {
+      legacyRoutes.push(makeAdvancementRoute({
+        targetPhaseId: nextPhase.id,
+        rankFrom: 1,
+        rankTo: 99,
+      }))
+    }
+    if ((phase.qualifiers_per_group ?? 0) > 0) {
+      legacyRoutes.push(makeAdvancementRoute({
+        targetPhaseId: nextPhase.id,
+        rankFrom: 1,
+        rankTo: phase.qualifiers_per_group ?? undefined,
+      }))
+    }
+    if ((phase.best_extra_teams ?? 0) > 0) {
+      legacyRoutes.push(makeAdvancementRoute({
+        targetPhaseId: nextPhase.id,
+        sourceMode: 'best_extra',
+        extraCount: phase.best_extra_teams ?? undefined,
+      }))
+    }
+    return legacyRoutes.length > 0 ? { ...phase, advancement_routes: legacyRoutes } : phase
+  })
 
   return {
     expected_teams: typeof input.expected_teams === 'number' ? input.expected_teams : null,
@@ -4157,6 +4368,7 @@ function normalizePhase(value: unknown, index: number): StructurePhase {
     qualifiers_per_group: typeof input.qualifiers_per_group === 'number' ? input.qualifiers_per_group : null,
     best_extra_teams: typeof input.best_extra_teams === 'number' ? input.best_extra_teams : null,
     next_phase_type: input.next_phase_type === 'GROUP_STAGE' || input.next_phase_type === 'KNOCKOUT' ? input.next_phase_type : '',
+    advancement_routes: normalizeAdvancementRoutes((input as { advancement_routes?: unknown }).advancement_routes),
     bracket_mode: input.bracket_mode === 'placement'
       ? 'placement'
       : input.bracket_mode === 'group_blocks'
@@ -4188,6 +4400,25 @@ function normalizeGroupFieldAssignments(value: unknown): Record<string, PlayingF
   )
 }
 
+function normalizeAdvancementRoutes(value: unknown): AdvancementRoute[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((route, index) => {
+      const input = (route && typeof route === 'object') ? route as Partial<AdvancementRoute> : {}
+      return {
+        id: typeof input.id === 'string' ? input.id : `adv-route-${index}-${Date.now()}`,
+        target_phase_id: typeof input.target_phase_id === 'string' ? input.target_phase_id : '',
+        source_mode: input.source_mode === 'best_extra' ? 'best_extra' : 'group_rank',
+        source_groups: Array.isArray(input.source_groups)
+          ? input.source_groups.filter((item): item is string => typeof item === 'string' && item.length > 0)
+          : [],
+        rank_from: typeof input.rank_from === 'number' ? input.rank_from : null,
+        rank_to: typeof input.rank_to === 'number' ? input.rank_to : null,
+        extra_count: typeof input.extra_count === 'number' ? input.extra_count : null,
+      }
+    })
+}
+
 function normalizeRefereeGroupAssignments(value: unknown): Record<string, string[]> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   return Object.fromEntries(
@@ -4213,11 +4444,36 @@ function makeEmptyPhase(index: number): StructurePhase {
     qualifiers_per_group: null,
     best_extra_teams: null,
     next_phase_type: '',
+    advancement_routes: [],
     bracket_mode: 'standard',
     group_field_assignments: {},
     knockout_field_assignments: [],
     referee_group_assignments: {},
     notes: '',
+  }
+}
+
+function makeAdvancementRoute({
+  targetPhaseId = '',
+  sourceMode = 'group_rank',
+  rankFrom = 1,
+  rankTo = 1,
+  extraCount = 1,
+}: {
+  targetPhaseId?: string
+  sourceMode?: AdvancementRoute['source_mode']
+  rankFrom?: number
+  rankTo?: number
+  extraCount?: number
+} = {}): AdvancementRoute {
+  return {
+    id: `adv-route-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    target_phase_id: targetPhaseId,
+    source_mode: sourceMode,
+    source_groups: [],
+    rank_from: sourceMode === 'group_rank' ? rankFrom : null,
+    rank_to: sourceMode === 'group_rank' ? rankTo : null,
+    extra_count: sourceMode === 'best_extra' ? extraCount : null,
   }
 }
 
@@ -4300,15 +4556,17 @@ function StructurePreviewCard({
                       <p className="mt-1 text-sm font-semibold text-slate-800">{estimateGroupStageMatches(phase) ?? 0}</p>
                     </div>
                     <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Passano avanti</p>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Instradamento</p>
                       <p className="mt-1 text-sm font-semibold text-slate-800">
-                        {(() => {
-                          const nextPhase = structure.phases[index + 1]
-                          if (nextPhase?.phase_type === 'KNOCKOUT' && nextPhase.bracket_mode === 'group_blocks') {
-                            return 'Tutte le squadre, divise in blocchi 1-4, 5-8, 9-12'
-                          }
-                          return `${phase.qualifiers_per_group ? `${phase.qualifiers_per_group} per girone` : 'Da definire'}${phase.best_extra_teams ? ` + ${phase.best_extra_teams} migliori extra` : ''}`
-                        })()}
+                        {phase.advancement_routes.length > 0
+                          ? phase.advancement_routes.map((route) => {
+                            const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
+                            const destination = targetPhase ? targetPhase.name : 'fase da definire'
+                            return route.source_mode === 'best_extra'
+                              ? `${route.extra_count ?? '?'} migliori extra -> ${destination}`
+                              : `${route.rank_from ?? '?'}-${route.rank_to ?? '?'} ${route.source_groups.length > 0 ? route.source_groups.join(', ') : 'tutti i gironi'} -> ${destination}`
+                          }).join(' | ')
+                          : 'Nessuna fase successiva'}
                       </p>
                     </div>
                   </>
