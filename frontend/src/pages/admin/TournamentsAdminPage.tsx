@@ -3870,7 +3870,8 @@ function SummaryTile({
 
 function VisualTemplateMini({ config }: { config: StructureConfig }) {
   return (
-    <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-1">
+    <div className="mt-4 space-y-3">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
       {config.phases.map((phase, index) => (
         <div key={phase.id} className="flex items-center gap-2">
           <div className={`min-w-[118px] rounded-2xl border px-3 py-2 ${
@@ -3892,6 +3893,25 @@ function VisualTemplateMini({ config }: { config: StructureConfig }) {
           )}
         </div>
       ))}
+      </div>
+      <div className="space-y-2">
+        {config.phases.map((phase, index) => {
+          const labels = describePhaseRoutes(config, phase)
+          if (labels.length === 0) return null
+          return (
+            <div key={`${phase.id}-routes`} className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{`Fase ${index + 1}`}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {labels.map((label) => (
+                  <span key={label} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -4744,6 +4764,41 @@ function StructurePreviewCard({
         ))}
       </div>
 
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        {structure.phases.map((phase, index) => {
+          const routeLabels = describePhaseRoutes(structure, phase)
+          return (
+            <div key={`${phase.id}-flow`} className="rounded-[1.25rem] border border-slate-200 bg-white/85 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">{`Fase ${index + 1}`}</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">{phase.name || `Fase ${index + 1}`}</p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                  {phase.phase_type === 'GROUP_STAGE'
+                    ? 'Gironi'
+                    : phase.knockout_progression === 'single_round'
+                      ? 'Turno singolo'
+                      : 'Tabellone'}
+                </span>
+              </div>
+              <div className="mt-3 space-y-2">
+                {routeLabels.length > 0 ? routeLabels.map((label) => (
+                  <div key={label} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                    <span>{label}</span>
+                  </div>
+                )) : (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                    Nessun passaggio successivo: la fase si chiude qui.
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
       {structure.notes && (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           {structure.notes}
@@ -4761,4 +4816,28 @@ function buildGroupPreview(phase: StructurePhase): Array<{ label: string; value:
     label: `Girone ${String.fromCharCode(65 + index)}`,
     value: sizes[index] ? `${sizes[index]} squadre` : 'da definire',
   }))
+}
+
+function describePhaseRoutes(structure: StructureConfig, phase: StructurePhase): string[] {
+  if (phase.phase_type === 'GROUP_STAGE') {
+    return phase.advancement_routes.map((route) => {
+      const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
+      const targetLabel = targetPhase?.name || 'fase da definire'
+      if (route.source_mode === 'best_extra') {
+        return `${route.extra_count ?? '?'} migliori extra -> ${targetLabel}`
+      }
+      const groupsLabel = route.source_groups.length > 0 ? route.source_groups.join(', ') : 'tutti i gironi'
+      return `${route.rank_from ?? '?'}-${route.rank_to ?? '?'} ${groupsLabel} -> ${targetLabel}`
+    })
+  }
+
+  if (phase.knockout_progression === 'single_round') {
+    return phase.advancement_routes.map((route) => {
+      const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
+      const targetLabel = targetPhase?.name || 'fase da definire'
+      return `${route.source_mode === 'knockout_loser' ? 'Perdenti' : 'Vincenti'} -> ${targetLabel}`
+    })
+  }
+
+  return []
 }
