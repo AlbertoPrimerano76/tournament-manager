@@ -572,7 +572,13 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
         raise ValueError("Age group not found")
 
     if age_group.phases and _age_group_has_recorded_results(age_group):
-        raise ValueError("Non puoi rigenerare tutto il programma dopo aver inserito risultati. Usa rigenerazione per fase o modifiche manuali.")
+        structure = age_group.structure_config or {}
+        phases_config = structure.get("phases", [])
+        if not phases_config:
+            await db.commit()
+            await db.refresh(age_group)
+            return age_group
+        return await _sync_future_age_group_matches(age_group, phases_config, db)
 
     for phase in list(age_group.phases):
         await db.delete(phase)
@@ -584,9 +590,6 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
         await db.commit()
         await db.refresh(age_group)
         return age_group
-
-    if age_group.phases and _age_group_has_recorded_results(age_group):
-        return await _sync_future_age_group_matches(age_group, phases_config, db)
 
     participants = sorted(age_group.tournament_teams, key=lambda item: item.team.name.lower())
     if len(participants) < 2:
@@ -858,6 +861,33 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
     await db.commit()
     await db.refresh(age_group)
     return age_group
+
+
+async def reset_age_group_program(age_group_id: str, db: AsyncSession) -> TournamentAgeGroup:
+    result = await db.execute(
+        select(TournamentAgeGroup)
+        .options(
+            selectinload(TournamentAgeGroup.tournament),
+            selectinload(TournamentAgeGroup.phases).selectinload(Phase.groups).selectinload(Group.group_teams),
+            selectinload(TournamentAgeGroup.phases).selectinload(Phase.matches),
+        )
+        .where(TournamentAgeGroup.id == age_group_id)
+    )
+    age_group = result.scalar_one_or_none()
+    if not age_group:
+        raise ValueError("Age group not found")
+
+    for phase in list(age_group.phases):
+        await db.delete(phase)
+    await db.flush()
+    await db.commit()
+    await db.refresh(age_group)
+    return age_group
+
+
+async def reset_and_generate_age_group_program(age_group_id: str, db: AsyncSession) -> TournamentAgeGroup:
+    await reset_age_group_program(age_group_id, db)
+    return await generate_age_group_program(age_group_id, db)
 
 
 async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, db: AsyncSession) -> TournamentAgeGroup:
