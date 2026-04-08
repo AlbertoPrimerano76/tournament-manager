@@ -6,7 +6,7 @@ import { usePublicTournamentOrganization } from '@/api/organizations'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import ErrorMessage from '@/components/shared/ErrorMessage'
 import SponsorBar from '@/components/public/SponsorBar'
-import { Calendar, MapPin, ChevronRight, MapPinned, Navigation, Building2, ImageIcon, X, Expand } from 'lucide-react'
+import { Calendar, MapPin, ChevronRight, MapPinned, Navigation, Building2, Route, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
 
@@ -70,10 +70,6 @@ export default function TournamentPage() {
                   style={{ background: `linear-gradient(135deg, ${theme.accent}1e 0%, transparent 55%, ${theme.primary}22 100%)` }}
                 />
                 <img src={tournament.logo_url} alt={tournament.name} className="relative h-24 w-24 rounded-[1.25rem] object-contain bg-white/90 p-2 sm:h-32 sm:w-32" />
-                <span className="absolute -bottom-2 -right-2 inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-bold text-white shadow-lg transition-transform group-hover:scale-[1.03]" style={{ backgroundColor: theme.accent }}>
-                  <Expand className="h-3.5 w-3.5" />
-                  Badge evento
-                </span>
               </button>
             )}
           </div>
@@ -123,7 +119,7 @@ export default function TournamentPage() {
                   className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold shadow-sm"
                   style={{ borderColor: theme.heroCardBorder, background: theme.heroPillBg, color: theme.heroPillText }}
                 >
-                  <ImageIcon className="h-4 w-4" />
+                  <Route className="h-4 w-4" />
                   Percorso tra i campi
                 </button>
               )}
@@ -172,13 +168,6 @@ export default function TournamentPage() {
                             alt={field.name}
                             className="h-28 w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
                           />
-                          <div className="flex items-center justify-between px-3 py-2 text-xs font-semibold text-slate-600">
-                            <span>Mappa campo</span>
-                            <span className="inline-flex items-center gap-1 text-slate-900">
-                              <Expand className="h-3.5 w-3.5" />
-                              Ingrandisci
-                            </span>
-                          </div>
                         </button>
                       )}
                     </div>
