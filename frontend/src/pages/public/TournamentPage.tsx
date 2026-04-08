@@ -201,22 +201,28 @@ export default function TournamentPage() {
                 const facilityNames = Array.from(
                   new Set(programMatches.filter((match) => match.field_name).map((match) => match.field_name as string)),
                 )
+                const cardStyle = getAgeGroupCardStyle(theme, ag.age_group)
 
                 return (
                   <Link
                     key={ag.id}
                     to={`/tornei/${slug}/${ag.id}`}
-                    className="flex items-center justify-between gap-3 rounded-[1.5rem] border px-4 py-4 transition-all hover:-translate-y-0.5 hover:shadow-sm"
+                    className="relative flex items-center justify-between gap-3 overflow-hidden rounded-[1.5rem] border px-4 py-4 transition-all hover:-translate-y-0.5"
                     style={{
-                      borderColor: theme.softBorder,
-                      background: getAgeGroupCardBackground(theme, ag.age_group),
+                      borderColor: cardStyle.borderColor,
+                      background: cardStyle.background,
+                      boxShadow: cardStyle.shadow,
                     }}
                   >
+                    <div
+                      className="pointer-events-none absolute inset-y-3 left-0 w-1 rounded-r-full"
+                      style={{ background: cardStyle.accent }}
+                    />
                     <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span
                       className="rounded-full px-2.5 py-1 text-xs font-bold text-white"
-                      style={{ backgroundColor: getAgeGroupBadgeColor(theme, ag.age_group) }}
+                      style={{ backgroundColor: cardStyle.badge }}
                     >
                       {ag.age_group}
                     </span>
@@ -248,7 +254,7 @@ export default function TournamentPage() {
                         </div>
                       )}
                     </div>
-                    <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
+                    <ChevronRight className="h-5 w-5 shrink-0" style={{ color: cardStyle.badge }} />
                   </Link>
                 )
               })()
@@ -343,23 +349,19 @@ function formatAgeGroup(ageGroup: string) {
   return ageGroup.replace('U', 'Under ')
 }
 
-function getAgeGroupCardBackground(theme: ReturnType<typeof getTournamentTheme>, ageGroup: string) {
-  const alphaMap: Record<string, string> = {
-    U6: '12',
-    U8: '16',
-    U10: '10',
-    U12: '1b',
+function getAgeGroupCardStyle(theme: ReturnType<typeof getTournamentTheme>, ageGroup: string) {
+  const paletteMap: Record<string, { accent: string; glow: string; tint: string; badge: string }> = {
+    U6: { accent: '#22c55e', glow: 'rgba(34,197,94,0.14)', tint: 'rgba(34,197,94,0.12)', badge: '#16a34a' },
+    U8: { accent: '#0ea5e9', glow: 'rgba(14,165,233,0.14)', tint: 'rgba(14,165,233,0.12)', badge: '#0284c7' },
+    U10: { accent: '#f59e0b', glow: 'rgba(245,158,11,0.14)', tint: 'rgba(245,158,11,0.12)', badge: '#d97706' },
+    U12: { accent: '#8b5cf6', glow: 'rgba(139,92,246,0.14)', tint: 'rgba(139,92,246,0.12)', badge: '#7c3aed' },
   }
-  const accentAlpha = alphaMap[ageGroup] ?? '12'
-  return `linear-gradient(135deg, ${theme.primary}10 0%, #ffffff 52%, ${theme.accent}${accentAlpha} 100%)`
-}
-
-function getAgeGroupBadgeColor(theme: ReturnType<typeof getTournamentTheme>, ageGroup: string) {
-  const badgeMap: Record<string, string> = {
-    U6: theme.accent,
-    U8: theme.primary,
-    U10: theme.primary,
-    U12: theme.accent,
+  const palette = paletteMap[ageGroup] ?? { accent: theme.accent, glow: `${theme.accent}22`, tint: `${theme.accent}12`, badge: theme.primary }
+  return {
+    background: `linear-gradient(135deg, ${palette.tint} 0%, rgba(255,255,255,0.98) 42%, ${palette.glow} 100%)`,
+    borderColor: palette.glow,
+    shadow: `0 18px 40px -32px ${palette.accent}`,
+    accent: palette.accent,
+    badge: palette.badge,
   }
-  return badgeMap[ageGroup] ?? theme.primary
 }
