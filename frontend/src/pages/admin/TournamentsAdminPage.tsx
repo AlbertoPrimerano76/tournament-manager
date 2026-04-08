@@ -2198,10 +2198,16 @@ function AgeGroupConfigurationPanel({
     setStructure((current) => ({
       ...current,
       phases: current.phases.map((phase) => {
-        if (phase.phase_type !== 'GROUP_STAGE') return phase
+        if (phase.phase_type !== 'GROUP_STAGE') {
+          return {
+            ...phase,
+            knockout_field_assignments: filterAssignmentsToPlayingFields(phase.knockout_field_assignments, current.schedule.playing_fields),
+          }
+        }
         return {
           ...phase,
           group_field_assignments: buildAutoGroupFieldAssignments(phase, current.schedule.playing_fields),
+          knockout_field_assignments: filterAssignmentsToPlayingFields(phase.knockout_field_assignments, current.schedule.playing_fields),
           referee_group_assignments: buildAutoRefereeAssignments(phase),
         }
       }),
@@ -3592,10 +3598,18 @@ function buildAutoGroupFieldAssignments(
 
   const fieldsPerGroup = Math.max(Math.floor(playingFields.length / groupNames.length), 1)
   const nextAssignments: Record<string, PlayingFieldConfig[]> = { ...phase.group_field_assignments }
+  const allowedFieldKeys = new Set(
+    playingFields.map((field) => `${field.field_name}::${field.field_number ?? ''}`),
+  )
 
   groupNames.forEach((groupName, groupIndex) => {
-    const existingAssignments = nextAssignments[groupName] ?? []
-    if (existingAssignments.length > 0) return
+    const existingAssignments = (nextAssignments[groupName] ?? []).filter((assignment) => (
+      allowedFieldKeys.has(`${assignment.field_name}::${assignment.field_number ?? ''}`)
+    ))
+    if (existingAssignments.length > 0) {
+      nextAssignments[groupName] = existingAssignments
+      return
+    }
 
     const start = groupIndex * fieldsPerGroup
     const end = start + fieldsPerGroup
@@ -3606,6 +3620,18 @@ function buildAutoGroupFieldAssignments(
   })
 
   return nextAssignments
+}
+
+function filterAssignmentsToPlayingFields(
+  assignments: PlayingFieldConfig[],
+  playingFields: PlayingFieldConfig[],
+): PlayingFieldConfig[] {
+  const allowedFieldKeys = new Set(
+    playingFields.map((field) => `${field.field_name}::${field.field_number ?? ''}`),
+  )
+  return assignments.filter((assignment) => (
+    allowedFieldKeys.has(`${assignment.field_name}::${assignment.field_number ?? ''}`)
+  ))
 }
 
 function buildAutoRefereeAssignments(
