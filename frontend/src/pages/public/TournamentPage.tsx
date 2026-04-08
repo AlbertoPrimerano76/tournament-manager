@@ -2,11 +2,10 @@ import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { EVENT_TYPE_LABELS, useTournament, useTournamentAgeGroups, useTournamentProgram } from '@/api/tournaments'
 import { usePublicTournamentFields } from '@/api/fields'
-import { usePublicTournamentOrganization } from '@/api/organizations'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import ErrorMessage from '@/components/shared/ErrorMessage'
 import SponsorBar from '@/components/public/SponsorBar'
-import { Calendar, MapPin, ChevronRight, MapPinned, Navigation, Building2, Route, X } from 'lucide-react'
+import { Calendar, MapPin, ChevronRight, MapPinned, Navigation, Route, X, Building2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
 
@@ -17,7 +16,6 @@ export default function TournamentPage() {
   const { data: ageGroups, isLoading: loadingAG } = useTournamentAgeGroups(slug!)
   const { data: tournamentProgram, isLoading: loadingProgram } = useTournamentProgram(slug!)
   const { data: fields, isLoading: loadingFields } = usePublicTournamentFields(slug!)
-  const { data: organization, isLoading: loadingOrg } = usePublicTournamentOrganization(slug!)
   const [activeFieldPreview, setActiveFieldPreview] = useState<{ src: string; title: string } | null>(null)
 
   useEffect(() => {
@@ -26,7 +24,7 @@ export default function TournamentPage() {
     }
   }, [navigate, slug, tournament?.slug])
 
-  if (loadingT || loadingAG || loadingFields || loadingOrg || loadingProgram) return <LoadingSpinner className="py-16" />
+  if (loadingT || loadingAG || loadingFields || loadingProgram) return <LoadingSpinner className="py-16" />
   if (errorT) return <ErrorMessage message="Evento non trovato" />
   if (!tournament) return null
 
@@ -50,8 +48,8 @@ export default function TournamentPage() {
           </>
         )}
         <div className="relative p-5 sm:p-7">
-          <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
-            <div className="min-w-0 flex-1">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 sm:gap-5">
+            <div className="min-w-0">
               <p className="text-[11px] font-bold uppercase tracking-[0.22em]" style={{ color: theme.heroEyebrow }}>
                 {EVENT_TYPE_LABELS[tournament.event_type]}
               </p>
@@ -62,14 +60,14 @@ export default function TournamentPage() {
               <button
                 type="button"
                 onClick={() => setActiveFieldPreview({ src: tournament.logo_url!, title: tournament.name })}
-                className="group relative self-start overflow-hidden rounded-[1.9rem] border p-2 shadow-[0_20px_50px_-30px_rgba(15,23,42,0.85)] transition-transform hover:-translate-y-0.5"
+                className="group relative self-start overflow-hidden rounded-[1.6rem] border p-2 shadow-[0_20px_50px_-30px_rgba(15,23,42,0.85)] transition-transform hover:-translate-y-0.5"
                 style={{ borderColor: theme.heroDivider, background: theme.heroCardBg }}
               >
                 <div
                   className="absolute inset-0 opacity-80"
                   style={{ background: `linear-gradient(135deg, ${theme.accent}1e 0%, transparent 55%, ${theme.primary}22 100%)` }}
                 />
-                <img src={tournament.logo_url} alt={tournament.name} className="relative h-24 w-24 rounded-[1.25rem] object-contain bg-white/90 p-2 sm:h-32 sm:w-32" />
+                <img src={tournament.logo_url} alt={tournament.name} className="relative h-20 w-20 rounded-[1rem] object-contain bg-white/90 p-2 sm:h-32 sm:w-32 sm:rounded-[1.25rem]" />
               </button>
             )}
           </div>
@@ -89,16 +87,6 @@ export default function TournamentPage() {
                 <MapPin className="h-3.5 w-3.5" />
                 {tournament.location}
               </span>
-            )}
-            {organization && (
-              <Link
-                to={`/${organization.slug}`}
-                className="inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold"
-                style={{ borderColor: theme.heroCardBorder, background: theme.heroPillBg, color: theme.heroPillText }}
-              >
-                <Building2 className="h-3.5 w-3.5" />
-                Pagina società
-              </Link>
             )}
           </div>
 
