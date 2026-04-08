@@ -69,6 +69,47 @@ def parse_group_sizes(raw: str | None, fallback_groups: int, total_teams: int) -
     return [base + (1 if index < extra else 0) for index in range(groups)]
 
 
+def _distribute_entries_across_groups(
+    entries: list[dict[str, Any]],
+    group_sizes: list[int],
+) -> list[list[dict[str, Any]]]:
+    groups: list[list[dict[str, Any]]] = [[] for _ in group_sizes]
+    if not entries:
+        return groups
+
+    org_buckets: dict[str | None, list[dict[str, Any]]] = defaultdict(list)
+    for entry in entries:
+        org_buckets[entry.get("organization_id")].append(entry)
+
+    ordered_entries = [
+        entry
+        for _, bucket_entries in sorted(
+            org_buckets.items(),
+            key=lambda item: (-len(item[1]), str(item[0] or "")),
+        )
+        for entry in bucket_entries
+    ]
+
+    for entry in ordered_entries:
+        organization_id = entry.get("organization_id")
+        candidate_indexes = [
+            index
+            for index, size in enumerate(group_sizes)
+            if len(groups[index]) < size
+        ]
+        if not candidate_indexes:
+            break
+
+        def group_sort_key(group_index: int) -> tuple[int, int, int]:
+            same_org_count = sum(1 for item in groups[group_index] if item.get("organization_id") == organization_id)
+            return (same_org_count, len(groups[group_index]), group_index)
+
+        target_index = min(candidate_indexes, key=group_sort_key)
+        groups[target_index].append(entry)
+
+    return groups
+
+
 def encode_seed_note(home_label: str, away_label: str, extra_note: str | None = None) -> str:
     note = f"{AUTO_SEED_PREFIX}{home_label}||{away_label}"
     if extra_note:
@@ -600,6 +641,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             "label": _team_label(team),
             "tournament_team_id": team.id,
             "team_id": team.team_id,
+            "organization_id": team.team.organization_id,
         }
         for team in participants
     ]
@@ -645,6 +687,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             phase_group_name_to_id: dict[str, str] = {}
             created_group_matches: list[Match] = []
             phase_lane_slot_counters: dict[tuple[str | None, int | None], int] = defaultdict(int)
+            grouped_entries = _distribute_entries_across_groups(current_entries, group_sizes)
 
             for group_index, group_size in enumerate(group_sizes):
                 group_name = _group_name(group_index)
@@ -658,7 +701,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                 groups.append(group)
                 phase_group_name_to_id[group_name] = group.id
 
-                group_entries = current_entries[entry_cursor: entry_cursor + group_size]
+                group_entries = grouped_entries[group_index] if group_index < len(grouped_entries) else current_entries[entry_cursor: entry_cursor + group_size]
                 entry_cursor += group_size
                 slot_labels_by_group[group.id] = [entry["label"] for entry in group_entries]
                 phase_group_team_ids[group.id] = [
@@ -934,6 +977,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             "label": _team_label(team),
             "tournament_team_id": team.id,
             "team_id": team.team_id,
+            "organization_id": team.team.organization_id,
         }
         for team in participants
     ]
@@ -996,6 +1040,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             phase_group_name_to_id: dict[str, str] = {}
             created_group_matches: list[Match] = []
             phase_lane_slot_counters: dict[tuple[str | None, int | None], int] = defaultdict(int)
+            grouped_entries = _distribute_entries_across_groups(current_entries, group_sizes)
 
             for group_index, group_size in enumerate(group_sizes):
                 group_name = _group_name(group_index)
@@ -1005,7 +1050,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                 groups.append(group)
                 phase_group_name_to_id[group_name] = group.id
 
-                group_entries = current_entries[entry_cursor: entry_cursor + group_size]
+                group_entries = grouped_entries[group_index] if group_index < len(grouped_entries) else current_entries[entry_cursor: entry_cursor + group_size]
                 entry_cursor += group_size
                 slot_labels_by_group[group.id] = [entry["label"] for entry in group_entries]
                 phase_group_team_ids[group.id] = [

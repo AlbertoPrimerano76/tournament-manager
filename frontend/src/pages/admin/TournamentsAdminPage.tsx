@@ -2225,7 +2225,10 @@ function AgeGroupConfigurationPanel({
   const selectedTeamIds = new Set(participants?.map((participant) => participant.team_id) ?? [])
   const availableTeams = (teams ?? []).filter((team) => !selectedTeamIds.has(team.id))
   const availableOrganizations = organizations ?? []
-  const availableFacilities = facilities ?? []
+  const availableFacilities = (facilities ?? []).filter((facility) => !facility.age_group || facility.age_group === ageGroup.age_group)
+  const remainingSlots = structure.expected_teams !== null
+    ? Math.max(structure.expected_teams - (participants?.length ?? 0), 0)
+    : null
   const validationErrors = validateStructureConfig(structure)
   const formulaStatus = validationErrors.length === 0 ? 'Pronta' : 'Bozza incompleta'
   const isGathering = tournament.event_type === 'GATHERING'
@@ -2234,6 +2237,12 @@ function AgeGroupConfigurationPanel({
   const isScoringDirty = serializeScoringRules(normalizeScoringRules(ageGroup.scoring_rules)) !== serializeScoringRules(scoringRules)
   const readiness = buildGenerationReadiness(structure, participants?.length ?? 0, validationErrors, isStructureDirty || isScoringDirty)
   const hasRecordedResults = hasProgramRecordedResults(program)
+
+  useEffect(() => {
+    const organization = availableOrganizations.find((item) => item.id === selectedOrganizationId)
+    if (!organization) return
+    setNewTeamName((current) => current.trim().length === 0 ? `${organization.name} ` : current)
+  }, [availableOrganizations, selectedOrganizationId])
 
   async function handleAddTeam() {
     if (!selectedTeamId) return
@@ -2784,7 +2793,7 @@ function AgeGroupConfigurationPanel({
                           list={`facilities-list-${ageGroup.id}`}
                           value={playingField.field_name}
                           onChange={(e) => updatePlayingField(index, { field_name: e.target.value })}
-                          placeholder="Es. Livorno Rugby"
+                          placeholder="Es. Stadio Carlo Montano · U6"
                           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
                         />
                       </FormField>
@@ -2813,7 +2822,7 @@ function AgeGroupConfigurationPanel({
                   )}
                   <datalist id={`facilities-list-${ageGroup.id}`}>
                     {availableFacilities.map((facility) => (
-                      <option key={facility.id} value={facility.name} />
+                      <option key={facility.id} value={formatFacilityLabel(facility.name, facility.age_group)} />
                     ))}
                   </datalist>
                 </div>
@@ -3306,8 +3315,8 @@ function AgeGroupConfigurationPanel({
                   <p className="mt-2 text-2xl font-black text-slate-900">{structure.expected_teams ?? '?'}</p>
                 </div>
                 <div className="rounded-[1.4rem] border border-fuchsia-200 bg-fuchsia-50 px-4 py-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-fuchsia-700">Disponibili</p>
-                  <p className="mt-2 text-2xl font-black text-slate-900">{availableTeams.length}</p>
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-fuchsia-700">Da inserire</p>
+                  <p className="mt-2 text-2xl font-black text-slate-900">{remainingSlots ?? '?'}</p>
                 </div>
               </div>
 
@@ -3632,6 +3641,10 @@ function filterAssignmentsToPlayingFields(
   return assignments.filter((assignment) => (
     allowedFieldKeys.has(`${assignment.field_name}::${assignment.field_number ?? ''}`)
   ))
+}
+
+function formatFacilityLabel(name: string, ageGroup: string | null | undefined) {
+  return ageGroup ? `${name} · ${ageGroup}` : name
 }
 
 function buildAutoRefereeAssignments(

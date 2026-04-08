@@ -436,6 +436,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
 }
 
 const inputCls = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rugby-green focus:border-transparent'
+const FIELD_AGE_GROUP_OPTIONS = ['U6', 'U8', 'U10', 'U12'] as const
 
 function Field({ label, hint, children }: {
   label: string; hint?: string; children: React.ReactNode
@@ -492,6 +493,7 @@ function OrganizationFacilitiesDrawer({ org, onClose }: { org: Organization; onC
                 <div className="flex items-start gap-3 p-4">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-slate-900">{facility.name}</p>
+                    {facility.age_group && <p className="mt-1 text-xs font-semibold text-emerald-700">Categoria {facility.age_group}</p>}
                     {facility.address && <p className="mt-1 text-xs text-slate-500">{facility.address}</p>}
                     {facility.maps_url && (
                       <a
@@ -576,6 +578,7 @@ function OrganizationFacilityForm({
   const updateField = useUpdateField()
   const [form, setForm] = useState({
     name: facility?.name ?? '',
+    age_group: facility?.age_group ?? '',
     address: facility?.address ?? '',
     maps_url: facility?.maps_url ?? '',
     photo_url: facility?.photo_url ?? '',
@@ -601,6 +604,7 @@ function OrganizationFacilityForm({
           organizationId: orgId,
           data: {
             name: form.name,
+            age_group: form.age_group || null,
             address: form.address || null,
             maps_url: form.maps_url || null,
             photo_url: form.photo_url || null,
@@ -612,6 +616,7 @@ function OrganizationFacilityForm({
           organization_id: orgId,
           tournament_id: null,
           name: form.name,
+          age_group: form.age_group || null,
           address: form.address || null,
           maps_url: form.maps_url || null,
           photo_url: form.photo_url || null,
@@ -633,6 +638,15 @@ function OrganizationFacilityForm({
 
       <Field label="Nome impianto *">
         <input value={form.name} onChange={e => set('name', e.target.value)} className={inputCls} />
+      </Field>
+
+      <Field label="Categoria" hint="Opzionale">
+        <select value={form.age_group} onChange={e => set('age_group', e.target.value)} className={inputCls}>
+          <option value="">Tutte le categorie</option>
+          {FIELD_AGE_GROUP_OPTIONS.map((ageGroup) => (
+            <option key={ageGroup} value={ageGroup}>{ageGroup}</option>
+          ))}
+        </select>
       </Field>
 
       <Field label="Indirizzo">

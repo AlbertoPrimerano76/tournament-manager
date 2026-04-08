@@ -11,6 +11,7 @@ class Field(Base):
     organization_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("organizations.id"), nullable=True)
     tournament_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("tournaments.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)          # "Campo 1"
+    age_group: Mapped[str | None] = mapped_column(String(20), nullable=True)
     address: Mapped[str | None] = mapped_column(String(500), nullable=True) # indirizzo completo
     maps_url: Mapped[str | None] = mapped_column(String(1000), nullable=True) # Google Maps link/embed
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)

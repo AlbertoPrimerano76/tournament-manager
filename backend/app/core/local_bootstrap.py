@@ -150,6 +150,10 @@ async def _ensure_development_schema(conn: AsyncConnection) -> None:
                 WHERE organization_id IS NULL
                 """
             )
+        if "age_group" not in field_columns:
+            await conn.exec_driver_sql(
+                "ALTER TABLE fields ADD COLUMN age_group VARCHAR(20)"
+            )
         if "actual_end_at" not in match_columns:
             await conn.exec_driver_sql(
                 "ALTER TABLE matches ADD COLUMN actual_end_at DATETIME"
@@ -217,6 +221,9 @@ async def _ensure_development_schema(conn: AsyncConnection) -> None:
         )
         await conn.exec_driver_sql(
             "ALTER TABLE fields ADD COLUMN IF NOT EXISTS organization_id VARCHAR(36)"
+        )
+        await conn.exec_driver_sql(
+            "ALTER TABLE fields ADD COLUMN IF NOT EXISTS age_group VARCHAR(20)"
         )
         await conn.exec_driver_sql(
             """

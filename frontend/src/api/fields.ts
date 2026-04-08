@@ -6,6 +6,7 @@ export interface Field {
   organization_id: string | null
   tournament_id: string | null
   name: string
+  age_group: string | null
   address: string | null
   maps_url: string | null
   photo_url: string | null
