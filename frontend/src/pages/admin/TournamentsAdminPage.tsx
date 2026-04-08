@@ -2448,16 +2448,16 @@ function AgeGroupConfigurationPanel({
                   <button
                     type="button"
                     onClick={() => void handleGenerateProgram()}
-                    disabled={generateProgram.isPending || updateAgeGroup.isPending || !readiness.isReady || hasRecordedResults}
+                    disabled={generateProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
                     className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {generateProgram.isPending ? 'Generazione...' : program?.generated ? 'Salva e rigenera partite' : 'Salva e genera partite'}
+                    {generateProgram.isPending ? 'Generazione...' : hasRecordedResults ? 'Salva e aggiorna partite future' : program?.generated ? 'Salva e rigenera partite' : 'Salva e genera partite'}
                   </button>
                 </div>
 
                 {hasRecordedResults && (
-                  <div className="mt-4 rounded-[1.2rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                    Hai già inserito almeno un risultato in questa categoria. La rigenerazione massiva è bloccata per non perdere dati.
+                  <div className="mt-4 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    Hai già inserito almeno un risultato. Il sistema manterrà intatte le partite già salvate e aggiornerà solo orari e campi delle partite future.
                   </div>
                 )}
 
@@ -3050,11 +3050,11 @@ function AgeGroupConfigurationPanel({
                 <button
                   type="button"
                   onClick={() => void handleGenerateProgram()}
-                  disabled={generateProgram.isPending || updateAgeGroup.isPending || !readiness.isReady || hasRecordedResults}
+                  disabled={generateProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
                   className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Sparkles className="h-4 w-4" />
-                  {generateProgram.isPending ? 'Generazione...' : program?.generated ? 'Salva e rigenera partite' : 'Salva e genera partite'}
+                  {generateProgram.isPending ? 'Generazione...' : hasRecordedResults ? 'Salva e aggiorna partite future' : program?.generated ? 'Salva e rigenera partite' : 'Salva e genera partite'}
                 </button>
               </div>
             </div>

@@ -29,16 +29,21 @@ AUTO_SEED_PREFIX = "AUTOSEED::"
 LOCAL_TIMEZONE = ZoneInfo("Europe/Rome")
 
 
+def _match_has_recorded_result(match: Match) -> bool:
+    return (
+        match.result_entered_at is not None
+        or match.home_score is not None
+        or match.away_score is not None
+        or match.home_tries is not None
+        or match.away_tries is not None
+        or match.status == MatchStatus.COMPLETED
+    )
+
+
 def _age_group_has_recorded_results(age_group: TournamentAgeGroup) -> bool:
     for phase in age_group.phases:
         for match in phase.matches:
-            if match.result_entered_at is not None:
-                return True
-            if match.home_score is not None or match.away_score is not None:
-                return True
-            if match.home_tries is not None or match.away_tries is not None:
-                return True
-            if match.status == MatchStatus.COMPLETED:
+            if _match_has_recorded_result(match):
                 return True
     return False
 
@@ -468,6 +473,51 @@ def _build_knockout_block_rounds(
     ]
 
 
+async def _sync_future_age_group_matches(age_group: TournamentAgeGroup, phases_config: list[dict[str, Any]], db: AsyncSession) -> TournamentAgeGroup:
+    match_slot_length = _slot_delta(age_group)
+
+    for phase_index, phase in enumerate(sorted(age_group.phases, key=lambda item: item.phase_order)):
+        phase_config = phases_config[phase_index] if phase_index < len(phases_config) and isinstance(phases_config[phase_index], dict) else {}
+        phase_start = _phase_start_datetime(age_group, phase_index)
+
+        if phase.phase_type == PhaseType.GROUP_STAGE:
+            groups = sorted(phase.groups, key=lambda item: item.group_order)
+            for group_index, group in enumerate(groups):
+                group_name = group.name
+                lanes = _group_lanes(age_group, phase_config, group_name, group_index, len(groups)) or [{"field_name": None, "field_number": None}]
+                matches = sorted(
+                    [item for item in phase.matches if item.group_id == group.id],
+                    key=lambda item: (item.bracket_position or 0, item.scheduled_at or datetime.max),
+                )
+                for match_index, match in enumerate(matches):
+                    if _match_has_recorded_result(match):
+                        continue
+                    lane = lanes[match_index % len(lanes)]
+                    slot_time = phase_start + (match_slot_length * (match_index // len(lanes))) if phase_start else None
+                    match.scheduled_at = slot_time
+                    match.field_name = lane.get("field_name")
+                    match.field_number = lane.get("field_number")
+        else:
+            lanes = _knockout_lanes(age_group, phase_config) or [{"field_name": None, "field_number": None}]
+            matches = sorted(
+                [item for item in phase.matches if item.group_id is None],
+                key=lambda item: (item.bracket_round_order or 0, item.bracket_position or 0),
+            )
+            for match_index, match in enumerate(matches):
+                if _match_has_recorded_result(match):
+                    continue
+                lane = lanes[match_index % len(lanes)]
+                slot_time = phase_start + (match_slot_length * (match_index // len(lanes))) if phase_start else None
+                match.scheduled_at = slot_time
+                match.field_name = lane.get("field_name")
+                match.field_number = lane.get("field_number")
+
+    await _sync_tournament_dates_from_generated_program(age_group)
+    await db.commit()
+    await db.refresh(age_group)
+    return age_group
+
+
 def _pair_seed_entries(entries: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any] | None]]:
     ordered = entries[:]
     pairs: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
@@ -511,6 +561,9 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
         await db.commit()
         await db.refresh(age_group)
         return age_group
+
+    if age_group.phases and _age_group_has_recorded_results(age_group):
+        return await _sync_future_age_group_matches(age_group, phases_config, db)
 
     participants = sorted(age_group.tournament_teams, key=lambda item: item.team.name.lower())
     if len(participants) < 2:
@@ -797,7 +850,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
         raise ValueError("Age group not found")
 
     if _age_group_has_recorded_results(age_group):
-        raise ValueError("Non puoi rigenerare una fase dopo aver inserito risultati nella categoria.")
+        raise ValueError("Non puoi rigenerare una singola fase dopo aver inserito risultati nella categoria. Usa l'aggiornamento massivo delle partite future.")
 
     structure = age_group.structure_config or {}
     phases_config = structure.get("phases", [])
