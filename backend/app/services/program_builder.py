@@ -31,8 +31,7 @@ LOCAL_TIMEZONE = ZoneInfo("Europe/Rome")
 
 def _match_has_recorded_result(match: Match) -> bool:
     return (
-        match.result_entered_at is not None
-        or match.home_score is not None
+        match.home_score is not None
         or match.away_score is not None
         or match.home_tries is not None
         or match.away_tries is not None

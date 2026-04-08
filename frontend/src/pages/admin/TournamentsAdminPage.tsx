@@ -2077,7 +2077,10 @@ function AgeGroupConfigurationPanel({
         }
       }),
     }))
-  }, [structure.schedule.playing_fields.length, structure.phases.map((phase) => `${phase.id}:${phase.num_groups ?? ''}:${phase.group_sizes}`).join('|')])
+  }, [
+    structure.schedule.playing_fields.map((field) => `${field.field_name}:${field.field_number ?? ''}`).join('|'),
+    structure.phases.map((phase) => `${phase.id}:${phase.num_groups ?? ''}:${phase.group_sizes}`).join('|'),
+  ])
 
   const allTemplates = [
     ...BUILTIN_TEMPLATES.filter((template) => !template.age_group || template.age_group === ageGroup.age_group),
@@ -2357,15 +2360,36 @@ function AgeGroupConfigurationPanel({
   }
 
   function updatePlayingField(index: number, patch: Partial<PlayingFieldConfig>) {
-    setStructure((current) => ({
-      ...current,
-      schedule: {
-        ...current.schedule,
-        playing_fields: current.schedule.playing_fields.map((playingField, playingFieldIndex) => (
-          playingFieldIndex === index ? { ...playingField, ...patch } : playingField
-        )),
-      },
-    }))
+    setStructure((current) => {
+      const currentField = current.schedule.playing_fields[index]
+      if (!currentField) return current
+
+      const nextField = { ...currentField, ...patch }
+      const matchesField = (field: PlayingFieldConfig) => (
+        field.field_name === currentField.field_name && field.field_number === currentField.field_number
+      )
+      const syncAssignedField = (field: PlayingFieldConfig) => (matchesField(field) ? nextField : field)
+
+      return {
+        ...current,
+        schedule: {
+          ...current.schedule,
+          playing_fields: current.schedule.playing_fields.map((playingField, playingFieldIndex) => (
+            playingFieldIndex === index ? nextField : playingField
+          )),
+        },
+        phases: current.phases.map((phase) => ({
+          ...phase,
+          group_field_assignments: Object.fromEntries(
+            Object.entries(phase.group_field_assignments).map(([groupName, assignments]) => [
+              groupName,
+              assignments.map(syncAssignedField),
+            ]),
+          ),
+          knockout_field_assignments: phase.knockout_field_assignments.map(syncAssignedField),
+        })),
+      }
+    })
   }
 
   function removePlayingField(index: number) {
