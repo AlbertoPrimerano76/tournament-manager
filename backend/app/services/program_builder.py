@@ -128,7 +128,7 @@ def decode_seed_note(note: str | None) -> tuple[str | None, str | None, str | No
     return home, away, extra
 
 
-def _phase_date(age_group: TournamentAgeGroup, phase_index: int) -> datetime | None:
+def _default_phase_date(age_group: TournamentAgeGroup, phase_index: int) -> datetime | None:
     start_date = age_group.tournament.start_date or date_type.today()
     if age_group.tournament.end_date and age_group.tournament.end_date >= start_date:
         max_days = (age_group.tournament.end_date - start_date).days
@@ -190,12 +190,27 @@ def _schedule_playing_fields(age_group: TournamentAgeGroup) -> list[dict[str, An
 
 
 def _phase_start_datetime(age_group: TournamentAgeGroup, phase_index: int) -> datetime | None:
-    base = _phase_date(age_group, phase_index)
+    base = _default_phase_date(age_group, phase_index)
     if not base:
         return None
     schedule = _schedule_settings(age_group)
     start = _parse_start_time(schedule.get("start_time"))
     return datetime.combine(base.date(), start, tzinfo=LOCAL_TIMEZONE)
+
+
+def _resolve_phase_date(
+    age_group: TournamentAgeGroup,
+    phase_index: int,
+    phase_config: dict[str, Any],
+) -> datetime | None:
+    explicit_date = phase_config.get("phase_date")
+    if isinstance(explicit_date, str) and explicit_date:
+        try:
+            parsed = datetime.strptime(explicit_date, "%Y-%m-%d").date()
+            return datetime.combine(parsed, time(hour=12), tzinfo=LOCAL_TIMEZONE)
+        except ValueError:
+            pass
+    return _default_phase_date(age_group, phase_index)
 
 
 def _resolve_phase_start(
@@ -204,7 +219,7 @@ def _resolve_phase_start(
     phase_config: dict[str, Any],
     fallback_start: datetime | None,
 ) -> datetime | None:
-    base = _phase_date(age_group, phase_index)
+    base = _resolve_phase_date(age_group, phase_index, phase_config)
     if not base:
         return fallback_start
     explicit_start = phase_config.get("start_time")

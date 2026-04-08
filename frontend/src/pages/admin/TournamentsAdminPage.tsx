@@ -1274,6 +1274,7 @@ type StructurePhase = {
   id: string
   name: string
   phase_type: 'GROUP_STAGE' | 'KNOCKOUT'
+  phase_date: string
   start_time: string
   round_trip_mode: 'single' | 'double'
   num_groups: number | null
@@ -1375,6 +1376,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-1',
           name: 'Girone unico',
           phase_type: 'GROUP_STAGE',
+          phase_date: '',
           start_time: '',
           round_trip_mode: 'single',
           num_groups: 1,
@@ -1408,6 +1410,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-1',
           name: 'Fase a gironi',
           phase_type: 'GROUP_STAGE',
+          phase_date: '',
           start_time: '',
           round_trip_mode: 'single',
           num_groups: 2,
@@ -1425,6 +1428,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-2',
           name: 'Finali',
           phase_type: 'KNOCKOUT',
+          phase_date: '',
           start_time: '',
           round_trip_mode: 'single',
           num_groups: null,
@@ -1458,6 +1462,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-1',
           name: 'Gironi iniziali',
           phase_type: 'GROUP_STAGE',
+          phase_date: '',
           start_time: '',
           round_trip_mode: 'single',
           num_groups: 4,
@@ -1475,6 +1480,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-2',
           name: 'Fase finale e piazzamenti',
           phase_type: 'KNOCKOUT',
+          phase_date: '',
           start_time: '',
           round_trip_mode: 'single',
           num_groups: null,
@@ -1508,6 +1514,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-1',
           name: 'Gironi iniziali',
           phase_type: 'GROUP_STAGE',
+          phase_date: '',
           start_time: '',
           round_trip_mode: 'single',
           num_groups: 2,
@@ -1525,6 +1532,7 @@ const BUILTIN_TEMPLATES: Array<{
           id: 'phase-2',
           name: 'Semifinali e finali di piazzamento',
           phase_type: 'KNOCKOUT',
+          phase_date: '',
           start_time: '',
           round_trip_mode: 'single',
           num_groups: null,
@@ -1948,7 +1956,7 @@ function AgeGroupConfigurationScreen({
 }) {
   const { data: ageGroups, isLoading } = useAdminTournamentAgeGroups(tournament.id)
   const ageGroup = ageGroups?.find((item) => item.id === ageGroupId) ?? null
-  const [activeTab, setActiveTab] = useState<'formula' | 'squadre' | 'template'>('formula')
+  const [activeTab, setActiveTab] = useState<'formula' | 'squadre' | 'template'>('squadre')
 
   if (isLoading) {
     return <div className="py-12 text-center text-sm text-slate-500">Caricamento categoria...</div>
@@ -1963,8 +1971,8 @@ function AgeGroupConfigurationScreen({
   }
 
   const tabs: Array<{ id: 'formula' | 'squadre' | 'template'; label: string }> = [
-    { id: 'formula', label: 'Formula' },
     { id: 'squadre', label: 'Squadre' },
+    { id: 'formula', label: 'Formula' },
     { id: 'template', label: 'Template' },
   ]
 
@@ -2113,7 +2121,7 @@ function AgeGroupOperationsPanel({ ageGroup }: { ageGroup: AgeGroup }) {
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
-          <InfoField label="Orario inizio" value={structure.schedule.start_time || 'Da definire'} />
+          <InfoField label="Fasi configurate" value={`${structure.phases.length}`} />
           <InfoField label="Durata incontro" value={structure.schedule.match_duration_minutes ? `${structure.schedule.match_duration_minutes} min` : 'Da definire'} />
           <InfoField label="Intervallo" value={structure.schedule.interval_minutes !== null ? `${structure.schedule.interval_minutes} min` : 'Da definire'} />
         </div>
@@ -2603,9 +2611,9 @@ function AgeGroupConfigurationPanel({
             <div className="border-b border-slate-200 bg-[linear-gradient(135deg,_#ffffff_0%,_#f8fafc_100%)] px-5 py-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Passo 1</p>
-                  <p className="mt-1 text-lg font-black text-slate-950">Formula dell&apos;evento</p>
-                  <p className="mt-1 text-sm text-slate-600">Parti da qui: numero squadre, fasi, gironi e qualificazioni.</p>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Passo 2</p>
+                  <p className="mt-1 text-lg font-black text-slate-950">Formula e fasi</p>
+                  <p className="mt-1 text-sm text-slate-600">Dopo aver completato le squadre, definisci fase per fase data, ora, campi e struttura.</p>
                 </div>
                 <button
                   type="button"
@@ -2617,20 +2625,18 @@ function AgeGroupConfigurationPanel({
                 </button>
               </div>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-3">
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Squadre inserite</p>
                   <p className="mt-2 text-2xl font-black text-slate-950">{participants?.length ?? 0}</p>
                 </div>
                 <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-3">
-                  <FormField label="Numero squadre atteso" hint="Totale previsto per la categoria">
-                    <input
-                      type="number"
-                      value={structure.expected_teams ?? ''}
-                      onChange={(e) => setStructure((current) => ({ ...current, expected_teams: e.target.value ? Number(e.target.value) : null }))}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
-                    />
-                  </FormField>
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Squadre attese</p>
+                  <p className="mt-2 text-2xl font-black text-slate-950">{structure.expected_teams ?? '?'}</p>
+                </div>
+                <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Da inserire</p>
+                  <p className="mt-2 text-2xl font-black text-slate-950">{remainingSlots ?? '?'}</p>
                 </div>
               </div>
             </div>
@@ -2747,13 +2753,13 @@ function AgeGroupConfigurationPanel({
                 </div>
               </div>
 
-              <div className="mb-5 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Base calendario</p>
-                    <p className="mt-1 text-base font-black text-slate-950">Orari e campi di gioco</p>
+                <div className="mb-5 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Base calendario</p>
+                    <p className="mt-1 text-base font-black text-slate-950">Durata incontri e campi disponibili</p>
                     <p className="mt-1 text-sm text-slate-600">
-                      Prima definisci orario, durata, intervallo e campi effettivi. Tutte le fasi useranno questa base.
+                      Qui definisci solo la durata, l&apos;intervallo e i campi disponibili. Data e ora di partenza si impostano dentro ogni fase.
                     </p>
                   </div>
                   <button
@@ -2766,15 +2772,7 @@ function AgeGroupConfigurationPanel({
                   </button>
                 </div>
 
-                <div className="mt-4 grid gap-4 md:grid-cols-3">
-                  <FormField label="Orario inizio">
-                    <input
-                      type="time"
-                      value={structure.schedule.start_time}
-                      onChange={(e) => setStructure((current) => ({ ...current, schedule: { ...current.schedule, start_time: e.target.value } }))}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
-                    />
-                  </FormField>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <FormField label="Durata incontro" hint="Minuti">
                     <input
                       type="number"
@@ -2985,7 +2983,7 @@ function AgeGroupConfigurationPanel({
                       )}
                     </div>
 
-                    <div className="grid gap-4 p-4 sm:grid-cols-2">
+                    <div className="grid gap-4 p-4 lg:grid-cols-4">
                       <FormField label="Nome fase">
                         <input
                           value={phase.name}
@@ -3004,7 +3002,15 @@ function AgeGroupConfigurationPanel({
                           <option value="KNOCKOUT">Eliminazione</option>
                         </select>
                       </FormField>
-                      <FormField label="Orario inizio fase" hint="Vuoto = dopo la fase precedente">
+                      <FormField label="Data inizio fase">
+                        <input
+                          type="date"
+                          value={phase.phase_date}
+                          onChange={(e) => setPhase(index, { phase_date: e.target.value })}
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                        />
+                      </FormField>
+                      <FormField label="Ora inizio fase">
                         <input
                           type="time"
                           value={phase.start_time}
@@ -3012,6 +3018,9 @@ function AgeGroupConfigurationPanel({
                           className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
                         />
                       </FormField>
+                    </div>
+
+                    <div className="grid gap-4 px-4 pb-4 lg:grid-cols-4">
                       <div className="rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3">
                         <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Fine fase stimata</p>
                         <p className="mt-2 text-sm font-semibold text-slate-900">
@@ -3023,6 +3032,14 @@ function AgeGroupConfigurationPanel({
                     <div className="px-4 pb-4">
                       {phase.phase_type === 'GROUP_STAGE' ? (
                         <div className="grid gap-4 sm:grid-cols-2">
+                          <FormField label="Numero gironi">
+                            <input
+                              type="number"
+                              value={phase.num_groups ?? ''}
+                              onChange={(e) => setPhase(index, { num_groups: e.target.value ? Number(e.target.value) : null })}
+                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                            />
+                          </FormField>
                           <FormField label="Formato partite">
                             <select
                               value={phase.round_trip_mode}
@@ -3032,14 +3049,6 @@ function AgeGroupConfigurationPanel({
                               <option value="single">Solo andata</option>
                               <option value="double">Andata e ritorno</option>
                             </select>
-                          </FormField>
-                          <FormField label="Numero gironi">
-                            <input
-                              type="number"
-                              value={phase.num_groups ?? ''}
-                              onChange={(e) => setPhase(index, { num_groups: e.target.value ? Number(e.target.value) : null })}
-                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
-                            />
                           </FormField>
                           <FormField label="Squadre per girone" hint="Es. 4,4,5">
                             <input
@@ -3320,7 +3329,7 @@ function AgeGroupConfigurationPanel({
                   <Users className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Passo 2</p>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Passo 1</p>
                   <p className="mt-1 text-lg font-black text-slate-950">Squadre partecipanti</p>
                 </div>
               </div>
@@ -3333,8 +3342,14 @@ function AgeGroupConfigurationPanel({
                   <p className="mt-2 text-2xl font-black text-slate-900">{participants?.length ?? 0}</p>
                 </div>
                 <div className="rounded-[1.4rem] border border-emerald-200 bg-emerald-50 px-4 py-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Attese</p>
-                  <p className="mt-2 text-2xl font-black text-slate-900">{structure.expected_teams ?? '?'}</p>
+                  <FormField label="Squadre attese" hint="Numero esatto da raggiungere">
+                    <input
+                      type="number"
+                      value={structure.expected_teams ?? ''}
+                      onChange={(e) => setStructure((current) => ({ ...current, expected_teams: e.target.value ? Number(e.target.value) : null }))}
+                      className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                    />
+                  </FormField>
                 </div>
                 <div className="rounded-[1.4rem] border border-fuchsia-200 bg-fuchsia-50 px-4 py-3">
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-fuchsia-700">Da inserire</p>
@@ -3342,9 +3357,13 @@ function AgeGroupConfigurationPanel({
                 </div>
               </div>
 
-              <div className="mt-4 rounded-[1.4rem] border border-amber-200 bg-amber-50 px-4 py-3">
-                <p className="text-sm font-semibold text-amber-900">Prima salva la formula, poi completa le squadre della categoria.</p>
-                <p className="mt-1 text-sm text-amber-800">
+              <div className={`mt-4 rounded-[1.4rem] border px-4 py-3 ${
+                remainingSlots === 0 ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'
+              }`}>
+                <p className={`text-sm font-semibold ${remainingSlots === 0 ? 'text-emerald-900' : 'text-amber-900'}`}>
+                  {remainingSlots === 0 ? 'Il numero squadre coincide. Puoi passare alla formula.' : 'Completa prima l’elenco squadre della categoria.'}
+                </p>
+                <p className={`mt-1 text-sm ${remainingSlots === 0 ? 'text-emerald-800' : 'text-amber-800'}`}>
                   Attese {structure.expected_teams ?? '?'} / inserite {participants?.length ?? 0}
                 </p>
               </div>
@@ -3773,7 +3792,7 @@ function buildGenerationReadiness(
   }
 
   if (structure.expected_teams !== null && participantCount !== structure.expected_teams) {
-    warnings.push(`Hai ${participantCount} squadre inserite ma ne hai previste ${structure.expected_teams}.`)
+    blockers.push(`Hai ${participantCount} squadre inserite ma ne hai previste ${structure.expected_teams}.`)
   }
 
   const hasFormula = structure.phases.length > 0
@@ -3804,6 +3823,7 @@ function serializeStructureForComparison(structure: StructureConfig) {
     phases: structure.phases.map((phase) => ({
       name: phase.name,
       phase_type: phase.phase_type,
+      phase_date: phase.phase_date,
       start_time: phase.start_time,
       round_trip_mode: phase.round_trip_mode,
       num_groups: phase.num_groups,
@@ -3872,12 +3892,12 @@ function formatTieBreakerSummary(scoringRules: AgeGroupScoringRules): string {
 function validateStructureConfig(structure: StructureConfig): string[] {
   const errors: string[] = []
 
-  if (structure.expected_teams !== null && structure.expected_teams <= 0) {
-    errors.push('Il numero squadre atteso deve essere maggiore di zero.')
+  if (structure.expected_teams === null) {
+    errors.push('Indica quante squadre partecipano alla categoria.')
   }
 
-  if (!structure.schedule.start_time) {
-    errors.push('Inserisci l’orario di inizio del programma.')
+  if (structure.expected_teams !== null && structure.expected_teams <= 0) {
+    errors.push('Il numero squadre atteso deve essere maggiore di zero.')
   }
 
   if ((structure.schedule.match_duration_minutes ?? 0) <= 0) {
@@ -3913,6 +3933,14 @@ function validateStructureConfig(structure: StructureConfig): string[] {
     const phaseLabel = `Fase ${index + 1}`
     if (!phase.name.trim()) {
       errors.push(`${phaseLabel}: inserisci un nome fase.`)
+    }
+
+    if (!phase.phase_date) {
+      errors.push(`${phaseLabel}: inserisci la data di inizio fase.`)
+    }
+
+    if (!phase.start_time) {
+      errors.push(`${phaseLabel}: inserisci l’orario di inizio fase.`)
     }
 
     if (phase.phase_type === 'GROUP_STAGE') {
@@ -3958,25 +3986,19 @@ function validateStructureConfig(structure: StructureConfig): string[] {
         errors.push(`${phaseLabel}: la somma delle squadre per girone deve essere ${structure.expected_teams}.`)
       }
 
-      if ((phase.num_groups ?? 0) > structure.schedule.playing_fields.length) {
-        errors.push(`${phaseLabel}: servono almeno ${phase.num_groups} campi di gioco per distribuire i gironi automaticamente.`)
-      }
-
       if (hasNextPhase && !usesGroupBlocks && qualifiers <= 0 && extras <= 0) {
         errors.push(`${phaseLabel}: indica almeno una squadra qualificata verso la fase successiva.`)
       }
 
-      if ((phase.num_groups ?? 0) > 1) {
-        const groupNames = Array.from({ length: phase.num_groups ?? 0 }, (_, groupIndex) => `Girone ${String.fromCharCode(65 + groupIndex)}`)
-        for (const groupName of groupNames) {
-          const assignments = phase.group_field_assignments[groupName] ?? []
-          if (assignments.length === 0) {
-            errors.push(`${phaseLabel}: assegna almeno un campo a ${groupName}.`)
-          }
-          const refereeAssignments = phase.referee_group_assignments[groupName] ?? []
-          if (refereeAssignments.length === 0) {
-            errors.push(`${phaseLabel}: assegna almeno un girone arbitro a ${groupName}.`)
-          }
+      const groupNames = Array.from({ length: phase.num_groups ?? 0 }, (_, groupIndex) => `Girone ${String.fromCharCode(65 + groupIndex)}`)
+      for (const groupName of groupNames) {
+        const assignments = phase.group_field_assignments[groupName] ?? []
+        if (assignments.length === 0) {
+          errors.push(`${phaseLabel}: assegna almeno un campo a ${groupName}.`)
+        }
+        const refereeAssignments = phase.referee_group_assignments[groupName] ?? []
+        if ((phase.num_groups ?? 0) > 1 && refereeAssignments.length === 0) {
+          errors.push(`${phaseLabel}: assegna almeno un girone arbitro a ${groupName}.`)
         }
       }
     }
@@ -3987,6 +4009,9 @@ function validateStructureConfig(structure: StructureConfig): string[] {
       } else if ((previousPhase.num_groups ?? 0) !== 2) {
         errors.push(`${phaseLabel}: i blocchi 1-4, 5-8 funzionano solo con 2 gironi.`)
       }
+    }
+    if (phase.phase_type === 'KNOCKOUT' && phase.knockout_field_assignments.length === 0) {
+      errors.push(`${phaseLabel}: assegna almeno un campo alla fase a eliminazione.`)
     }
   })
 
@@ -4124,6 +4149,7 @@ function normalizePhase(value: unknown, index: number): StructurePhase {
     id: typeof input.id === 'string' ? input.id : `phase-${index}`,
     name: typeof input.name === 'string' && input.name ? input.name : `Fase ${index}`,
     phase_type: input.phase_type === 'KNOCKOUT' ? 'KNOCKOUT' : 'GROUP_STAGE',
+    phase_date: typeof (input as { phase_date?: unknown }).phase_date === 'string' ? ((input as { phase_date?: string }).phase_date ?? '') : '',
     start_time: typeof (input as { start_time?: unknown }).start_time === 'string' ? ((input as { start_time?: string }).start_time ?? '') : '',
     round_trip_mode: input.round_trip_mode === 'double' ? 'double' : 'single',
     num_groups: typeof input.num_groups === 'number' ? input.num_groups : null,
@@ -4179,6 +4205,7 @@ function makeEmptyPhase(index: number): StructurePhase {
     id: `phase-${index}-${Date.now()}`,
     name: `Fase ${index}`,
     phase_type: 'GROUP_STAGE',
+    phase_date: '',
     start_time: '',
     round_trip_mode: 'single',
     num_groups: null,
