@@ -408,6 +408,47 @@ def _build_group_block_buckets(entries: list[dict[str, Any]]) -> list[tuple[str,
     return carry_matches or [("Tabellone principale", entries)]
 
 
+def _build_knockout_block_rounds(
+    bucket_name: str,
+    bucket_entries: list[dict[str, Any]],
+) -> list[tuple[str, list[tuple[dict[str, Any], dict[str, Any] | None]], list[dict[str, Any]]]]:
+    if len(bucket_entries) == 4:
+        semifinals = [
+            (bucket_entries[0], bucket_entries[3]),
+            (bucket_entries[1], bucket_entries[2]),
+        ]
+        finals = [
+            ({"label": f"Vincente {bucket_name} · Semifinale 1"}, {"label": f"Vincente {bucket_name} · Semifinale 2"}),
+            ({"label": f"Perdente {bucket_name} · Semifinale 1"}, {"label": f"Perdente {bucket_name} · Semifinale 2"}),
+        ]
+        return [
+            (f"{bucket_name} · Semifinali", semifinals, [
+                {"label": f"Vincente {bucket_name} · Semifinale 1"},
+                {"label": f"Vincente {bucket_name} · Semifinale 2"},
+                {"label": f"Perdente {bucket_name} · Semifinale 1"},
+                {"label": f"Perdente {bucket_name} · Semifinale 2"},
+            ]),
+            (f"{bucket_name} · Finali", finals, bucket_entries),
+        ]
+
+    if len(bucket_entries) == 2:
+        return [
+            (f"{bucket_name} · Finale", [(bucket_entries[0], bucket_entries[1])], bucket_entries),
+        ]
+
+    if len(bucket_entries) == 1:
+        return []
+
+    bracket_size = _next_power_of_two(len(bucket_entries))
+    padded = bucket_entries + [
+        {"label": f"Riposo {index + 1}", "rank": 999}
+        for index in range(max(bracket_size - len(bucket_entries), 0))
+    ]
+    return [
+        (bucket_name, _pair_seed_entries(padded), bucket_entries),
+    ]
+
+
 def _pair_seed_entries(entries: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any] | None]]:
     ordered = entries[:]
     pairs: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
@@ -618,54 +659,85 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
         for bucket_name, bucket_entries in carry_matches:
             if not bucket_entries:
                 continue
-            bracket_size = _next_power_of_two(len(bucket_entries))
-            padded = bucket_entries + [
-                {"label": f"Riposo {index + 1}", "rank": 999}
-                for index in range(max(bracket_size - len(bucket_entries), 0))
-            ]
-            round_entries = padded
-            round_size = bracket_size
-            round_order = 1
+            if bracket_mode == "group_blocks":
+                block_rounds = _build_knockout_block_rounds(bucket_name, bucket_entries)
+                for round_order, (round_name, pairs, _) in enumerate(block_rounds, start=1):
+                    for pair_index, (home_entry, away_entry) in enumerate(pairs):
+                        home_label = home_entry["label"]
+                        away_label = away_entry["label"] if away_entry else "Bye"
+                        home_team_id = home_entry.get("tournament_team_id")
+                        away_team_id = away_entry.get("tournament_team_id") if away_entry else None
+                        lane = knockout_lanes[knockout_slot_index % len(knockout_lanes)]
+                        scheduled_at = phase_start + (match_slot_length * (knockout_slot_index // len(knockout_lanes))) if phase_start else None
 
-            while round_size >= 2:
-                pairs = _pair_seed_entries(round_entries)
-                round_name = f"{bucket_name} · {_knockout_round_name(round_size)}" if bucket_name != "Tabellone principale" else _knockout_round_name(round_size)
-                winners: list[dict[str, Any]] = []
-                for pair_index, (home_entry, away_entry) in enumerate(pairs):
-                    home_label = home_entry["label"]
-                    away_label = away_entry["label"] if away_entry else "Bye"
-                    home_team_id = home_entry.get("tournament_team_id")
-                    away_team_id = away_entry.get("tournament_team_id") if away_entry else None
-                    lane = knockout_lanes[knockout_slot_index % len(knockout_lanes)]
-                    scheduled_at = phase_start + (match_slot_length * (knockout_slot_index // len(knockout_lanes))) if phase_start else None
+                        match = Match(
+                            phase_id=phase.id,
+                            group_id=None,
+                            bracket_round=round_name,
+                            bracket_position=match_position,
+                            bracket_round_order=round_order,
+                            home_team_id=home_team_id if away_label != "Bye" else home_team_id,
+                            away_team_id=away_team_id if away_label != "Bye" else None,
+                            scheduled_at=scheduled_at,
+                            field_name=lane.get("field_name"),
+                            field_number=lane.get("field_number"),
+                            status=MatchStatus.SCHEDULED,
+                            notes=None if home_team_id and away_team_id else encode_seed_note(home_label, away_label),
+                        )
+                        db.add(match)
+                        created_knockout_matches.append(match)
+                        total_created_matches += 1
+                        match_position += 1
+                        knockout_slot_index += 1
+            else:
+                bracket_size = _next_power_of_two(len(bucket_entries))
+                padded = bucket_entries + [
+                    {"label": f"Riposo {index + 1}", "rank": 999}
+                    for index in range(max(bracket_size - len(bucket_entries), 0))
+                ]
+                round_entries = padded
+                round_size = bracket_size
+                round_order = 1
 
-                    match = Match(
-                        phase_id=phase.id,
-                        group_id=None,
-                        bracket_round=round_name,
-                        bracket_position=match_position,
-                        bracket_round_order=round_order,
-                        home_team_id=home_team_id if away_label != "Bye" else home_team_id,
-                        away_team_id=away_team_id if away_label != "Bye" else None,
-                        scheduled_at=scheduled_at,
-                        field_name=lane.get("field_name"),
-                        field_number=lane.get("field_number"),
-                        status=MatchStatus.SCHEDULED,
-                        notes=None if home_team_id and away_team_id else encode_seed_note(home_label, away_label),
-                    )
-                    db.add(match)
-                    created_knockout_matches.append(match)
-                    total_created_matches += 1
-                    match_position += 1
-                    knockout_slot_index += 1
-                    winners.append({"label": f"Vincente {round_name} {pair_index + 1}"})
+                while round_size >= 2:
+                    pairs = _pair_seed_entries(round_entries)
+                    round_name = f"{bucket_name} · {_knockout_round_name(round_size)}" if bucket_name != "Tabellone principale" else _knockout_round_name(round_size)
+                    winners: list[dict[str, Any]] = []
+                    for pair_index, (home_entry, away_entry) in enumerate(pairs):
+                        home_label = home_entry["label"]
+                        away_label = away_entry["label"] if away_entry else "Bye"
+                        home_team_id = home_entry.get("tournament_team_id")
+                        away_team_id = away_entry.get("tournament_team_id") if away_entry else None
+                        lane = knockout_lanes[knockout_slot_index % len(knockout_lanes)]
+                        scheduled_at = phase_start + (match_slot_length * (knockout_slot_index // len(knockout_lanes))) if phase_start else None
 
-                round_entries = winners
-                round_size = len(round_entries)
-                round_order += 1
+                        match = Match(
+                            phase_id=phase.id,
+                            group_id=None,
+                            bracket_round=round_name,
+                            bracket_position=match_position,
+                            bracket_round_order=round_order,
+                            home_team_id=home_team_id if away_label != "Bye" else home_team_id,
+                            away_team_id=away_team_id if away_label != "Bye" else None,
+                            scheduled_at=scheduled_at,
+                            field_name=lane.get("field_name"),
+                            field_number=lane.get("field_number"),
+                            status=MatchStatus.SCHEDULED,
+                            notes=None if home_team_id and away_team_id else encode_seed_note(home_label, away_label),
+                        )
+                        db.add(match)
+                        created_knockout_matches.append(match)
+                        total_created_matches += 1
+                        match_position += 1
+                        knockout_slot_index += 1
+                        winners.append({"label": f"Vincente {round_name} {pair_index + 1}"})
 
-                if round_size <= 1:
-                    break
+                    round_entries = winners
+                    round_size = len(round_entries)
+                    round_order += 1
+
+                    if round_size <= 1:
+                        break
 
             next_entries.extend(bucket_entries)
 
@@ -892,48 +964,78 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
         for bucket_name, bucket_entries in carry_matches:
             if not bucket_entries:
                 continue
-            bracket_size = _next_power_of_two(len(bucket_entries))
-            padded = bucket_entries + [{"label": f"Riposo {index + 1}", "rank": 999} for index in range(max(bracket_size - len(bucket_entries), 0))]
-            round_entries = padded
-            round_size = bracket_size
-            round_order = 1
+            if bracket_mode == "group_blocks":
+                block_rounds = _build_knockout_block_rounds(bucket_name, bucket_entries)
+                for round_order, (round_name, pairs, _) in enumerate(block_rounds, start=1):
+                    for pair_index, (home_entry, away_entry) in enumerate(pairs):
+                        home_label = home_entry["label"]
+                        away_label = away_entry["label"] if away_entry else "Bye"
+                        home_team_id = home_entry.get("tournament_team_id")
+                        away_team_id = away_entry.get("tournament_team_id") if away_entry else None
+                        lane = knockout_lanes[knockout_slot_index % len(knockout_lanes)]
+                        scheduled_at = phase_start + (match_slot_length * (knockout_slot_index // len(knockout_lanes))) if phase_start else None
+                        match = Match(
+                            phase_id=phase.id,
+                            group_id=None,
+                            bracket_round=round_name,
+                            bracket_position=match_position,
+                            bracket_round_order=round_order,
+                            home_team_id=home_team_id if away_label != "Bye" else home_team_id,
+                            away_team_id=away_team_id if away_label != "Bye" else None,
+                            scheduled_at=scheduled_at,
+                            field_name=lane.get("field_name"),
+                            field_number=lane.get("field_number"),
+                            status=MatchStatus.SCHEDULED,
+                            notes=None if home_team_id and away_team_id else encode_seed_note(home_label, away_label),
+                        )
+                        db.add(match)
+                        created_knockout_matches.append(match)
+                        total_created_matches += 1
+                        match_position += 1
+                        knockout_slot_index += 1
+            else:
+                bracket_size = _next_power_of_two(len(bucket_entries))
+                padded = bucket_entries + [{"label": f"Riposo {index + 1}", "rank": 999} for index in range(max(bracket_size - len(bucket_entries), 0))]
+                round_entries = padded
+                round_size = bracket_size
+                round_order = 1
 
-            while round_size >= 2:
-                pairs = _pair_seed_entries(round_entries)
-                round_name = f"{bucket_name} · {_knockout_round_name(round_size)}" if bucket_name != "Tabellone principale" else _knockout_round_name(round_size)
-                winners: list[dict[str, Any]] = []
-                for pair_index, (home_entry, away_entry) in enumerate(pairs):
-                    home_label = home_entry["label"]
-                    away_label = away_entry["label"] if away_entry else "Bye"
-                    home_team_id = home_entry.get("tournament_team_id")
-                    away_team_id = away_entry.get("tournament_team_id") if away_entry else None
-                    lane = knockout_lanes[knockout_slot_index % len(knockout_lanes)]
-                    scheduled_at = phase_start + (match_slot_length * (knockout_slot_index // len(knockout_lanes))) if phase_start else None
-                    match = Match(
-                        phase_id=phase.id,
-                        group_id=None,
-                        bracket_round=round_name,
-                        bracket_position=match_position,
-                        bracket_round_order=round_order,
-                        home_team_id=home_team_id if away_label != "Bye" else home_team_id,
-                        away_team_id=away_team_id if away_label != "Bye" else None,
-                        scheduled_at=scheduled_at,
-                        field_name=lane.get("field_name"),
-                        field_number=lane.get("field_number"),
-                        status=MatchStatus.SCHEDULED,
-                        notes=None if home_team_id and away_team_id else encode_seed_note(home_label, away_label),
-                    )
-                    db.add(match)
-                    created_knockout_matches.append(match)
-                    total_created_matches += 1
-                    match_position += 1
-                    knockout_slot_index += 1
-                    winners.append({"label": f"Vincente {round_name} {pair_index + 1}"})
-                round_entries = winners
-                round_size = len(round_entries)
-                round_order += 1
-                if round_size <= 1:
-                    break
+                while round_size >= 2:
+                    pairs = _pair_seed_entries(round_entries)
+                    round_name = f"{bucket_name} · {_knockout_round_name(round_size)}" if bucket_name != "Tabellone principale" else _knockout_round_name(round_size)
+                    winners: list[dict[str, Any]] = []
+                    for pair_index, (home_entry, away_entry) in enumerate(pairs):
+                        home_label = home_entry["label"]
+                        away_label = away_entry["label"] if away_entry else "Bye"
+                        home_team_id = home_entry.get("tournament_team_id")
+                        away_team_id = away_entry.get("tournament_team_id") if away_entry else None
+                        lane = knockout_lanes[knockout_slot_index % len(knockout_lanes)]
+                        scheduled_at = phase_start + (match_slot_length * (knockout_slot_index // len(knockout_lanes))) if phase_start else None
+                        match = Match(
+                            phase_id=phase.id,
+                            group_id=None,
+                            bracket_round=round_name,
+                            bracket_position=match_position,
+                            bracket_round_order=round_order,
+                            home_team_id=home_team_id if away_label != "Bye" else home_team_id,
+                            away_team_id=away_team_id if away_label != "Bye" else None,
+                            scheduled_at=scheduled_at,
+                            field_name=lane.get("field_name"),
+                            field_number=lane.get("field_number"),
+                            status=MatchStatus.SCHEDULED,
+                            notes=None if home_team_id and away_team_id else encode_seed_note(home_label, away_label),
+                        )
+                        db.add(match)
+                        created_knockout_matches.append(match)
+                        total_created_matches += 1
+                        match_position += 1
+                        knockout_slot_index += 1
+                        winners.append({"label": f"Vincente {round_name} {pair_index + 1}"})
+                    round_entries = winners
+                    round_size = len(round_entries)
+                    round_order += 1
+                    if round_size <= 1:
+                        break
             next_entries.extend(bucket_entries)
 
         await db.flush()

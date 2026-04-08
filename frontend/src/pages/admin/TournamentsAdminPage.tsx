@@ -1278,6 +1278,7 @@ type StructurePhase = {
   next_phase_type: '' | 'GROUP_STAGE' | 'KNOCKOUT'
   bracket_mode: 'standard' | 'placement' | 'group_blocks'
   group_field_assignments: Record<string, PlayingFieldConfig[]>
+  knockout_field_assignments: PlayingFieldConfig[]
   referee_group_assignments: Record<string, string[]>
   notes: string
 }
@@ -1377,6 +1378,7 @@ const BUILTIN_TEMPLATES: Array<{
           next_phase_type: '',
           bracket_mode: 'standard',
           group_field_assignments: {},
+          knockout_field_assignments: [],
           referee_group_assignments: {},
           notes: '',
         },
@@ -1408,6 +1410,7 @@ const BUILTIN_TEMPLATES: Array<{
           next_phase_type: 'KNOCKOUT',
           bracket_mode: 'standard',
           group_field_assignments: {},
+          knockout_field_assignments: [],
           referee_group_assignments: {},
           notes: '',
         },
@@ -1423,6 +1426,7 @@ const BUILTIN_TEMPLATES: Array<{
           next_phase_type: '',
           bracket_mode: 'standard',
           group_field_assignments: {},
+          knockout_field_assignments: [],
           referee_group_assignments: {},
           notes: 'Semifinali e finali',
         },
@@ -1454,6 +1458,7 @@ const BUILTIN_TEMPLATES: Array<{
           next_phase_type: 'KNOCKOUT',
           bracket_mode: 'placement',
           group_field_assignments: {},
+          knockout_field_assignments: [],
           referee_group_assignments: {},
           notes: 'Le prime giocano per 1-4 posto, le seconde per 5-8 posto, ecc.',
         },
@@ -1469,6 +1474,7 @@ const BUILTIN_TEMPLATES: Array<{
           next_phase_type: '',
           bracket_mode: 'placement',
           group_field_assignments: {},
+          knockout_field_assignments: [],
           referee_group_assignments: {},
           notes: 'Bracket principale e bracket di piazzamento',
         },
@@ -1500,6 +1506,7 @@ const BUILTIN_TEMPLATES: Array<{
           next_phase_type: 'KNOCKOUT',
           bracket_mode: 'group_blocks',
           group_field_assignments: {},
+          knockout_field_assignments: [],
           referee_group_assignments: {},
           notes: 'Le prime quattro giocano per 1-4, le successive per 5-8, 9-12 e cosi via.',
         },
@@ -1515,6 +1522,7 @@ const BUILTIN_TEMPLATES: Array<{
           next_phase_type: '',
           bracket_mode: 'group_blocks',
           group_field_assignments: {},
+          knockout_field_assignments: [],
           referee_group_assignments: {},
           notes: 'Incrocio tra i due gironi a blocchi di quattro squadre.',
         },
@@ -2303,6 +2311,25 @@ function AgeGroupConfigurationPanel({
     }))
   }
 
+  function toggleKnockoutPlayingField(phaseIndex: number, playingField: PlayingFieldConfig) {
+    setStructure((current) => ({
+      ...current,
+      phases: current.phases.map((phase, currentPhaseIndex) => {
+        if (currentPhaseIndex !== phaseIndex) return phase
+        const exists = phase.knockout_field_assignments.some((assignment) => (
+          assignment.field_name === playingField.field_name && assignment.field_number === playingField.field_number
+        ))
+        const nextAssignments = exists
+          ? phase.knockout_field_assignments.filter((assignment) => !(assignment.field_name === playingField.field_name && assignment.field_number === playingField.field_number))
+          : [...phase.knockout_field_assignments, playingField]
+        return {
+          ...phase,
+          knockout_field_assignments: nextAssignments,
+        }
+      }),
+    }))
+  }
+
   function addPhase() {
     setStructure((current) => ({
       ...current,
@@ -2857,6 +2884,11 @@ function AgeGroupConfigurationPanel({
                               <option value="KNOCKOUT">Ancora eliminazione</option>
                             </select>
                           </FormField>
+                          {phase.bracket_mode === 'group_blocks' && (
+                            <div className="rounded-[1.2rem] border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900 sm:col-span-2">
+                              Questa modalità crea per ogni blocco: semifinali incrociate, finale 1-2 e finale 3-4. Lo stesso schema si ripete per 5-8, 9-12 e gli altri piazzamenti.
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -2937,6 +2969,34 @@ function AgeGroupConfigurationPanel({
                                     </p>
                                   )}
                                 </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {phase.phase_type === 'KNOCKOUT' && structure.schedule.playing_fields.length > 0 && (
+                        <div className="mt-4 rounded-[1.3rem] border border-slate-200 bg-slate-50 p-4">
+                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Campi della fase finale</p>
+                          <p className="mt-1 text-sm text-slate-600">Puoi assegnare campi diversi rispetto ai gironi. Se non selezioni nulla, la fase userà tutti i campi disponibili.</p>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {structure.schedule.playing_fields.map((playingField) => {
+                              const selected = phase.knockout_field_assignments.some((assignment) => (
+                                assignment.field_name === playingField.field_name && assignment.field_number === playingField.field_number
+                              ))
+                              return (
+                                <button
+                                  key={`${phase.id}-ko-${playingField.field_name}-${playingField.field_number ?? 'x'}`}
+                                  type="button"
+                                  onClick={() => toggleKnockoutPlayingField(index, playingField)}
+                                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                    selected
+                                      ? 'bg-violet-700 text-white'
+                                      : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {playingField.field_name}{playingField.field_number ? ` · Campo ${playingField.field_number}` : ''}
+                                </button>
                               )
                             })}
                           </div>
@@ -3422,6 +3482,10 @@ function serializeStructureForComparison(structure: StructureConfig) {
       bracket_mode: phase.bracket_mode,
       notes: phase.notes,
       group_field_assignments: phase.group_field_assignments,
+      knockout_field_assignments: phase.knockout_field_assignments.map((field) => ({
+        field_name: field.field_name,
+        field_number: field.field_number,
+      })),
       referee_group_assignments: phase.referee_group_assignments,
     })),
   })
@@ -3668,9 +3732,17 @@ function normalizePhase(value: unknown, index: number): StructurePhase {
         ? 'group_blocks'
         : 'standard',
     group_field_assignments: normalizeGroupFieldAssignments((input as { group_field_assignments?: unknown }).group_field_assignments),
+    knockout_field_assignments: normalizePlayingFieldAssignments((input as { knockout_field_assignments?: unknown }).knockout_field_assignments),
     referee_group_assignments: normalizeRefereeGroupAssignments((input as { referee_group_assignments?: unknown }).referee_group_assignments),
     notes: typeof input.notes === 'string' ? input.notes : '',
   }
+}
+
+function normalizePlayingFieldAssignments(value: unknown): PlayingFieldConfig[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((assignment, index) => normalizePlayingFieldConfig(assignment, index))
+    .filter((assignment) => assignment.field_name)
 }
 
 function normalizeGroupFieldAssignments(value: unknown): Record<string, PlayingFieldConfig[]> {
@@ -3710,6 +3782,7 @@ function makeEmptyPhase(index: number): StructurePhase {
     next_phase_type: '',
     bracket_mode: 'standard',
     group_field_assignments: {},
+    knockout_field_assignments: [],
     referee_group_assignments: {},
     notes: '',
   }
@@ -3816,6 +3889,14 @@ function StructurePreviewCard({
                           : phase.bracket_mode === 'group_blocks'
                             ? 'Due gironi con blocchi 1-4, 5-8, 9-12'
                             : 'Eliminazione standard'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Campi fase</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-800">
+                        {phase.knockout_field_assignments.length > 0
+                          ? phase.knockout_field_assignments.map((field) => `${field.field_name}${field.field_number ? ` #${field.field_number}` : ''}`).join(' · ')
+                          : 'Tutti i campi disponibili'}
                       </p>
                     </div>
                     <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
