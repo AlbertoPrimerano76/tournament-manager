@@ -50,24 +50,36 @@ export default function HomePage() {
 
           <div className="mt-5 space-y-4">
             <div className="grid gap-3 md:grid-cols-3">
-              <input
-                value={search}
-                onChange={(e) => setFilter('q', e.target.value)}
-                placeholder="Cerca società o evento"
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
-              />
-              <select value={eventTypeFilter} onChange={(e) => setFilter('type', e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
-                <option value="all">Tutti i tipi</option>
-                <option value="TOURNAMENT">Tornei</option>
-                <option value="GATHERING">Raggruppamenti</option>
-              </select>
-              <select value={yearFilter} onChange={(e) => setFilter('year', e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
-                <option value="all">Tutti gli anni</option>
-                {Array.from(new Set((tournaments ?? []).map((tournament) => String(tournament.year)))).sort((left, right) => Number(right) - Number(left)).map((year) => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
+              <label className="space-y-1">
+                <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Ricerca</span>
+                <input
+                  value={search}
+                  onChange={(e) => setFilter('q', e.target.value)}
+                  placeholder="Cerca società o evento"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Tipo evento</span>
+                <select value={eventTypeFilter} onChange={(e) => setFilter('type', e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
+                  <option value="all">Tutti i tipi</option>
+                  <option value="TOURNAMENT">Tornei</option>
+                  <option value="GATHERING">Raggruppamenti</option>
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Anno</span>
+                <select value={yearFilter} onChange={(e) => setFilter('year', e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
+                  <option value="all">Tutti gli anni</option>
+                  {Array.from(new Set((tournaments ?? []).map((tournament) => String(tournament.year)))).sort((left, right) => Number(right) - Number(left)).map((year) => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </label>
             </div>
+            <p className="text-sm font-medium text-slate-500">
+              {filteredTournaments.length} {filteredTournaments.length === 1 ? 'evento trovato' : 'eventi trovati'}
+            </p>
             {filteredTournaments.length > 0 ? Object.entries(groupedByOrganization).map(([organizationKey, organizationTournaments]) => {
               const organization = organizationTournaments?.[0]
               if (!organizationTournaments || !organization) return null
@@ -132,4 +144,3 @@ export default function HomePage() {
     </div>
   )
 }
-

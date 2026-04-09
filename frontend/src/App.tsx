@@ -34,13 +34,9 @@ export default function App() {
       <BrowserRouter>
         <Suspense fallback={<LoadingFallback />}>
           <Routes>
-            <Route path="/" element={<HomePage />} />
-
-            {/* Org page — standalone, no layout wrapper */}
-            <Route path="/:orgSlug" element={<OrgPage />} />
-
-            {/* Public routes with layout */}
             <Route element={<PublicLayout />}>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/:orgSlug" element={<OrgPage />} />
               <Route path="/guida" element={<HelpPage />} />
               <Route path="/tornei/:slug" element={<TournamentPage />} />
               <Route path="/tornei/:slug/:ageGroupId" element={<AgeGroupPage />} />

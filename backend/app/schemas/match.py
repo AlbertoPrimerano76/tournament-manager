@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 from app.models.match import MatchStatus
 
 
@@ -84,23 +84,47 @@ class MatchResponse(BaseModel):
     home_logo_url: str | None = None
     away_logo_url: str | None = None
 
-    @model_validator(mode='before')
     @classmethod
-    def populate_team_labels(cls, v):
-        if isinstance(v, dict):
-            return v
-        ht = getattr(v, 'home_team', None)
-        at = getattr(v, 'away_team', None)
-        try:
-            if ht and getattr(ht, 'team', None):
-                v.__dict__.setdefault('home_label', ht.team.name)
-                v.__dict__.setdefault('home_logo_url', ht.team.logo_url)
-            if at and getattr(at, 'team', None):
-                v.__dict__.setdefault('away_label', at.team.name)
-                v.__dict__.setdefault('away_logo_url', at.team.logo_url)
-        except Exception:
-            pass
-        return v
+    def from_match(cls, match: object) -> "MatchResponse":
+        data = {
+            "id": getattr(match, "id"),
+            "phase_id": getattr(match, "phase_id"),
+            "group_id": getattr(match, "group_id"),
+            "bracket_round": getattr(match, "bracket_round"),
+            "bracket_position": getattr(match, "bracket_position"),
+            "home_team_id": getattr(match, "home_team_id"),
+            "away_team_id": getattr(match, "away_team_id"),
+            "scheduled_at": getattr(match, "scheduled_at"),
+            "actual_end_at": getattr(match, "actual_end_at"),
+            "field_name": getattr(match, "field_name"),
+            "field_number": getattr(match, "field_number"),
+            "status": getattr(match, "status"),
+            "home_score": getattr(match, "home_score"),
+            "away_score": getattr(match, "away_score"),
+            "home_tries": getattr(match, "home_tries"),
+            "away_tries": getattr(match, "away_tries"),
+            "referee": getattr(match, "referee"),
+            "notes": getattr(match, "notes"),
+            "home_label": None,
+            "away_label": None,
+            "home_logo_url": None,
+            "away_logo_url": None,
+        }
+
+        match_dict = getattr(match, "__dict__", {})
+        home_team = match_dict.get("home_team")
+        away_team = match_dict.get("away_team")
+        home_team_model = getattr(home_team, "__dict__", {}).get("team") if home_team is not None else None
+        away_team_model = getattr(away_team, "__dict__", {}).get("team") if away_team is not None else None
+
+        if home_team_model is not None:
+            data["home_label"] = getattr(home_team_model, "name", None)
+            data["home_logo_url"] = getattr(home_team_model, "logo_url", None)
+        if away_team_model is not None:
+            data["away_label"] = getattr(away_team_model, "name", None)
+            data["away_logo_url"] = getattr(away_team_model, "logo_url", None)
+
+        return cls.model_validate(data)
 
     model_config = {"from_attributes": True}
 

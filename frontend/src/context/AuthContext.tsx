@@ -16,20 +16,29 @@ interface AuthState {
 }
 
 const AuthContext = createContext<AuthState | null>(null)
+const ACCESS_TOKEN_KEY = 'access_token'
+const REFRESH_TOKEN_KEY = 'refresh_token'
+const AUTH_EMAIL_KEY = 'auth_user_email'
+
+function clearStoredAuth() {
+  localStorage.removeItem(ACCESS_TOKEN_KEY)
+  localStorage.removeItem(REFRESH_TOKEN_KEY)
+  localStorage.removeItem(AUTH_EMAIL_KEY)
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token')
+    const token = localStorage.getItem(ACCESS_TOKEN_KEY)
+    const email = localStorage.getItem(AUTH_EMAIL_KEY) ?? ''
     if (token) {
       try {
         const payload = JSON.parse(atob(token.split('.')[1]))
-        setUser({ id: payload.sub, email: '', role: payload.role, organization_id: null })
+        setUser({ id: payload.sub, email, role: payload.role, organization_id: null })
       } catch {
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
+        clearStoredAuth()
       }
     }
     setIsLoading(false)
@@ -37,15 +46,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function login(email: string, password: string) {
     const res = await apiClient.post('/api/v1/admin/auth/login', { email, password })
-    localStorage.setItem('access_token', res.data.access_token)
-    localStorage.setItem('refresh_token', res.data.refresh_token)
+    localStorage.setItem(ACCESS_TOKEN_KEY, res.data.access_token)
+    localStorage.setItem(REFRESH_TOKEN_KEY, res.data.refresh_token)
+    localStorage.setItem(AUTH_EMAIL_KEY, email)
     const payload = JSON.parse(atob(res.data.access_token.split('.')[1]))
     setUser({ id: payload.sub, email, role: payload.role, organization_id: null })
   }
 
   function logout() {
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
+    clearStoredAuth()
     setUser(null)
   }
 

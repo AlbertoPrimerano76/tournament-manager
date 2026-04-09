@@ -170,7 +170,7 @@ async def create_match(
     db.add(match)
     await db.commit()
     await db.refresh(match)
-    return match
+    return MatchResponse.from_match(match)
 
 
 @router.put("/matches/{match_id}", response_model=MatchResponse)
@@ -189,7 +189,7 @@ async def update_match(
         setattr(match, k, v)
     await db.commit()
     await db.refresh(match)
-    return match
+    return MatchResponse.from_match(match)
 
 
 @router.post("/matches/{match_id}/schedule", response_model=MatchResponse)
@@ -268,7 +268,7 @@ async def update_match_schedule(
 
     await db.commit()
     await db.refresh(match)
-    return match
+    return MatchResponse.from_match(match)
 
 
 @router.post("/matches/{match_id}/score", response_model=MatchResponse)
@@ -312,7 +312,7 @@ async def enter_score(
 
     await db.commit()
     await db.refresh(match)
-    return match
+    return MatchResponse.from_match(match)
 
 
 @router.post("/groups/{group_id}/bulk-schedule")

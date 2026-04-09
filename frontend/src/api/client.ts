@@ -8,6 +8,7 @@ export const apiClient = axios.create({
 function clearAuthState() {
   localStorage.removeItem('access_token')
   localStorage.removeItem('refresh_token')
+  localStorage.removeItem('auth_user_email')
 }
 
 // Attach access token to every request

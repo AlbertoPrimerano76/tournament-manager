@@ -37,7 +37,7 @@ async def get_age_group_matches(
     if match_date:
         matches = [m for m in matches if m.scheduled_at and m.scheduled_at.date() == match_date]
 
-    return matches
+    return [MatchResponse.from_match(match) for match in matches]
 
 
 @router.get("/matches/{match_id}", response_model=MatchResponse)
@@ -48,4 +48,4 @@ async def get_match(match_id: str, db: AsyncSession = Depends(get_db)):
     m = result.scalar_one_or_none()
     if not m:
         raise HTTPException(status_code=404, detail="Match not found")
-    return m
+    return MatchResponse.from_match(m)

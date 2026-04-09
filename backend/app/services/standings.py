@@ -235,6 +235,30 @@ def _sort_by_criteria(
     if criterion == "head_to_head":
         return _sort_by_head_to_head(teams, results, remaining, scoring_rules, team_metadata, tournament_location)
 
+    if criterion in {"try_diff", "tries_for"}:
+        subset_results = _filter_results_for_team_ids(results, [team.team_id for team in teams])
+        subset_stats = _build_stats(
+            [team.team_id for team in teams],
+            subset_results,
+            scoring_rules,
+            team_metadata,
+            tournament_location,
+        )
+        subset_by_team = {team.team_id: team for team in subset_stats}
+
+        return _sort_by_grouped_values(
+            teams=teams,
+            results=subset_results,
+            criteria=criteria,
+            values={
+                team.team_id: _criterion_value(subset_by_team.get(team.team_id, team), criterion)
+                for team in teams
+            },
+            scoring_rules=scoring_rules,
+            team_metadata=team_metadata,
+            tournament_location=tournament_location,
+        )
+
     grouped: dict[float, list[TeamStats]] = {}
     for team in teams:
         value = _criterion_value(team, criterion)
@@ -251,6 +275,74 @@ def _sort_by_criteria(
             )
 
     return ordered
+
+
+def _sort_by_grouped_values(
+    *,
+    teams: list[TeamStats],
+    results: list[MatchResult],
+    criteria: list[str],
+    values: dict[str, float],
+    scoring_rules: dict[str, Any],
+    team_metadata: dict[str, dict[str, Any]] | None,
+    tournament_location: str | None,
+) -> list[TeamStats]:
+    grouped: dict[float, list[TeamStats]] = {}
+    for team in teams:
+        grouped.setdefault(values.get(team.team_id, 0.0), []).append(team)
+
+    ordered_values = sorted(grouped.keys(), reverse=True)
+    if len(ordered_values) == 1:
+        return _sort_by_criteria(
+            teams,
+            results,
+            criteria[1:],
+            scoring_rules,
+            team_metadata,
+            tournament_location,
+        )
+
+    top_value = ordered_values[0]
+    top_bucket = grouped[top_value]
+    top_ids = [team.team_id for team in top_bucket]
+    top_results = _filter_results_for_team_ids(results, top_ids)
+
+    if len(top_bucket) == 1:
+        ordered = top_bucket.copy()
+    else:
+        ordered = _sort_by_criteria(
+            top_bucket,
+            top_results,
+            criteria[1:],
+            scoring_rules,
+            team_metadata,
+            tournament_location,
+        )
+
+    remaining_teams = [team for team in teams if team.team_id not in set(top_ids)]
+    if not remaining_teams:
+        return ordered
+
+    remaining_results = _filter_results_for_team_ids(results, [team.team_id for team in remaining_teams])
+    return ordered + _sort_by_criteria(
+        remaining_teams,
+        remaining_results,
+        criteria,
+        scoring_rules,
+        team_metadata,
+        tournament_location,
+    )
+
+
+def _filter_results_for_team_ids(results: list[MatchResult], team_ids: list[str]) -> list[MatchResult]:
+    if not team_ids:
+        return []
+    allowed = set(team_ids)
+    return [
+        result
+        for result in results
+        if result.home_team_id in allowed and result.away_team_id in allowed
+    ]
 
 
 def _sort_by_head_to_head(

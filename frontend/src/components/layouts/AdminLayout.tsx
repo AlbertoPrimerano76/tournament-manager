@@ -19,6 +19,7 @@ export default function AdminLayout() {
   }, [user, isLoading, navigate])
 
   if (isLoading || !user) return null
+  const pageMeta = getAdminPageMeta(location.pathname)
 
   const navItems = user.role === 'SCORE_KEEPER'
     ? [
@@ -108,15 +109,105 @@ export default function AdminLayout() {
           <button className="rounded-xl p-2 hover:bg-slate-100 md:hidden" onClick={() => setSidebarOpen(true)}>
             <Menu className="h-5 w-5" />
           </button>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Panoramica</p>
-            <p className="text-sm font-semibold text-slate-800">Gestione tornei, società e contenuti pubblici</p>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{pageMeta.kicker}</p>
+            <p className="truncate text-sm font-semibold text-slate-800">{pageMeta.title}</p>
           </div>
+          <p className="ml-auto hidden max-w-2xl text-sm text-slate-500 xl:block">{pageMeta.description}</p>
         </header>
+        <div className="border-b border-white/70 bg-white/55 px-4 py-2 backdrop-blur md:px-6">
+          <p className="text-xs font-medium text-slate-500">{pageMeta.breadcrumbs.join(' / ')}</p>
+        </div>
         <main className="flex-1 overflow-auto p-4 md:p-6">
           <Outlet />
         </main>
       </div>
     </div>
   )
+}
+
+function getAdminPageMeta(pathname: string) {
+  if (pathname === '/admin') {
+    return {
+      kicker: 'Dashboard',
+      title: 'Controllo operativo',
+      description: 'Panoramica di tornei, partite in corso e accessi rapidi per la giornata.',
+      breadcrumbs: ['Admin', 'Dashboard'],
+    }
+  }
+
+  if (pathname.startsWith('/admin/societa')) {
+    return {
+      kicker: 'Anagrafica',
+      title: 'Società e impianti',
+      description: 'Dati pubblici, branding e sedi operative organizzati in una vista stabile.',
+      breadcrumbs: ['Admin', 'Società'],
+    }
+  }
+
+  if (pathname.startsWith('/admin/utenti')) {
+    return {
+      kicker: 'Accessi',
+      title: 'Utenti, ruoli e sicurezza',
+      description: 'Permessi, stato account e attività amministrative con contesto più chiaro.',
+      breadcrumbs: ['Admin', 'Utenti'],
+    }
+  }
+
+  if (pathname.startsWith('/admin/guida')) {
+    return {
+      kicker: 'Supporto',
+      title: 'Guida amministrativa',
+      description: 'Flusso consigliato per configurazione, programmazione e gestione del giorno evento.',
+      breadcrumbs: ['Admin', 'Guida'],
+    }
+  }
+
+  if (pathname.startsWith('/admin/tornei')) {
+    const breadcrumbs = ['Admin', 'Tornei']
+    let kicker = 'Eventi'
+    let title = 'Tornei e raggruppamenti'
+    let description = 'Lista eventi, configurazione e operatività raccolte in un sistema più leggibile.'
+
+    if (pathname.endsWith('/nuovo')) {
+      kicker = 'Creazione'
+      title = 'Nuovo evento'
+      description = 'Definizione dei dati base prima di categorie, campi e pubblicazione.'
+      breadcrumbs.push('Nuovo')
+    } else if (pathname.endsWith('/modifica')) {
+      kicker = 'Configurazione'
+      title = 'Modifica evento'
+      description = 'Aggiornamento di identità, date, pubblicazione e impostazioni generali.'
+      breadcrumbs.push('Modifica')
+    } else if (pathname.endsWith('/calendario')) {
+      kicker = 'Programmazione'
+      title = 'Calendario campi'
+      description = 'Controllo di sequenze, campi assegnati e propagazione dei ritardi.'
+      breadcrumbs.push('Calendario campi')
+    } else if (pathname.includes('/categorie/') && pathname.endsWith('/gestione')) {
+      kicker = 'Categoria'
+      title = 'Gestione categoria'
+      description = 'Risultati, classifiche e stato delle partite mantenendo il contesto del torneo.'
+      breadcrumbs.push('Categoria', 'Gestione')
+    } else if (pathname.includes('/categorie/')) {
+      kicker = 'Categoria'
+      title = 'Configurazione categoria'
+      description = 'Formula, partecipanti e programma della categoria in una vista dedicata.'
+      breadcrumbs.push('Categoria')
+    } else if (pathname.endsWith('/gestione')) {
+      kicker = 'Operatività'
+      title = 'Gestione evento'
+      description = 'Monitoraggio operativo del torneo con accesso alle categorie e al programma.'
+      breadcrumbs.push('Gestione')
+    }
+
+    return { kicker, title, description, breadcrumbs }
+  }
+
+  return {
+    kicker: 'Admin',
+    title: 'Pannello tornei',
+    description: 'Gestione centralizzata di contenuti pubblici e operatività interna.',
+    breadcrumbs: ['Admin'],
+  }
 }
