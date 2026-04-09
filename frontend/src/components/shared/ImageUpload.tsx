@@ -79,17 +79,30 @@ export default function ImageUpload({
         )}
 
         <div className="flex flex-col gap-1.5 flex-1">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50 w-fit"
-          >
-            {uploading
-              ? <><Loader2 className="h-4 w-4 animate-spin" /> Caricamento...</>
-              : <><Upload className="h-4 w-4" /> {value ? 'Sostituisci' : (placeholder ?? 'Carica immagine')}</>
-            }
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              {uploading
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> Caricamento...</>
+                : <><Upload className="h-4 w-4" /> {value ? 'Sostituisci' : (placeholder ?? 'Carica immagine')}</>
+              }
+            </button>
+            {value && (
+              <button
+                type="button"
+                onClick={() => onChange('')}
+                disabled={uploading}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-red-100 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+              >
+                <X className="h-4 w-4" />
+                Rimuovi
+              </button>
+            )}
+          </div>
           {error && <p className="text-xs text-red-500">{error}</p>}
           {!error && <p className="text-xs text-gray-400">JPG, PNG o WebP · max {5} MB</p>}
         </div>
