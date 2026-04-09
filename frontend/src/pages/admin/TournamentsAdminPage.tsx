@@ -2512,23 +2512,30 @@ function AgeGroupConfigurationPanel({
   function addAdvancementRoute(phaseIndex: number) {
     setStructure((current) => {
       const sourcePhase = current.phases[phaseIndex]
-      const nextPhase = current.phases[phaseIndex + 1]
+      const routeNumber = (sourcePhase?.advancement_routes.length ?? 0) + 1
+      const linkedPhase = {
+        ...makeEmptyPhase(current.phases.length + 1, tournament.start_date),
+        name: buildLinkedPhaseName(phaseIndex, routeNumber),
+      }
+      const insertIndex = Math.min(phaseIndex + routeNumber, current.phases.length)
       return {
         ...current,
-        phases: current.phases.map((phase, currentPhaseIndex) => (
-          currentPhaseIndex === phaseIndex
-            ? {
-              ...phase,
-              advancement_routes: [
-                ...phase.advancement_routes,
-                makeAdvancementRoute({
-                  targetPhaseId: nextPhase?.id ?? '',
-                  sourceMode: sourcePhase?.phase_type === 'KNOCKOUT' ? 'knockout_winner' : 'group_rank',
-                }),
-              ],
-            }
-            : phase
-        )),
+        phases: [
+          ...current.phases.slice(0, phaseIndex),
+          {
+            ...sourcePhase,
+            advancement_routes: [
+              ...(sourcePhase?.advancement_routes ?? []),
+              makeAdvancementRoute({
+                targetPhaseId: linkedPhase.id,
+                sourceMode: sourcePhase?.phase_type === 'KNOCKOUT' ? 'knockout_winner' : 'group_rank',
+              }),
+            ],
+          },
+          ...current.phases.slice(phaseIndex + 1, insertIndex),
+          linkedPhase,
+          ...current.phases.slice(insertIndex),
+        ],
       }
     })
   }
@@ -3299,11 +3306,10 @@ function AgeGroupConfigurationPanel({
                               <button
                                 type="button"
                                 onClick={() => addAdvancementRoute(index)}
-                                disabled={structure.phases.slice(index + 1).length === 0}
-                                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
                               >
                                 <Plus className="h-4 w-4" />
-                                Aggiungi instradamento
+                                Aggiungi instradamento e crea fase
                               </button>
                             </div>
 
@@ -3314,26 +3320,11 @@ function AgeGroupConfigurationPanel({
                             ) : (
                               <div className="mt-4 space-y-3">
                                 {phase.advancement_routes.map((route) => {
-                                  const availableTargets = structure.phases.slice(index + 1)
                                   const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
                                   const sourceOrderPreview = describeRouteSourceEntries(phase, route)
                                   return (
                                     <div key={route.id} className="rounded-[1.15rem] border border-slate-200 bg-slate-50 p-3">
-                                      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_180px_auto] lg:items-end">
-                                        <FormField label="Destinazione">
-                                          <select
-                                            value={route.target_phase_id}
-                                            onChange={(e) => setAdvancementRoute(index, route.id, { target_phase_id: e.target.value })}
-                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
-                                          >
-                                            <option value="">Seleziona fase</option>
-                                            {availableTargets.map((targetPhase, targetIndex) => (
-                                              <option key={targetPhase.id} value={targetPhase.id}>
-                                                {`Fase ${index + targetIndex + 2} · ${targetPhase.name} · ${targetPhase.phase_type === 'GROUP_STAGE' ? 'Gironi' : 'Eliminazione'}`}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        </FormField>
+                                      <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)_auto] lg:items-end">
                                         <FormField label="Origine">
                                           <select
                                             value={route.source_mode}
@@ -3344,6 +3335,19 @@ function AgeGroupConfigurationPanel({
                                             <option value="best_extra">Migliori extra</option>
                                           </select>
                                         </FormField>
+                                        <div className="rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3">
+                                          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Fase collegata</p>
+                                          <p className="mt-1 text-sm font-semibold text-slate-900">{targetPhase?.name || 'Fase da creare'}</p>
+                                          {targetPhase && (
+                                            <button
+                                              type="button"
+                                              onClick={() => setActivePhaseId(targetPhase.id)}
+                                              className="mt-2 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                                            >
+                                              Apri fase
+                                            </button>
+                                          )}
+                                        </div>
                                         <button
                                           type="button"
                                           onClick={() => removeAdvancementRoute(index, route.id)}
@@ -3407,25 +3411,6 @@ function AgeGroupConfigurationPanel({
                                               type="number"
                                               value={route.extra_count ?? ''}
                                               onChange={(e) => setAdvancementRoute(index, route.id, { extra_count: e.target.value ? Number(e.target.value) : null })}
-                                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
-                                            />
-                                          </FormField>
-                                        </div>
-                                      )}
-                                      {targetPhase && (
-                                        <div className="mt-3">
-                                          <FormField
-                                            label={targetPhase.phase_type === 'GROUP_STAGE' ? 'Slot di ingresso nella fase target' : 'Seed / posizioni nella fase target'}
-                                            hint={targetPhase.phase_type === 'GROUP_STAGE'
-                                              ? 'Es. A1, B1, A2. L’ordine segue i piazzamenti qui sopra.'
-                                              : 'Es. 1, 4, 3, 2. L’ordine segue i qualificati di questo instradamento.'}
-                                          >
-                                            <input
-                                              value={route.target_slots.join(', ')}
-                                              onChange={(e) => setAdvancementRoute(index, route.id, {
-                                                target_slots: e.target.value.split(',').map((item) => item.trim().toUpperCase()).filter(Boolean),
-                                              })}
-                                              placeholder={targetPhase.phase_type === 'GROUP_STAGE' ? 'A1, B1, A2' : '1, 4, 3, 2'}
                                               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
                                             />
                                           </FormField>
@@ -3597,11 +3582,10 @@ function AgeGroupConfigurationPanel({
                             <button
                               type="button"
                               onClick={() => addAdvancementRoute(index)}
-                              disabled={structure.phases.slice(index + 1).length === 0}
-                              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
                             >
                               <Plus className="h-4 w-4" />
-                              Aggiungi instradamento
+                              Aggiungi instradamento e crea fase
                             </button>
                           </div>
 
@@ -3612,25 +3596,10 @@ function AgeGroupConfigurationPanel({
                           ) : (
                             <div className="mt-4 space-y-3">
                               {phase.advancement_routes.map((route) => {
-                                const availableTargets = structure.phases.slice(index + 1)
                                 const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
                                 return (
                                   <div key={route.id} className="rounded-[1.15rem] border border-slate-200 bg-white p-3">
-                                    <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_220px_auto] lg:items-end">
-                                      <FormField label="Destinazione">
-                                        <select
-                                          value={route.target_phase_id}
-                                          onChange={(e) => setAdvancementRoute(index, route.id, { target_phase_id: e.target.value })}
-                                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
-                                        >
-                                          <option value="">Seleziona fase</option>
-                                          {availableTargets.map((targetPhase, targetIndex) => (
-                                            <option key={targetPhase.id} value={targetPhase.id}>
-                                              {`Fase ${index + targetIndex + 2} · ${targetPhase.name} · ${targetPhase.phase_type === 'GROUP_STAGE' ? 'Gironi' : 'Eliminazione'}`}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </FormField>
+                                    <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)_auto] lg:items-end">
                                       <FormField label="Chi va avanti">
                                         <select
                                           value={route.source_mode}
@@ -3641,6 +3610,19 @@ function AgeGroupConfigurationPanel({
                                           <option value="knockout_loser">Perdenti del turno</option>
                                         </select>
                                       </FormField>
+                                      <div className="rounded-[1.1rem] border border-slate-200 bg-slate-50 px-4 py-3">
+                                        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Fase collegata</p>
+                                        <p className="mt-1 text-sm font-semibold text-slate-900">{targetPhase?.name || 'Fase da creare'}</p>
+                                        {targetPhase && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setActivePhaseId(targetPhase.id)}
+                                            className="mt-2 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                                          >
+                                            Apri fase
+                                          </button>
+                                        )}
+                                      </div>
                                       <button
                                         type="button"
                                         onClick={() => removeAdvancementRoute(index, route.id)}
@@ -3649,25 +3631,6 @@ function AgeGroupConfigurationPanel({
                                         <Trash2 className="h-4 w-4" />
                                       </button>
                                     </div>
-                                    {targetPhase && (
-                                      <div className="mt-3">
-                                        <FormField
-                                          label={targetPhase.phase_type === 'GROUP_STAGE' ? 'Slot di ingresso nella fase target' : 'Seed / posizioni nella fase target'}
-                                          hint={targetPhase.phase_type === 'GROUP_STAGE'
-                                            ? 'Es. A1, B1. L’ordine segue vincenti o perdenti del turno.'
-                                            : 'Es. 1, 2, 3, 4 per decidere il seeding del tabellone.'}
-                                        >
-                                          <input
-                                            value={route.target_slots.join(', ')}
-                                            onChange={(e) => setAdvancementRoute(index, route.id, {
-                                              target_slots: e.target.value.split(',').map((item) => item.trim().toUpperCase()).filter(Boolean),
-                                            })}
-                                            placeholder={targetPhase.phase_type === 'GROUP_STAGE' ? 'A1, B1' : '1, 2, 3, 4'}
-                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
-                                          />
-                                        </FormField>
-                                      </div>
-                                    )}
                                   </div>
                                 )
                               })}
@@ -4325,7 +4288,6 @@ function formatTieBreakerSummary(scoringRules: AgeGroupScoringRules): string {
 
 function validateStructureConfig(structure: StructureConfig): string[] {
   const errors: string[] = []
-  const usedTargetSlotsByPhase = new Map<string, Set<string>>()
 
   if (structure.expected_teams === null) {
     errors.push('Indica quante squadre partecipano alla categoria.')
@@ -4411,6 +4373,7 @@ function validateStructureConfig(structure: StructureConfig): string[] {
         }
       }
 
+      const usedTargetPhases = new Set<string>()
       for (const route of phase.advancement_routes) {
         const targetPhase = laterPhases.find((candidate) => candidate.id === route.target_phase_id)
         if (!targetPhase) {
@@ -4428,7 +4391,11 @@ function validateStructureConfig(structure: StructureConfig): string[] {
         if (route.source_mode === 'best_extra' && (!route.extra_count || route.extra_count <= 0)) {
           errors.push(`${phaseLabel}: indica quante migliori extra vuoi instradare.`)
         }
-        validateRouteTargetSlots(errors, usedTargetSlotsByPhase, phaseLabel, route, targetPhase)
+        if (usedTargetPhases.has(targetPhase.id)) {
+          errors.push(`${phaseLabel}: ogni instradamento deve creare una fase distinta.`)
+        } else {
+          usedTargetPhases.add(targetPhase.id)
+        }
       }
     }
     if (phase.phase_type === 'KNOCKOUT' && phase.bracket_mode === 'group_blocks') {
@@ -4445,6 +4412,7 @@ function validateStructureConfig(structure: StructureConfig): string[] {
       errors.push(`${phaseLabel}: assegna almeno un campo alla fase a eliminazione.`)
     }
     if (phase.phase_type === 'KNOCKOUT' && phase.knockout_progression === 'single_round') {
+      const usedTargetPhases = new Set<string>()
       for (const route of phase.advancement_routes) {
         const targetPhase = structure.phases.slice(index + 1).find((candidate) => candidate.id === route.target_phase_id)
         if (!targetPhase) {
@@ -4454,7 +4422,11 @@ function validateStructureConfig(structure: StructureConfig): string[] {
         if (route.source_mode !== 'knockout_winner' && route.source_mode !== 'knockout_loser') {
           errors.push(`${phaseLabel}: nel turno singolo puoi instradare solo vincenti o perdenti.`)
         }
-        validateRouteTargetSlots(errors, usedTargetSlotsByPhase, phaseLabel, route, targetPhase)
+        if (usedTargetPhases.has(targetPhase.id)) {
+          errors.push(`${phaseLabel}: ogni instradamento deve creare una fase distinta.`)
+        } else {
+          usedTargetPhases.add(targetPhase.id)
+        }
       }
     }
   })
@@ -4738,6 +4710,10 @@ function makeEmptyPhase(index: number, tournamentStartDate?: string | null): Str
   }
 }
 
+function buildLinkedPhaseName(sourcePhaseIndex: number, routeNumber: number) {
+  return `Fase ${sourcePhaseIndex + 2} - ${routeNumber}`
+}
+
 function makeAdvancementRoute({
   targetPhaseId = '',
   sourceMode = 'group_rank',
@@ -4963,12 +4939,11 @@ function describePhaseRoutes(structure: StructureConfig, phase: StructurePhase):
     return phase.advancement_routes.map((route) => {
       const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
       const targetLabel = targetPhase?.name || 'fase da definire'
-      const slotsLabel = route.target_slots.length > 0 ? ` [${route.target_slots.join(', ')}]` : ''
       if (route.source_mode === 'best_extra') {
-        return `${route.extra_count ?? '?'} migliori extra -> ${targetLabel}${slotsLabel}`
+        return `${route.extra_count ?? '?'} migliori extra -> ${targetLabel}`
       }
       const groupsLabel = route.source_groups.length > 0 ? route.source_groups.join(', ') : 'tutti i gironi'
-      return `${route.rank_from ?? '?'}-${route.rank_to ?? '?'} ${groupsLabel} -> ${targetLabel}${slotsLabel}`
+      return `${route.rank_from ?? '?'}-${route.rank_to ?? '?'} ${groupsLabel} -> ${targetLabel}`
     })
   }
 
@@ -4976,57 +4951,11 @@ function describePhaseRoutes(structure: StructureConfig, phase: StructurePhase):
     return phase.advancement_routes.map((route) => {
       const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
       const targetLabel = targetPhase?.name || 'fase da definire'
-      const slotsLabel = route.target_slots.length > 0 ? ` [${route.target_slots.join(', ')}]` : ''
-      return `${route.source_mode === 'knockout_loser' ? 'Perdenti' : 'Vincenti'} -> ${targetLabel}${slotsLabel}`
+      return `${route.source_mode === 'knockout_loser' ? 'Perdenti' : 'Vincenti'} -> ${targetLabel}`
     })
   }
 
   return []
-}
-
-function validateRouteTargetSlots(
-  errors: string[],
-  usedTargetSlotsByPhase: Map<string, Set<string>>,
-  phaseLabel: string,
-  route: AdvancementRoute,
-  targetPhase: StructurePhase,
-) {
-  if (route.target_slots.length === 0) return
-
-  const usedSlots = usedTargetSlotsByPhase.get(targetPhase.id) ?? new Set<string>()
-  const targetGroupSizes = parseGroupSizes(targetPhase.group_sizes)
-  const targetGroupCount = Math.max(targetPhase.num_groups ?? targetGroupSizes.length, targetGroupSizes.length, 1)
-
-  for (const rawSlot of route.target_slots) {
-    const normalizedSlot = rawSlot.trim().toUpperCase()
-    if (!normalizedSlot) continue
-
-    if (targetPhase.phase_type === 'GROUP_STAGE') {
-      const match = normalizedSlot.match(/^([A-Z])(\d+)$/)
-      if (!match) {
-        errors.push(`${phaseLabel}: gli slot verso ${targetPhase.name} devono essere nel formato A1, B1, A2.`)
-        continue
-      }
-      const groupIndex = match[1].charCodeAt(0) - 65
-      const slotPosition = Number(match[2])
-      if (groupIndex < 0 || groupIndex >= targetGroupCount) {
-        errors.push(`${phaseLabel}: lo slot ${normalizedSlot} punta a un girone inesistente di ${targetPhase.name}.`)
-      }
-      if (slotPosition <= 0) {
-        errors.push(`${phaseLabel}: lo slot ${normalizedSlot} non ha una posizione valida.`)
-      }
-    } else if (!/^\d+$/.test(normalizedSlot) || Number(normalizedSlot) <= 0) {
-      errors.push(`${phaseLabel}: i seed verso ${targetPhase.name} devono essere numeri positivi.`)
-    }
-
-    if (usedSlots.has(normalizedSlot)) {
-      errors.push(`${phaseLabel}: lo slot ${normalizedSlot} di ${targetPhase.name} è già usato da un altro instradamento.`)
-    } else {
-      usedSlots.add(normalizedSlot)
-    }
-  }
-
-  usedTargetSlotsByPhase.set(targetPhase.id, usedSlots)
 }
 
 function describeRouteSourceEntries(phase: StructurePhase, route: AdvancementRoute): string[] {
