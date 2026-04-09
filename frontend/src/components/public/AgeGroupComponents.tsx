@@ -4,6 +4,7 @@
  */
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
+import { Star } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { type ProgramMatch, type ProgramPhase, type StandingRow } from '@/api/tournaments'
 
@@ -84,7 +85,7 @@ export function PublicMatchRow({
           <span className="flex min-w-0 items-center gap-2 font-semibold text-slate-900">
             <TeamLogo src={homeLogo} alt={match.home_label} />
             <span className="truncate">{match.home_label}</span>
-            {highlightsHome ? <span className="rounded-full bg-amber-200 px-2 py-0.5 text-2xs font-bold uppercase tracking-widest2 text-amber-900">La tua</span> : null}
+            {highlightsHome ? <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" aria-label="La tua squadra" /> : null}
           </span>
           <span className="text-lg font-black text-slate-950">{match.home_score ?? '-'}</span>
         </div>
@@ -92,7 +93,7 @@ export function PublicMatchRow({
           <span className="flex min-w-0 items-center gap-2 font-semibold text-slate-900">
             <TeamLogo src={awayLogo} alt={match.away_label} />
             <span className="truncate">{match.away_label}</span>
-            {highlightsAway ? <span className="rounded-full bg-amber-200 px-2 py-0.5 text-2xs font-bold uppercase tracking-widest2 text-amber-900">La tua</span> : null}
+            {highlightsAway ? <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" aria-label="La tua squadra" /> : null}
           </span>
           <span className="text-lg font-black text-slate-950">{match.away_score ?? '-'}</span>
         </div>
@@ -156,7 +157,7 @@ export function StandingsTable({
                   <div className="flex min-w-0 items-center gap-2">
                     <TeamLogo src={teamLogoMap.get(row.team_id)} alt={row.team_name ?? teamNameMap.get(row.team_id) ?? 'Squadra'} />
                     <span className="truncate">{row.team_name ?? teamNameMap.get(row.team_id) ?? row.team_id}</span>
-                    {row.team_id === highlightedTeamId ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-2xs font-bold uppercase tracking-widest2 text-amber-800">La tua</span> : null}
+                    {row.team_id === highlightedTeamId ? <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" aria-label="La tua squadra" /> : null}
                   </div>
                   {isFinalPhase ? <span className="shrink-0 text-xs font-bold uppercase tracking-widest2 text-slate-400">{index + 1}°</span> : null}
                 </div>
@@ -224,7 +225,7 @@ export function PodiumGrid({
                 <TeamLogo src={teamLogoMap.get(row.team_id ?? '')} alt={row.team_name || teamNameMap.get(row.team_id ?? '') || 'Squadra'} />
                 <p className="truncate text-sm font-black text-slate-950">{row.team_name || teamNameMap.get(row.team_id ?? '') || 'Da definire'}</p>
                 {row.team_id && row.team_id === highlightedTeamId
-                  ? <span className="rounded-full bg-amber-200 px-2 py-0.5 text-2xs font-bold uppercase tracking-widest2 text-amber-900">La tua</span>
+                  ? <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" aria-label="La tua squadra" />
                   : null}
               </div>
             </div>

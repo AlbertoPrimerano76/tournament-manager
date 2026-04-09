@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ChevronLeft, Download, ExternalLink } from 'lucide-react'
+import { ChevronLeft, ExternalLink } from 'lucide-react'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
 import {
-  downloadPublicAgeGroupProgramPdf,
   useAgeGroupProgram,
   useAgeGroupStandings,
   useTournament,
@@ -393,14 +392,6 @@ export default function AgeGroupPage() {
           Consulta le partite della fase, le classifiche dei gironi e l’eventuale fase a eliminazione.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void downloadPublicAgeGroupProgramPdf(ageGroupId!)}
-            className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:text-slate-950"
-          >
-            <Download className="h-4 w-4" />
-            PDF calendario
-          </button>
           {program.field_map_url ? (
             <a
               href={program.field_map_url}
