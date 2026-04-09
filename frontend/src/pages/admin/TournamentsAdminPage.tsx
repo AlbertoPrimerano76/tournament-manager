@@ -1276,6 +1276,7 @@ type StructurePhase = {
   phase_type: 'GROUP_STAGE' | 'KNOCKOUT'
   phase_date: string
   start_time: string
+  placement_start_rank: number | null
   round_trip_mode: 'single' | 'double'
   knockout_progression: 'full_bracket' | 'single_round'
   num_groups: number | null
@@ -1393,6 +1394,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_type: 'GROUP_STAGE',
           phase_date: '',
           start_time: '',
+          placement_start_rank: null,
           round_trip_mode: 'single',
           knockout_progression: 'full_bracket',
           num_groups: 1,
@@ -1429,6 +1431,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_type: 'GROUP_STAGE',
           phase_date: '',
           start_time: '',
+          placement_start_rank: null,
           round_trip_mode: 'single',
           knockout_progression: 'full_bracket',
           num_groups: 2,
@@ -1449,6 +1452,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_type: 'KNOCKOUT',
           phase_date: '',
           start_time: '',
+          placement_start_rank: 1,
           round_trip_mode: 'single',
           knockout_progression: 'full_bracket',
           num_groups: null,
@@ -1485,6 +1489,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_type: 'GROUP_STAGE',
           phase_date: '',
           start_time: '',
+          placement_start_rank: null,
           round_trip_mode: 'single',
           knockout_progression: 'full_bracket',
           num_groups: 4,
@@ -1505,6 +1510,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_type: 'KNOCKOUT',
           phase_date: '',
           start_time: '',
+          placement_start_rank: 1,
           round_trip_mode: 'single',
           knockout_progression: 'full_bracket',
           num_groups: null,
@@ -1541,6 +1547,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_type: 'GROUP_STAGE',
           phase_date: '',
           start_time: '',
+          placement_start_rank: null,
           round_trip_mode: 'single',
           knockout_progression: 'full_bracket',
           num_groups: 2,
@@ -1561,6 +1568,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_type: 'KNOCKOUT',
           phase_date: '',
           start_time: '',
+          placement_start_rank: 1,
           round_trip_mode: 'single',
           knockout_progression: 'full_bracket',
           num_groups: null,
@@ -2242,6 +2250,7 @@ function AgeGroupConfigurationPanel({
   const [teamMessage, setTeamMessage] = useState('')
   const [rankingControlsOpen, setRankingControlsOpen] = useState(false)
   const [activePhaseId, setActivePhaseId] = useState('')
+  const [previewOpen, setPreviewOpen] = useState(false)
   useEffect(() => {
     setSelectedTemplateName(ageGroup.structure_template_name ?? '')
     setStructure(applyDefaultPhaseDates(normalizeStructureConfig(ageGroup.structure_config), tournament.start_date))
@@ -2513,9 +2522,13 @@ function AgeGroupConfigurationPanel({
     setStructure((current) => {
       const sourcePhase = current.phases[phaseIndex]
       const routeNumber = (sourcePhase?.advancement_routes.length ?? 0) + 1
+      const participantCount = participants?.length ?? 0
+      const suggestedStart = estimateSuggestedPhaseStart(current, phaseIndex, participantCount)
       const linkedPhase = {
         ...makeEmptyPhase(current.phases.length + 1, tournament.start_date),
         name: buildLinkedPhaseName(phaseIndex, routeNumber),
+        phase_date: suggestedStart?.date ?? (tournament.start_date ?? ''),
+        start_time: suggestedStart?.time ?? '',
       }
       const insertIndex = Math.min(phaseIndex + routeNumber, current.phases.length)
       return {
@@ -3153,6 +3166,8 @@ function AgeGroupConfigurationPanel({
                 <StructurePreviewCard
                   structure={structure}
                   participantCount={participants?.length ?? 0}
+                  isOpen={previewOpen}
+                  onToggle={() => setPreviewOpen((current) => !current)}
                 />
               </div>
 
@@ -3295,133 +3310,6 @@ function AgeGroupConfigurationPanel({
                               {estimateGroupStageMatches(phase) ?? 0} incontri
                             </p>
                           </div>
-                          <div className="rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3 sm:col-span-2">
-                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                              <div>
-                                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Fasi successive</p>
-                                <p className="mt-1 text-sm text-slate-600">
-                                  Puoi chiudere il girone qui oppure instradare squadre verso una o più fasi successive, anche miste tra gironi ed eliminazione.
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => addAdvancementRoute(index)}
-                                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
-                              >
-                                <Plus className="h-4 w-4" />
-                                Aggiungi instradamento e crea fase
-                              </button>
-                            </div>
-
-                            {phase.advancement_routes.length === 0 ? (
-                              <div className="mt-4 rounded-[1.1rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                                Questa fase può chiudersi qui: nessuna squadra va avanti finché non aggiungi un instradamento.
-                              </div>
-                            ) : (
-                              <div className="mt-4 space-y-3">
-                                {phase.advancement_routes.map((route) => {
-                                  const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
-                                  const sourceOrderPreview = describeRouteSourceEntries(phase, route)
-                                  return (
-                                    <div key={route.id} className="rounded-[1.15rem] border border-slate-200 bg-slate-50 p-3">
-                                      <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)_auto] lg:items-end">
-                                        <FormField label="Origine">
-                                          <select
-                                            value={route.source_mode}
-                                            onChange={(e) => setAdvancementRoute(index, route.id, { source_mode: e.target.value as AdvancementRoute['source_mode'] })}
-                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
-                                          >
-                                            <option value="group_rank">Piazzamenti dei gironi</option>
-                                            <option value="best_extra">Migliori extra</option>
-                                          </select>
-                                        </FormField>
-                                        <div className="rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3">
-                                          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Fase collegata</p>
-                                          <p className="mt-1 text-sm font-semibold text-slate-900">{targetPhase?.name || 'Fase da creare'}</p>
-                                          {targetPhase && (
-                                            <button
-                                              type="button"
-                                              onClick={() => setActivePhaseId(targetPhase.id)}
-                                              className="mt-2 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
-                                            >
-                                              Apri fase
-                                            </button>
-                                          )}
-                                        </div>
-                                        <button
-                                          type="button"
-                                          onClick={() => removeAdvancementRoute(index, route.id)}
-                                          className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </button>
-                                      </div>
-
-                                      {route.source_mode === 'group_rank' ? (
-                                        <>
-                                          <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                            <FormField label="Dal piazzamento">
-                                              <input
-                                                type="number"
-                                                value={route.rank_from ?? ''}
-                                                onChange={(e) => setAdvancementRoute(index, route.id, { rank_from: e.target.value ? Number(e.target.value) : null })}
-                                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
-                                              />
-                                            </FormField>
-                                            <FormField label="Al piazzamento">
-                                              <input
-                                                type="number"
-                                                value={route.rank_to ?? ''}
-                                                onChange={(e) => setAdvancementRoute(index, route.id, { rank_to: e.target.value ? Number(e.target.value) : null })}
-                                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
-                                              />
-                                            </FormField>
-                                          </div>
-                                          <div className="mt-3">
-                                            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Gironi sorgente</p>
-                                            <p className="mt-1 text-sm text-slate-600">Se non selezioni nulla, il sistema prende tutti i gironi.</p>
-                                            <div className="mt-3 flex flex-wrap gap-2">
-                                              {buildGroupNames(phase).map((groupName) => {
-                                                const selected = route.source_groups.includes(groupName)
-                                                return (
-                                                  <button
-                                                    key={`${route.id}-${groupName}`}
-                                                    type="button"
-                                                    onClick={() => toggleAdvancementRouteGroup(index, route.id, groupName)}
-                                                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                                                      selected
-                                                        ? 'bg-slate-900 text-white'
-                                                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                                                    }`}
-                                                  >
-                                                    {groupName}
-                                                  </button>
-                                                )
-                                              })}
-                                            </div>
-                                          </div>
-                                          <div className="mt-3 rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-                                            Ordine posizionamenti generato: {sourceOrderPreview.length > 0 ? sourceOrderPreview.join(' -> ') : 'da definire'}
-                                          </div>
-                                        </>
-                                      ) : (
-                                        <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                          <FormField label="Numero migliori extra">
-                                            <input
-                                              type="number"
-                                              value={route.extra_count ?? ''}
-                                              onChange={(e) => setAdvancementRoute(index, route.id, { extra_count: e.target.value ? Number(e.target.value) : null })}
-                                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
-                                            />
-                                          </FormField>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            )}
-                          </div>
                         </div>
                       ) : (
                         <div className="grid gap-4 sm:grid-cols-2">
@@ -3446,6 +3334,21 @@ function AgeGroupConfigurationPanel({
                               <option value="single_round">Solo un turno, poi instradamento</option>
                             </select>
                           </FormField>
+                          <FormField label="Classifica assegnata da">
+                            <input
+                              type="number"
+                              min="1"
+                              value={phase.placement_start_rank ?? ''}
+                              onChange={(e) => setPhase(index, { placement_start_rank: e.target.value ? Number(e.target.value) : null })}
+                              placeholder="Es. 1 oppure 5"
+                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                            />
+                          </FormField>
+                          {phase.placement_start_rank && (
+                            <div className="rounded-[1.2rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 sm:col-span-2">
+                              Questa fase parte dal {phase.placement_start_rank}° posto. Esempio: con 4 squadre assegnerà {phase.placement_start_rank}°-{phase.placement_start_rank + 3}°.
+                            </div>
+                          )}
                           {phase.bracket_mode === 'group_blocks' && (
                             <div className="rounded-[1.2rem] border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900 sm:col-span-2">
                               Questa modalità crea per ogni blocco: semifinali incrociate, finale 1-2 e finale 3-4. Lo stesso schema si ripete per 5-8, 9-12 e gli altri piazzamenti.
@@ -3539,6 +3442,136 @@ function AgeGroupConfigurationPanel({
                               )
                             })}
                           </div>
+                        </div>
+                      )}
+
+                      {phase.phase_type === 'GROUP_STAGE' && (
+                        <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Fasi successive</p>
+                              <p className="mt-1 text-sm text-slate-600">
+                                Qui scegli solo quali squadre passano. La fase collegata la configuri dopo.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => addAdvancementRoute(index)}
+                              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                            >
+                              <Plus className="h-4 w-4" />
+                              Aggiungi instradamento e crea fase
+                            </button>
+                          </div>
+
+                          {phase.advancement_routes.length === 0 ? (
+                            <div className="mt-4 rounded-[1.1rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                              Questa fase può chiudersi qui: nessuna squadra va avanti finché non aggiungi un instradamento.
+                            </div>
+                          ) : (
+                            <div className="mt-4 space-y-3">
+                              {phase.advancement_routes.map((route) => {
+                                const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
+                                const sourceOrderPreview = describeRouteSourceEntries(phase, route)
+                                return (
+                                  <div key={route.id} className="rounded-[1.15rem] border border-slate-200 bg-slate-50 p-3">
+                                    <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)_auto] lg:items-end">
+                                      <FormField label="Origine">
+                                        <select
+                                          value={route.source_mode}
+                                          onChange={(e) => setAdvancementRoute(index, route.id, { source_mode: e.target.value as AdvancementRoute['source_mode'] })}
+                                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                                        >
+                                          <option value="group_rank">Piazzamenti dei gironi</option>
+                                          <option value="best_extra">Migliori extra</option>
+                                        </select>
+                                      </FormField>
+                                      <div className="rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3">
+                                        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Fase collegata</p>
+                                        <p className="mt-1 text-sm font-semibold text-slate-900">{targetPhase?.name || 'Fase da creare'}</p>
+                                        {targetPhase && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setActivePhaseId(targetPhase.id)}
+                                            className="mt-2 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                                          >
+                                            Apri fase
+                                          </button>
+                                        )}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeAdvancementRoute(index, route.id)}
+                                        className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </div>
+
+                                    {route.source_mode === 'group_rank' ? (
+                                      <>
+                                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                          <FormField label="Dal piazzamento">
+                                            <input
+                                              type="number"
+                                              value={route.rank_from ?? ''}
+                                              onChange={(e) => setAdvancementRoute(index, route.id, { rank_from: e.target.value ? Number(e.target.value) : null })}
+                                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                                            />
+                                          </FormField>
+                                          <FormField label="Al piazzamento">
+                                            <input
+                                              type="number"
+                                              value={route.rank_to ?? ''}
+                                              onChange={(e) => setAdvancementRoute(index, route.id, { rank_to: e.target.value ? Number(e.target.value) : null })}
+                                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                                            />
+                                          </FormField>
+                                        </div>
+                                        <div className="mt-3">
+                                          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Gironi sorgente</p>
+                                          <p className="mt-1 text-sm text-slate-600">Se non selezioni nulla, il sistema prende tutti i gironi.</p>
+                                          <div className="mt-3 flex flex-wrap gap-2">
+                                            {buildGroupNames(phase).map((groupName) => {
+                                              const selected = route.source_groups.includes(groupName)
+                                              return (
+                                                <button
+                                                  key={`${route.id}-${groupName}`}
+                                                  type="button"
+                                                  onClick={() => toggleAdvancementRouteGroup(index, route.id, groupName)}
+                                                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                                    selected
+                                                      ? 'bg-slate-900 text-white'
+                                                      : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                                                  }`}
+                                                >
+                                                  {groupName}
+                                                </button>
+                                              )
+                                            })}
+                                          </div>
+                                        </div>
+                                        <div className="mt-3 rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                                          Ordine posizionamenti generato: {sourceOrderPreview.length > 0 ? sourceOrderPreview.join(' -> ') : 'da definire'}
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                        <FormField label="Numero migliori extra">
+                                          <input
+                                            type="number"
+                                            value={route.extra_count ?? ''}
+                                            onChange={(e) => setAdvancementRoute(index, route.id, { extra_count: e.target.value ? Number(e.target.value) : null })}
+                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                                          />
+                                        </FormField>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -4086,14 +4119,50 @@ function _nextPowerOfTwoUi(value: number): number {
   return 2 ** Math.ceil(Math.log2(value))
 }
 
+function estimateSuggestedPhaseStart(
+  structure: StructureConfig,
+  phaseIndex: number,
+  participantCount: number,
+): { date: string; time: string } | null {
+  const slotMinutes = Math.max((structure.schedule.match_duration_minutes ?? 0), 1) + Math.max((structure.schedule.interval_minutes ?? 0), 0)
+  const sourcePhase = structure.phases[phaseIndex]
+  if (!sourcePhase) return null
+
+  const sourceDate = sourcePhase.phase_date || ''
+  const sourceEndTime = estimatePhaseEndTime(structure, phaseIndex, participantCount)
+  if (!sourceDate || !sourceEndTime) return null
+
+  const siblingOffset = Math.max((sourcePhase.advancement_routes.length ?? 0), 0) * slotMinutes
+  const [hours, minutes] = sourceEndTime.split(':').map(Number)
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null
+  const totalMinutes = (hours * 60) + minutes + siblingOffset
+  const normalizedHours = Math.floor(totalMinutes / 60)
+  const normalizedMinutes = totalMinutes % 60
+  return {
+    date: sourceDate,
+    time: `${String(normalizedHours).padStart(2, '0')}:${String(normalizedMinutes).padStart(2, '0')}`,
+  }
+}
+
 function estimatePhaseEndTime(structure: StructureConfig, phaseIndex: number, participantCount: number): string | null {
   const phase = structure.phases[phaseIndex]
   if (!phase) return null
   const slotMinutes = Math.max((structure.schedule.match_duration_minutes ?? 0), 1) + Math.max((structure.schedule.interval_minutes ?? 0), 0)
   if (slotMinutes <= 0) return null
-  const fallbackStart = phaseIndex === 0
-    ? structure.schedule.start_time
-    : (estimatePhaseEndTime(structure, phaseIndex - 1, participantCount) ?? structure.schedule.start_time)
+  const predecessorIndexes = structure.phases
+    .map((candidate, candidateIndex) => ({ candidate, candidateIndex }))
+    .filter(({ candidate }) => candidate.advancement_routes.some((route) => route.target_phase_id === phase.id))
+    .map(({ candidateIndex }) => candidateIndex)
+
+  const fallbackStart = predecessorIndexes.length > 0
+    ? predecessorIndexes
+      .map((predecessorIndex) => estimatePhaseEndTime(structure, predecessorIndex, participantCount))
+      .filter((value): value is string => Boolean(value))
+      .sort((left, right) => left.localeCompare(right))
+      .slice(-1)[0] ?? structure.schedule.start_time
+    : phaseIndex === 0
+      ? structure.schedule.start_time
+      : (estimatePhaseEndTime(structure, phaseIndex - 1, participantCount) ?? structure.schedule.start_time)
   const startTime = phase.start_time || fallbackStart
   if (!startTime) return null
   const [hours, minutes] = startTime.split(':').map(Number)
@@ -4149,18 +4218,6 @@ function estimateGroupStageMatches(phase: StructurePhase): number | null {
   return phase.round_trip_mode === 'double' ? baseMatches * 2 : baseMatches
 }
 
-function describeKnockoutEstimate(phase: StructurePhase): string {
-  if (phase.phase_type !== 'KNOCKOUT') return ''
-  if (phase.knockout_progression === 'single_round') {
-    return 'Un solo turno con vincenti/perdenti instradabili verso altre fasi'
-  }
-  return phase.bracket_mode === 'placement'
-    ? 'Piazzamenti su tutti i ranghi qualificati'
-    : phase.bracket_mode === 'group_blocks'
-      ? 'Blocchi 1-4, 5-8, 9-12 con incrocio tra due gironi'
-    : 'Tabellone a eliminazione diretta'
-}
-
 function buildGenerationReadiness(
   structure: StructureConfig,
   participantCount: number,
@@ -4212,6 +4269,7 @@ function serializeStructureForComparison(structure: StructureConfig) {
       phase_type: phase.phase_type,
       phase_date: phase.phase_date,
       start_time: phase.start_time,
+      placement_start_rank: phase.placement_start_rank,
       round_trip_mode: phase.round_trip_mode,
       knockout_progression: phase.knockout_progression,
       num_groups: phase.num_groups,
@@ -4407,6 +4465,9 @@ function validateStructureConfig(structure: StructureConfig): string[] {
       } else if ((linkedGroupStage.num_groups ?? 0) !== 2) {
         errors.push(`${phaseLabel}: i blocchi 1-4, 5-8 funzionano solo con una fase sorgente a 2 gironi.`)
       }
+    }
+    if (phase.phase_type === 'KNOCKOUT' && phase.placement_start_rank !== null && phase.placement_start_rank <= 0) {
+      errors.push(`${phaseLabel}: la classifica assegnata deve partire da un numero maggiore di zero.`)
     }
     if (phase.phase_type === 'KNOCKOUT' && phase.knockout_field_assignments.length === 0) {
       errors.push(`${phaseLabel}: assegna almeno un campo alla fase a eliminazione.`)
@@ -4608,6 +4669,9 @@ function normalizePhase(value: unknown, index: number): StructurePhase {
     phase_type: input.phase_type === 'KNOCKOUT' ? 'KNOCKOUT' : 'GROUP_STAGE',
     phase_date: typeof (input as { phase_date?: unknown }).phase_date === 'string' ? ((input as { phase_date?: string }).phase_date ?? '') : '',
     start_time: typeof (input as { start_time?: unknown }).start_time === 'string' ? ((input as { start_time?: string }).start_time ?? '') : '',
+    placement_start_rank: typeof (input as { placement_start_rank?: unknown }).placement_start_rank === 'number'
+      ? ((input as { placement_start_rank?: number }).placement_start_rank ?? null)
+      : null,
     round_trip_mode: input.round_trip_mode === 'double' ? 'double' : 'single',
     knockout_progression: input.knockout_progression === 'single_round' ? 'single_round' : 'full_bracket',
     num_groups: typeof input.num_groups === 'number' ? input.num_groups : null,
@@ -4694,6 +4758,7 @@ function makeEmptyPhase(index: number, tournamentStartDate?: string | null): Str
     phase_type: 'GROUP_STAGE',
     phase_date: tournamentStartDate ?? '',
     start_time: '',
+    placement_start_rank: null,
     round_trip_mode: 'single',
     knockout_progression: 'full_bracket',
     num_groups: null,
@@ -4750,9 +4815,13 @@ function makeEmptyPlayingField(index: number): PlayingFieldConfig {
 function StructurePreviewCard({
   structure,
   participantCount,
+  isOpen,
+  onToggle,
 }: {
   structure: StructureConfig
   participantCount: number
+  isOpen: boolean
+  onToggle: () => void
 }) {
   return (
     <div className="rounded-[1.6rem] border border-slate-200 bg-[linear-gradient(180deg,_#ffffff_0%,_#f8fafc_100%)] p-4">
@@ -4761,23 +4830,31 @@ function StructurePreviewCard({
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Anteprima grafica</p>
           <h4 className="mt-1 text-base font-black text-slate-900">Schema dell&apos;evento</h4>
         </div>
-        <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-          {participantCount} squadre inserite
+        <div className="flex items-center gap-2">
+          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+            {participantCount} squadre inserite
+          </div>
+          <button
+            type="button"
+            onClick={onToggle}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+          >
+            {isOpen ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            {isOpen ? 'Nascondi schema' : 'Mostra schema'}
+          </button>
         </div>
       </div>
 
-      <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
-        {structure.phases.map((phase, index) => (
-          <div key={phase.id} className="flex min-w-[260px] items-center gap-3">
-            <div className={`w-full rounded-[1.5rem] border p-4 ${
-              phase.phase_type === 'GROUP_STAGE'
-                ? 'border-sky-200 bg-sky-50'
-                : phase.bracket_mode === 'placement'
-                  ? 'border-fuchsia-200 bg-fuchsia-50'
-                  : phase.bracket_mode === 'group_blocks'
-                    ? 'border-violet-200 bg-violet-50'
-                  : 'border-rose-200 bg-rose-50'
-            }`}>
+      {isOpen && (
+        <>
+      <div className="mt-4 grid gap-3 xl:grid-cols-2">
+        {structure.phases.map((phase, index) => {
+          const linkedRoutes = phase.advancement_routes.map((route) => ({
+            route,
+            targetPhase: structure.phases.find((candidate) => candidate.id === route.target_phase_id),
+          }))
+          return (
+            <div key={phase.id} className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Fase {index + 1}</p>
@@ -4801,83 +4878,58 @@ function StructurePreviewCard({
                   <>
                     <div className="flex flex-wrap gap-2">
                       {buildGroupPreview(phase).map((group) => (
-                        <div key={group.label} className="rounded-xl border border-white/80 bg-white/85 px-3 py-2">
+                        <div key={group.label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{group.label}</p>
                           <p className="mt-1 text-sm font-semibold text-slate-900">{group.value}</p>
                         </div>
                       ))}
                     </div>
-                    <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Formato</p>
                       <p className="mt-1 text-sm font-semibold text-slate-800">
                         {phase.round_trip_mode === 'double' ? 'Andata e ritorno' : 'Solo andata'}
                       </p>
                     </div>
-                    <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Partite stimate</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-800">{estimateGroupStageMatches(phase) ?? 0}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Instradamento</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-800">
-                        {phase.advancement_routes.length > 0
-                          ? phase.advancement_routes.map((route) => {
-                            const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
-                            const destination = targetPhase ? targetPhase.name : 'fase da definire'
-                            return route.source_mode === 'best_extra'
-                              ? `${route.extra_count ?? '?'} migliori extra -> ${destination}`
-                              : `${route.rank_from ?? '?'}-${route.rank_to ?? '?'} ${route.source_groups.length > 0 ? route.source_groups.join(', ') : 'tutti i gironi'} -> ${destination}`
-                          }).join(' | ')
-                          : 'Nessuna fase successiva'}
-                      </p>
-                    </div>
                   </>
                 ) : (
-                  <>
-                    <div className="rounded-xl border border-white/80 bg-white/85 px-3 py-2">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Tabellone</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-900">
-                        {phase.bracket_mode === 'placement'
-                          ? 'Piazzamenti mini rugby'
-                          : phase.bracket_mode === 'group_blocks'
-                            ? 'Due gironi con blocchi 1-4, 5-8, 9-12'
-                            : 'Eliminazione standard'}
-                      </p>
-                    </div>
-                    <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Campi fase</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-800">
-                        {phase.knockout_field_assignments.length > 0
-                          ? phase.knockout_field_assignments.map((field) => `${field.field_name}${field.field_number ? ` #${field.field_number}` : ''}`).join(' · ')
-                          : 'Tutti i campi disponibili'}
-                      </p>
-                    </div>
-                    <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Esito</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-800">
-                        {phase.knockout_progression === 'single_round' && phase.advancement_routes.length > 0
-                          ? phase.advancement_routes.map((route) => {
-                            const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
-                            const outcome = route.source_mode === 'knockout_loser' ? 'Perdenti' : 'Vincenti'
-                            return `${outcome} -> ${targetPhase?.name ?? 'fase da definire'}`
-                          }).join(' | ')
-                          : describeKnockoutEstimate(phase)}
-                      </p>
-                    </div>
-                  </>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Tabellone</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {phase.bracket_mode === 'placement'
+                        ? 'Piazzamenti mini rugby'
+                        : phase.bracket_mode === 'group_blocks'
+                          ? 'Blocchi 1-4, 5-8, 9-12'
+                          : 'Eliminazione standard'}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 border-t border-slate-100 pt-4">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Collegamenti in uscita</p>
+                {linkedRoutes.length > 0 ? (
+                  <div className="mt-3 space-y-2">
+                    {linkedRoutes.map(({ route, targetPhase }, routeIndex) => (
+                      <div key={route.id} className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-slate-400">
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-slate-900">{describeRouteLabelForPreview(route, phase)}</p>
+                          <p className="mt-1 text-sm text-slate-600">{targetPhase?.name || `Fase ${index + 2} - ${routeIndex + 1}`}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                    Nessun passaggio successivo: la fase si chiude qui.
+                  </div>
                 )}
               </div>
             </div>
-
-            {index < structure.phases.length - 1 && (
-              <div className="flex shrink-0 items-center justify-center">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm">
-                  <ArrowRight className="h-4 w-4" />
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
@@ -4920,6 +4972,8 @@ function StructurePreviewCard({
           {structure.notes}
         </div>
       )}
+        </>
+      )}
     </div>
   )
 }
@@ -4956,6 +5010,18 @@ function describePhaseRoutes(structure: StructureConfig, phase: StructurePhase):
   }
 
   return []
+}
+
+function describeRouteLabelForPreview(route: AdvancementRoute, sourcePhase: StructurePhase) {
+  if (sourcePhase.phase_type === 'GROUP_STAGE') {
+    if (route.source_mode === 'best_extra') {
+      return `${route.extra_count ?? '?'} migliori extra`
+    }
+    const groupsLabel = route.source_groups.length > 0 ? route.source_groups.join(', ') : 'tutti i gironi'
+    return `${route.rank_from ?? '?'}-${route.rank_to ?? '?'} ${groupsLabel}`
+  }
+
+  return route.source_mode === 'knockout_loser' ? 'Perdenti del turno' : 'Vincenti del turno'
 }
 
 function describeRouteSourceEntries(phase: StructurePhase, route: AdvancementRoute): string[] {

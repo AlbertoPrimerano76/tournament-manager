@@ -805,6 +805,13 @@ def _knockout_round_name(size: int) -> str:
     return names.get(size, f"Round of {size}")
 
 
+def _phase_bucket_name(phase_config: dict[str, Any], default_name: str = "Tabellone principale") -> str:
+    placement_start_rank = phase_config.get("placement_start_rank")
+    if isinstance(placement_start_rank, int) and placement_start_rank > 0:
+        return f"Piazzamento {_ordinal_it(placement_start_rank)}"
+    return default_name
+
+
 async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> TournamentAgeGroup:
     result = await db.execute(
         select(TournamentAgeGroup)
@@ -883,6 +890,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             seeding_source={
                 "bracket_mode": phase_config.get("bracket_mode", "standard"),
                 "knockout_progression": phase_config.get("knockout_progression", "full_bracket"),
+                "placement_start_rank": phase_config.get("placement_start_rank"),
                 "next_phase_type": phase_config.get("next_phase_type") or "",
             },
         )
@@ -1021,7 +1029,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
         elif bracket_mode == "group_blocks":
             carry_matches = _build_group_block_buckets(current_entries)
         else:
-            carry_matches = [("Tabellone principale", current_entries)]
+            carry_matches = [(_phase_bucket_name(phase_config), current_entries)]
 
         next_entries: list[dict[str, Any]] = []
         knockout_winner_entries: list[dict[str, Any]] = []
@@ -1303,6 +1311,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             seeding_source={
                 "bracket_mode": phase_config.get("bracket_mode", "standard"),
                 "knockout_progression": phase_config.get("knockout_progression", "full_bracket"),
+                "placement_start_rank": phase_config.get("placement_start_rank"),
                 "next_phase_type": phase_config.get("next_phase_type") or "",
             },
         )
@@ -1428,7 +1437,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
         elif bracket_mode == "group_blocks":
             carry_matches = _build_group_block_buckets(current_entries)
         else:
-            carry_matches = [("Tabellone principale", current_entries)]
+            carry_matches = [(_phase_bucket_name(phase_config), current_entries)]
 
         next_entries: list[dict[str, Any]] = []
         knockout_winner_entries: list[dict[str, Any]] = []
