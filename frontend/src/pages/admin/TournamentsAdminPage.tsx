@@ -13,7 +13,7 @@ import { useAdminTeams, useCreateTeam, useEnrollTournamentTeam, useUnenrollTourn
 import { useOrganizationFields } from '@/api/fields'
 import ImageUpload from '@/components/shared/ImageUpload'
 import AgeGroupProgramView from '@/components/program/AgeGroupProgramView'
-import { Calendar, MapPin, Globe, Pencil, Trash2, X, Plus, Eye, EyeOff, Layers3, Users, Save, ArrowRight, ExternalLink, Sparkles, AlertTriangle, Clock3, Download } from 'lucide-react'
+import { Calendar, MapPin, Globe, Pencil, Trash2, X, Plus, Eye, EyeOff, Users, Save, ArrowRight, ExternalLink, Sparkles, AlertTriangle, Clock3, Download } from 'lucide-react'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
 import { useAuth } from '@/context/AuthContext'
@@ -55,8 +55,6 @@ export default function TournamentsAdminPage() {
   const [organizationFilter, setOrganizationFilter] = useState('all')
   const [eventTypeFilter, setEventTypeFilter] = useState<'all' | Tournament['event_type']>('all')
   const [yearFilter, setYearFilter] = useState('all')
-  const [categoriesTarget, setCategoriesTarget] = useState<Tournament | null>(null)
-
   function openCreate() { navigate('/admin/tornei/nuovo') }
   function openEdit(t: Tournament) { navigate(`/admin/tornei/${t.id}/modifica`) }
   function openOperations(t: Tournament) { navigate(`/admin/tornei/${t.id}/gestione`) }
@@ -265,7 +263,6 @@ export default function TournamentsAdminPage() {
                         tournament={t}
                         onEdit={() => openEdit(t)}
                         onOperations={() => openOperations(t)}
-                        onCategories={() => setCategoriesTarget(t)}
                         canEdit={!isScoreKeeper}
                       />
                     ))}
@@ -274,9 +271,6 @@ export default function TournamentsAdminPage() {
               )
             })}
         </div>
-      )}
-      {categoriesTarget && (
-        <AgeGroupsDrawer tournament={categoriesTarget} onClose={() => setCategoriesTarget(null)} />
       )}
     </div>
   )
@@ -311,27 +305,12 @@ function TournamentEditorScreen({ tournament }: { tournament: Tournament | null 
       </div>
 
       <TournamentFormDrawer tournament={tournament} onClose={() => navigate('/admin/tornei')} pageMode />
-
-      {tournament && (
-        <section className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
-          <div className="border-b border-slate-200 px-6 py-5">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Categorie dell&apos;evento</p>
-            <h2 className="mt-1 text-2xl font-black text-slate-950">Categorie, formula e gestione</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Da qui aggiungi le categorie dell&apos;evento e apri direttamente la configurazione oppure la gestione operativa di risultati, ritardi e cambi gironi.
-            </p>
-          </div>
-          <div className="p-6">
-            <AgeGroupsManagerPanel tournament={tournament} />
-          </div>
-        </section>
-      )}
     </div>
   )
 }
 
-function TournamentRow({ tournament: t, onEdit, onOperations, onCategories, canEdit }: {
-  tournament: Tournament; onEdit: () => void; onOperations: () => void; onCategories: () => void; canEdit: boolean
+function TournamentRow({ tournament: t, onEdit, onOperations, canEdit }: {
+  tournament: Tournament; onEdit: () => void; onOperations: () => void; canEdit: boolean
 }) {
   const deleteMutation = useDeleteTournament()
   const updateMutation = useUpdateTournament()
@@ -404,15 +383,6 @@ function TournamentRow({ tournament: t, onEdit, onOperations, onCategories, canE
       </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        {canEdit && (
-          <button
-            onClick={onCategories}
-            className="inline-flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-100"
-          >
-            <Layers3 className="h-4 w-4" />
-            Categorie e formula
-          </button>
-        )}
         <button
           onClick={onOperations}
           className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
@@ -479,14 +449,14 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
 
       <section className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
         <div className="border-b border-slate-200 px-6 py-5">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Categorie operative</p>
-          <h2 className="mt-1 text-2xl font-black text-slate-950">Scegli una categoria</h2>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Categorie dell&apos;evento</p>
+          <h2 className="mt-1 text-2xl font-black text-slate-950">Categorie, formula e gestione</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Ogni card apre direttamente la schermata corretta della categoria sulla scheda di gestione.
+            Aggiungi o rimuovi le categorie dell&apos;evento e accedi direttamente alla configurazione o alla gestione operativa.
           </p>
         </div>
         <div className="p-6">
-          <AgeGroupsOperationsPanel tournament={tournament} />
+          <AgeGroupsUnifiedPanel tournament={tournament} />
         </div>
       </section>
     </div>
@@ -1648,56 +1618,18 @@ const BUILTIN_TEMPLATES: Array<{
   },
 ]
 
-function AgeGroupsDrawer({ tournament, onClose }: { tournament: Tournament; onClose: () => void }) {
-  return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
-      <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">Categorie dell&apos;evento</h2>
-            <p className="mt-0.5 text-xs text-gray-400">{tournament.name}</p>
-          </div>
-          <button onClick={onClose} className="rounded-lg p-2 hover:bg-gray-100 transition-colors">
-            <X className="h-5 w-5 text-gray-500" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          <AgeGroupsManagerPanel tournament={tournament} />
-        </div>
-
-        <div className="border-t border-gray-100 px-6 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
-          >
-            Chiudi
-          </button>
-        </div>
-      </div>
-
-    </>
-  )
-}
-
-function AgeGroupsManagerPanel({ tournament }: { tournament: Tournament }) {
+function AgeGroupsUnifiedPanel({ tournament }: { tournament: Tournament }) {
   const navigate = useNavigate()
-  const { data: ageGroups, isLoading, error: ageGroupsError } = useAdminTournamentAgeGroups(tournament.id)
+  const { data: ageGroups, error: ageGroupsError } = useAdminTournamentAgeGroups(tournament.id)
   const createAgeGroup = useCreateAgeGroup()
   const deleteAgeGroup = useDeleteAgeGroup()
   const [actionError, setActionError] = useState('')
 
-  async function handleToggle(option: typeof AGE_GROUP_OPTIONS[number]) {
+  const isPending = createAgeGroup.isPending || deleteAgeGroup.isPending
+
+  async function handleAdd(option: typeof AGE_GROUP_OPTIONS[number]) {
     setActionError('')
     try {
-      const existing = ageGroups?.find((group) => group.age_group === option.value)
-      if (existing) {
-        await deleteAgeGroup.mutateAsync({ id: existing.id, tournamentId: tournament.id })
-        return
-      }
-
       const created = await createAgeGroup.mutateAsync({
         tournament_id: tournament.id,
         age_group: option.value,
@@ -1706,11 +1638,19 @@ function AgeGroupsManagerPanel({ tournament }: { tournament: Tournament }) {
       navigate(`/admin/tornei/${tournament.id}/categorie/${created.id}`)
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setActionError(msg ?? 'Impossibile aggiornare la categoria')
+      setActionError(msg ?? 'Impossibile aggiungere la categoria')
     }
   }
 
-  const isPending = createAgeGroup.isPending || deleteAgeGroup.isPending
+  async function handleRemove(group: AgeGroup) {
+    setActionError('')
+    try {
+      await deleteAgeGroup.mutateAsync({ id: group.id, tournamentId: tournament.id })
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setActionError(msg ?? 'Impossibile rimuovere la categoria')
+    }
+  }
 
   return (
     <>
@@ -1719,98 +1659,59 @@ function AgeGroupsManagerPanel({ tournament }: { tournament: Tournament }) {
           {actionError || 'Errore nel caricamento delle categorie. Verifica che il database sia aggiornato.'}
         </div>
       )}
-
-      <div className="rounded-[1.6rem] border border-slate-200 bg-[linear-gradient(180deg,_#ffffff_0%,_#f8fafc_100%)] p-5 shadow-sm">
-        <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Categorie evento</p>
-        <h3 className="mt-2 text-xl font-black text-slate-900">Aggiungi, modifica o rimuovi le categorie</h3>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          Per ogni categoria puoi entrare nel wizard guidato: prima squadre partecipanti, poi formula e generazione.
-        </p>
-      </div>
-
-      <div className="mt-5 grid gap-3">
+      <div className="grid gap-3">
         {AGE_GROUP_OPTIONS.map((option) => {
-          const selected = !!ageGroups?.find((group) => group.age_group === option.value)
-          const activeGroup = ageGroups?.find((group) => group.age_group === option.value)
+          const activeGroup = ageGroups?.find((group) => group.age_group === option.value) ?? null
+          if (activeGroup) {
+            return (
+              <AgeGroupUnifiedCard
+                key={option.value}
+                tournament={tournament}
+                group={activeGroup}
+                onRemove={handleRemove}
+                isPending={isPending}
+              />
+            )
+          }
           return (
             <div
               key={option.value}
-              className={`rounded-[1.4rem] border p-4 transition-all ${
-                selected ? option.className : 'border-slate-200 bg-white text-slate-800'
-              }`}
+              className="rounded-[1.45rem] border border-slate-200 bg-slate-50 p-4 opacity-60"
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-base font-bold">{option.label}</p>
-                  <p className={`mt-1 text-sm ${selected ? 'text-current/80' : 'text-slate-500'}`}>
-                    {option.subtitle}
-                  </p>
+                  <p className="text-base font-bold text-slate-700">{option.label}</p>
+                  <p className="mt-0.5 text-sm text-slate-500">{option.subtitle}</p>
                 </div>
-                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                  selected ? 'bg-white/80 text-current' : 'bg-slate-100 text-slate-500'
-                }`}>
-                  {selected ? 'Attiva' : 'Non attiva'}
-                </span>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {!selected && (
-                  <button
-                    type="button"
-                    disabled={isPending}
-                    onClick={() => void handleToggle(option)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-rugby-green px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-rugby-green-dark"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Aggiungi categoria
-                  </button>
-                )}
-                {activeGroup && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${activeGroup.id}`)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-current/20 px-3 py-2 text-sm font-semibold"
-                    >
-                      <Pencil className="h-4 w-4" />
-                      Modifica
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isPending}
-                      onClick={() => void handleToggle(option)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-current/20 bg-white/75 px-3 py-2 text-sm font-semibold"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Rimuovi
-                    </button>
-                  </>
-                )}
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => void handleAdd(option)}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-rugby-green px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-rugby-green-dark disabled:opacity-50"
+                >
+                  <Plus className="h-4 w-4" />
+                  Aggiungi
+                </button>
               </div>
             </div>
           )
         })}
       </div>
-
-      <div className="mt-6">
-        <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Categorie già aggiunte</p>
-        {isLoading && <p className="py-4 text-sm text-gray-400">Caricamento...</p>}
-        {!isLoading && ageGroups && ageGroups.length > 0 ? (
-          <div className="mt-3 space-y-2">
-            {ageGroups.map((group) => (
-              <AgeGroupQuickCard key={group.id} tournament={tournament} group={group} />
-            ))}
-          </div>
-        ) : !isLoading ? (
-          <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-            Nessuna categoria selezionata.
-          </div>
-        ) : null}
-      </div>
     </>
   )
 }
 
-function AgeGroupQuickCard({ tournament, group }: { tournament: Tournament; group: AgeGroup }) {
+function AgeGroupUnifiedCard({
+  tournament,
+  group,
+  onRemove,
+  isPending,
+}: {
+  tournament: Tournament
+  group: AgeGroup
+  onRemove: (group: AgeGroup) => void
+  isPending: boolean
+}) {
   const navigate = useNavigate()
   const { data: program } = useAdminAgeGroupProgram(group.id)
   const structure = normalizeStructureConfig(group.structure_config)
@@ -1821,7 +1722,7 @@ function AgeGroupQuickCard({ tournament, group }: { tournament: Tournament; grou
   const totalMatches = countProgramMatches(program)
 
   return (
-    <div className="rounded-[1.45rem] border border-slate-200 bg-slate-50 px-4 py-4">
+    <div className="rounded-[1.45rem] border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <p className="text-base font-black text-slate-900">{group.display_name || group.age_group}</p>
@@ -1832,64 +1733,38 @@ function AgeGroupQuickCard({ tournament, group }: { tournament: Tournament; grou
             <StatusPill label={hasProgram ? `Programma generato · ${completedMatches}/${totalMatches}` : 'Programma non generato'} tone={hasProgram ? 'fuchsia' : 'slate'} />
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 shrink-0">
           <button
             type="button"
             onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${group.id}`)}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
           >
-            Apri wizard
+            <Pencil className="h-4 w-4" />
+            Wizard / Configura
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${group.id}/gestione`)}
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+          >
+            <Calendar className="h-4 w-4" />
+            Gestione
+          </button>
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() => {
+              if (confirm(`Rimuovere la categoria "${group.display_name || group.age_group}"?`)) {
+                onRemove(group)
+              }
+            }}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+          >
+            <Trash2 className="h-4 w-4" />
+            Rimuovi
           </button>
         </div>
       </div>
-    </div>
-  )
-}
-
-function AgeGroupsOperationsPanel({ tournament }: { tournament: Tournament }) {
-  const navigate = useNavigate()
-  const { data: ageGroups, isLoading, error } = useAdminTournamentAgeGroups(tournament.id)
-
-  if (error) {
-    return (
-      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-        Errore nel caricamento delle categorie operative.
-      </div>
-    )
-  }
-
-  if (isLoading) {
-    return <div className="py-8 text-center text-sm text-slate-500">Caricamento categorie...</div>
-  }
-
-  if (!ageGroups || ageGroups.length === 0) {
-    return (
-      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-        Nessuna categoria presente. Aggiungila prima dalla pagina evento.
-      </div>
-    )
-  }
-
-  return (
-    <div className="grid gap-3">
-      {ageGroups.map((group) => (
-        <div key={group.id} className="rounded-[1.45rem] border border-slate-200 bg-slate-50 px-4 py-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-base font-black text-slate-900">{group.display_name || group.age_group}</p>
-              <p className="mt-1 text-sm text-slate-500">Apri direttamente risultati, ritardi, arbitri, campi e cambi nei gironi.</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${group.id}/gestione`)}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
-            >
-              <Calendar className="h-4 w-4" />
-              Apri gestione categoria
-            </button>
-          </div>
-        </div>
-      ))}
     </div>
   )
 }
