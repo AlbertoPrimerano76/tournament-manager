@@ -67,6 +67,7 @@ class AgeGroupCreate(BaseModel):
     tournament_id: str
     age_group: AgeGroup
     display_name: str | None = None
+    field_map_url: str | None = None
     scoring_rules: dict = {
         "win_points": 3, "draw_points": 1, "loss_points": 0,
         "try_bonus": False, "bonus_threshold": 4,
@@ -82,6 +83,7 @@ class AgeGroupCreate(BaseModel):
 
 class AgeGroupUpdate(BaseModel):
     display_name: str | None = None
+    field_map_url: str | None = None
     scoring_rules: dict | None = None
 
 
@@ -90,6 +92,7 @@ class AgeGroupResponse(BaseModel):
     tournament_id: str
     age_group: AgeGroup
     display_name: str | None
+    field_map_url: str | None
     structure_template_name: str | None
     structure_config: dict | None
     scoring_rules: dict

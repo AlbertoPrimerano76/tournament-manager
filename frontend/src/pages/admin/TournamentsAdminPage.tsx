@@ -5,7 +5,7 @@ import {
   useAdminTournaments, useCreateTournament, useUpdateTournament, useDeleteTournament,
   useAdminTournamentAgeGroups, useCreateAgeGroup, useDeleteAgeGroup,
   useAgeGroupParticipants, useStructureTemplates, useUpdateAgeGroupStructure,
-  useUpdateAgeGroup, useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, useGenerateAgeGroupProgram, useDeleteAgeGroupProgram, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate, type AgeGroupScoringRules, type TournamentParticipant,
+  useUpdateAgeGroup, useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, useGenerateAgeGroupProgram, useDeleteAgeGroupProgram, downloadAdminAgeGroupProgramPdf, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate, type AgeGroupScoringRules, type TournamentParticipant,
 } from '@/api/tournaments'
 import { apiClient } from '@/api/client'
 import { useAdminOrganizations, useCreateOrganization } from '@/api/organizations'
@@ -13,7 +13,7 @@ import { useAdminTeams, useCreateTeam, useEnrollTournamentTeam, useUnenrollTourn
 import { useOrganizationFields } from '@/api/fields'
 import ImageUpload from '@/components/shared/ImageUpload'
 import AgeGroupProgramView from '@/components/program/AgeGroupProgramView'
-import { Calendar, MapPin, Globe, Pencil, Trash2, X, Plus, Eye, EyeOff, Layers3, Users, Save, ArrowRight, ExternalLink, Sparkles, AlertTriangle, Clock3 } from 'lucide-react'
+import { Calendar, MapPin, Globe, Pencil, Trash2, X, Plus, Eye, EyeOff, Layers3, Users, Save, ArrowRight, ExternalLink, Sparkles, AlertTriangle, Clock3, Download } from 'lucide-react'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
 import { useAuth } from '@/context/AuthContext'
@@ -2304,6 +2304,7 @@ function AgeGroupConfigurationPanel({
   const [selectedTemplateName, setSelectedTemplateName] = useState(ageGroup.structure_template_name ?? '')
   const [structure, setStructure] = useState<StructureConfig>(() => applyDefaultPhaseDates(normalizeStructureConfig(ageGroup.structure_config), tournament.start_date))
   const [scoringRules, setScoringRules] = useState<AgeGroupScoringRules>(() => normalizeScoringRules(ageGroup.scoring_rules))
+  const [fieldMapUrl, setFieldMapUrl] = useState(ageGroup.field_map_url ?? '')
   const [saveError, setSaveError] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
   const [teamError, setTeamError] = useState('')
@@ -2315,6 +2316,7 @@ function AgeGroupConfigurationPanel({
     setSelectedTemplateName(ageGroup.structure_template_name ?? '')
     setStructure(applyDefaultPhaseDates(normalizeStructureConfig(ageGroup.structure_config), tournament.start_date))
     setScoringRules(normalizeScoringRules(ageGroup.scoring_rules))
+    setFieldMapUrl(ageGroup.field_map_url ?? '')
     setSaveError('')
     setSaveMessage('')
     setTeamError('')
@@ -2361,7 +2363,8 @@ function AgeGroupConfigurationPanel({
   const isStructureDirty = serializeStructureForComparison(normalizeStructureConfig(ageGroup.structure_config)) !== serializeStructureForComparison(structure)
     || (ageGroup.structure_template_name ?? '') !== selectedTemplateName
   const isScoringDirty = serializeScoringRules(normalizeScoringRules(ageGroup.scoring_rules)) !== serializeScoringRules(scoringRules)
-  const readiness = buildGenerationReadiness(structure, participants?.length ?? 0, validationErrors, isStructureDirty || isScoringDirty)
+  const isFieldMapDirty = (ageGroup.field_map_url ?? '') !== fieldMapUrl.trim()
+  const readiness = buildGenerationReadiness(structure, participants?.length ?? 0, validationErrors, isStructureDirty || isScoringDirty || isFieldMapDirty)
   const hasRecordedResults = hasProgramRecordedResults(program)
 
   useEffect(() => {
@@ -2496,10 +2499,11 @@ function AgeGroupConfigurationPanel({
           structure_config: structure as unknown as Record<string, unknown>,
         })
       }
-      if (isScoringDirty) {
+      if (isScoringDirty || isFieldMapDirty) {
         await updateAgeGroup.mutateAsync({
           id: ageGroup.id,
           tournamentId: tournament.id,
+          field_map_url: fieldMapUrl.trim() || null,
           scoring_rules: scoringRules,
         })
       }
@@ -2555,6 +2559,16 @@ function AgeGroupConfigurationPanel({
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setSaveError(msg ?? 'Errore durante la cancellazione del programma')
+    }
+  }
+
+  async function handleDownloadProgramPdf() {
+    setSaveError('')
+    try {
+      await downloadAdminAgeGroupProgramPdf(ageGroup.id)
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setSaveError(msg ?? 'Errore durante il download del PDF')
     }
   }
 
@@ -2920,6 +2934,16 @@ function AgeGroupConfigurationPanel({
                           Vai alle partite
                         </Link>
                       )}
+                      {program?.generated && (
+                        <button
+                          type="button"
+                          onClick={() => void handleDownloadProgramPdf()}
+                          className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100"
+                        >
+                          <Download className="h-4 w-4" />
+                          PDF calendario
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -3050,6 +3074,38 @@ function AgeGroupConfigurationPanel({
                       className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
                     />
                   </FormField>
+                </div>
+
+                <div className="mt-4 rounded-[1.25rem] border border-slate-200 bg-white p-4">
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                    <FormField label="Mappa dedicata categoria" hint="Link esterno">
+                      <input
+                        type="url"
+                        value={fieldMapUrl}
+                        onChange={(e) => setFieldMapUrl(e.target.value)}
+                        placeholder="https://..."
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                      />
+                    </FormField>
+                    {fieldMapUrl.trim() ? (
+                      <a
+                        href={fieldMapUrl.trim()}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        Apri mappa
+                      </a>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-slate-200 px-4 py-2.5 text-sm text-slate-500">
+                        Nessuna mappa dedicata impostata
+                      </div>
+                    )}
+                  </div>
+                  <p className="mt-3 text-sm text-slate-600">
+                    Questo link comparirà nella pagina pubblica accanto a <span className="font-semibold text-slate-900">Impianti della categoria</span>.
+                  </p>
                 </div>
 
                 <div className="mt-4 rounded-[1.25rem] border border-slate-200 bg-white p-4">

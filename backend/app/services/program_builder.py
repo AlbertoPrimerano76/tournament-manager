@@ -215,6 +215,32 @@ def _phase_start_datetime(age_group: TournamentAgeGroup, phase_index: int) -> da
     return datetime.combine(base.date(), start, tzinfo=LOCAL_TIMEZONE)
 
 
+def _phase_slot_duration(age_group: TournamentAgeGroup) -> timedelta:
+    schedule = _schedule_settings(age_group)
+    duration = int(schedule.get("match_duration_minutes") or 12)
+    interval = int(schedule.get("interval_minutes") or 8)
+    return timedelta(minutes=max(duration, 1) + max(interval, 0))
+
+
+def _estimate_phase_time_window(
+    matches: list[ProgramMatchResponse],
+    slot_duration: timedelta,
+) -> tuple[datetime | None, datetime | None]:
+    scheduled_matches = [match for match in matches if match.scheduled_at]
+    if not scheduled_matches:
+        return None, None
+
+    phase_start_at = min(match.scheduled_at for match in scheduled_matches if match.scheduled_at)
+    estimated_end_at = max(
+        match.actual_end_at
+        if match.actual_end_at and match.actual_end_at > match.scheduled_at
+        else match.scheduled_at + slot_duration
+        for match in scheduled_matches
+        if match.scheduled_at
+    )
+    return phase_start_at, estimated_end_at
+
+
 def _resolve_phase_date(
     age_group: TournamentAgeGroup,
     phase_index: int,
@@ -1734,13 +1760,14 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
     for phase_order, phase_config in enumerate(phases_config, start=1):
         phase = phases_by_order.get(phase_order)
         if phase:
-            group_responses, knockout_matches, phase_date, phase_id, phase_name, phase_type = _serialize_phase_for_program(phase)
+            group_responses, knockout_matches, phase_date, phase_id, phase_name, phase_type, phase_start_at, estimated_end_at = _serialize_phase_for_program(phase)
         else:
-            group_responses, knockout_matches, phase_date, phase_id, phase_name, phase_type = _build_placeholder_phase_from_config(
+            group_responses, knockout_matches, phase_date, phase_id, phase_name, phase_type, phase_start_at, estimated_end_at = _build_placeholder_phase_from_config(
                 age_group.id,
                 phase_order,
                 phase_config if isinstance(phase_config, dict) else {},
                 phases_config,
+                age_group,
             )
 
         day_key = phase_date.isoformat() if phase_date else f"phase-{phase_order}"
@@ -1751,6 +1778,8 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
             phase_order=phase_order,
             is_final_phase=_is_final_phase_config(phases_config, phase_order),
             scheduled_date=phase_date,
+            phase_start_at=phase_start_at,
+            estimated_end_at=estimated_end_at,
             groups=group_responses,
             knockout_matches=knockout_matches,
         ))
@@ -1758,7 +1787,7 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
     for phase in sorted(age_group.phases, key=lambda item: item.phase_order):
         if phase.phase_order <= len(phases_config):
             continue
-        group_responses, knockout_matches, phase_date, phase_id, phase_name, phase_type = _serialize_phase_for_program(phase)
+        group_responses, knockout_matches, phase_date, phase_id, phase_name, phase_type, phase_start_at, estimated_end_at = _serialize_phase_for_program(phase)
         day_key = phase_date.isoformat() if phase_date else f"phase-{phase.phase_order}"
         phase_days[day_key].append(ProgramPhaseResponse(
             id=phase_id,
@@ -1767,6 +1796,8 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
             phase_order=phase.phase_order,
             is_final_phase=True,
             scheduled_date=phase_date,
+            phase_start_at=phase_start_at,
+            estimated_end_at=estimated_end_at,
             groups=group_responses,
             knockout_matches=knockout_matches,
         ))
@@ -1787,6 +1818,7 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
         age_group_id=age_group.id,
         age_group=age_group.age_group.value,
         display_name=age_group.display_name,
+        field_map_url=age_group.field_map_url,
         participant_count=len(age_group.tournament_teams),
         expected_teams=expected_teams,
         hide_future_phases_until_complete=bool(((structure.get("schedule") or {}) if isinstance(structure.get("schedule"), dict) else {}).get("hide_future_phases_until_complete")),
@@ -1812,7 +1844,7 @@ def _program_phase_sort_key(phase: ProgramPhaseResponse) -> tuple[datetime, int,
 
 def _serialize_phase_for_program(
     phase: Phase,
-) -> tuple[list[ProgramGroupResponse], list[ProgramMatchResponse], date_type | None, str, str, str]:
+) -> tuple[list[ProgramGroupResponse], list[ProgramMatchResponse], date_type | None, str, str, str, datetime | None, datetime | None]:
     group_responses: list[ProgramGroupResponse] = []
 
     for group in sorted(phase.groups, key=lambda item: item.group_order):
@@ -1860,7 +1892,15 @@ def _serialize_phase_for_program(
 
     scheduled_dates = [match.scheduled_at.date() for match in phase.matches if match.scheduled_at]
     phase_date = min(scheduled_dates) if scheduled_dates else None
-    return group_responses, knockout_matches, phase_date, phase.id, phase.name, phase.phase_type.value
+    phase_matches = [
+        *[match for group in group_responses for match in group.matches],
+        *knockout_matches,
+    ]
+    phase_start_at, estimated_end_at = _estimate_phase_time_window(
+        phase_matches,
+        _phase_slot_duration(phase.tournament_age_group) if phase.tournament_age_group else timedelta(minutes=20),
+    )
+    return group_responses, knockout_matches, phase_date, phase.id, phase.name, phase.phase_type.value, phase_start_at, estimated_end_at
 
 
 def _build_placeholder_phase_from_config(
@@ -1868,7 +1908,8 @@ def _build_placeholder_phase_from_config(
     phase_order: int,
     phase_config: dict[str, Any],
     phases_config: list[dict[str, Any]],
-) -> tuple[list[ProgramGroupResponse], list[ProgramMatchResponse], date_type | None, str, str, str]:
+    age_group: TournamentAgeGroup,
+) -> tuple[list[ProgramGroupResponse], list[ProgramMatchResponse], date_type | None, str, str, str, datetime | None, datetime | None]:
     phase_name = str(phase_config.get("name") or f"Fase {phase_order}")
     phase_type = "KNOCKOUT" if phase_config.get("phase_type") == "KNOCKOUT" else "GROUP_STAGE"
     phase_id = str(phase_config.get("id") or f"placeholder-phase-{age_group_id}-{phase_order}")
@@ -1899,9 +1940,11 @@ def _build_placeholder_phase_from_config(
                 teams=[ProgramTeamSlotResponse(label=label, is_placeholder=True) for label in labels],
                 matches=[],
             ))
-        return groups, [], phase_date, phase_id, phase_name, phase_type
+        phase_start_at = _resolve_phase_start(age_group, phase_order - 1, phase_config, None)
+        return groups, [], phase_date, phase_id, phase_name, phase_type, phase_start_at, None
 
-    return [], [], phase_date, phase_id, phase_name, phase_type
+    phase_start_at = _resolve_phase_start(age_group, phase_order - 1, phase_config, None)
+    return [], [], phase_date, phase_id, phase_name, phase_type, phase_start_at, None
 
 
 def _build_placeholder_group_slot_labels(

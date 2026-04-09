@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -11,6 +12,7 @@ from app.schemas.organization import OrganizationResponse
 from app.services.phase_engine import get_phase_standings, get_knockout_final_ranking
 from app.schemas.program import TournamentProgramResponse, AgeGroupProgramResponse
 from app.services.program_builder import get_tournament_program, get_age_group_program, _is_final_phase_config
+from app.services.program_pdf import build_age_group_program_pdf
 
 router = APIRouter()
 
@@ -194,6 +196,36 @@ async def get_public_age_group_program(age_group_id: str, db: AsyncSession = Dep
     if not program:
         raise HTTPException(status_code=404, detail="Age group not found")
     return program
+
+
+@router.get("/age-groups/{age_group_id}/program.pdf")
+async def download_public_age_group_program_pdf(age_group_id: str, db: AsyncSession = Depends(get_db)):
+    age_group_result = await db.execute(
+        select(TournamentAgeGroup)
+        .options(selectinload(TournamentAgeGroup.tournament))
+        .join(Tournament, Tournament.id == TournamentAgeGroup.tournament_id)
+        .where(TournamentAgeGroup.id == age_group_id, Tournament.is_published == True)
+    )
+    age_group = age_group_result.scalar_one_or_none()
+    if not age_group or not age_group.tournament:
+        raise HTTPException(status_code=404, detail="Age group not found")
+
+    program = await get_age_group_program(age_group_id, db)
+    if not program:
+        raise HTTPException(status_code=404, detail="Age group not found")
+
+    try:
+        payload, filename = build_age_group_program_pdf(age_group.tournament.name, program)
+    except ModuleNotFoundError as exc:
+        if exc.name == "reportlab":
+            raise HTTPException(status_code=503, detail="Export PDF non disponibile sul server")
+        raise
+
+    return Response(
+        content=payload,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/organizations/{slug}", response_model=OrganizationResponse)

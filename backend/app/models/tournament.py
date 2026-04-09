@@ -57,6 +57,7 @@ class TournamentAgeGroup(Base):
     tournament_id: Mapped[str] = mapped_column(String(36), ForeignKey("tournaments.id"), nullable=False)
     age_group: Mapped[AgeGroup] = mapped_column(Enum(AgeGroup), nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    field_map_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     structure_template_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     structure_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     scoring_rules: Mapped[dict] = mapped_column(JSON, default=lambda: {

@@ -54,6 +54,8 @@ class ProgramPhaseResponse(BaseModel):
     phase_order: int
     is_final_phase: bool = False
     scheduled_date: date_type | None = None
+    phase_start_at: datetime | None = None
+    estimated_end_at: datetime | None = None
     groups: list[ProgramGroupResponse]
     knockout_matches: list[ProgramMatchResponse]
 
@@ -68,6 +70,7 @@ class AgeGroupProgramResponse(BaseModel):
     age_group_id: str
     age_group: str
     display_name: str | None = None
+    field_map_url: str | None = None
     participant_count: int
     expected_teams: int | None = None
     hide_future_phases_until_complete: bool = False

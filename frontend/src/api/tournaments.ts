@@ -29,6 +29,7 @@ export interface AgeGroup {
   tournament_id: string
   age_group: string
   display_name: string | null
+  field_map_url: string | null
   structure_template_name: string | null
   structure_config: Record<string, unknown> | null
   scoring_rules: AgeGroupScoringRules
@@ -171,6 +172,8 @@ export interface ProgramPhase {
   phase_order: number
   is_final_phase: boolean
   scheduled_date: string | null
+  phase_start_at: string | null
+  estimated_end_at: string | null
   groups: ProgramGroup[]
   knockout_matches: ProgramMatch[]
 }
@@ -185,6 +188,7 @@ export interface AgeGroupProgram {
   age_group_id: string
   age_group: string
   display_name: string | null
+  field_map_url: string | null
   participant_count: number
   expected_teams: number | null
   hide_future_phases_until_complete: boolean
@@ -557,15 +561,18 @@ export function useUpdateAgeGroup() {
       id,
       tournamentId,
       display_name,
+      field_map_url,
       scoring_rules,
     }: {
       id: string
       tournamentId: string
       display_name?: string | null
+      field_map_url?: string | null
       scoring_rules?: AgeGroupScoringRules
     }) => {
       const res = await apiClient.put<AgeGroup>(`/api/v1/admin/age-groups/${id}`, {
         display_name,
+        field_map_url,
         scoring_rules,
       })
       return { data: res.data, tournamentId }
@@ -574,6 +581,8 @@ export function useUpdateAgeGroup() {
       qc.invalidateQueries({ queryKey: ['admin-tournament-age-groups', tournamentId] })
       qc.invalidateQueries({ queryKey: ['tournament-age-groups'] })
       qc.invalidateQueries({ queryKey: ['age-group-standings', data.id] })
+      qc.invalidateQueries({ queryKey: ['age-group-program', data.id] })
+      qc.invalidateQueries({ queryKey: ['admin-age-group-program', data.id] })
     },
   })
 }
@@ -666,6 +675,39 @@ export function useDeleteAgeGroupProgram() {
       qc.invalidateQueries({ queryKey: ['tournament-age-groups'] })
     },
   })
+}
+
+export async function downloadAdminAgeGroupProgramPdf(ageGroupId: string) {
+  const res = await apiClient.get(`/api/v1/admin/age-groups/${ageGroupId}/program.pdf`, {
+    responseType: 'blob',
+  })
+  const filename = getAttachmentFilename(res.headers['content-disposition']) ?? `calendario-${ageGroupId}.pdf`
+  triggerBlobDownload(res.data, filename)
+}
+
+export async function downloadPublicAgeGroupProgramPdf(ageGroupId: string) {
+  const res = await apiClient.get(`/api/v1/age-groups/${ageGroupId}/program.pdf`, {
+    responseType: 'blob',
+  })
+  const filename = getAttachmentFilename(res.headers['content-disposition']) ?? `calendario-${ageGroupId}.pdf`
+  triggerBlobDownload(res.data, filename)
+}
+
+function getAttachmentFilename(contentDisposition?: string) {
+  if (!contentDisposition) return null
+  const match = /filename="([^"]+)"/i.exec(contentDisposition)
+  return match?.[1] ?? null
+}
+
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const href = window.URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = href
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  document.body.removeChild(anchor)
+  window.URL.revokeObjectURL(href)
 }
 
 export function useRegenerateAgeGroupPhase() {

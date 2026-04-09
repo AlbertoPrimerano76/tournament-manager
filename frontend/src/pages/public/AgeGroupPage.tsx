@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, Download, ExternalLink } from 'lucide-react'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
 import {
+  downloadPublicAgeGroupProgramPdf,
   useAgeGroupProgram,
   useAgeGroupStandings,
   useTournament,
@@ -66,10 +67,12 @@ export default function AgeGroupPage() {
   function setGroupPhaseView(tab: GroupPhaseView) {
     setSearchParams((prev) => { const next = new URLSearchParams(prev); next.set('tab', tab); return next }, { replace: true })
   }
+  const teamQuery = searchParams.get('team') ?? ''
   const [activeMatchesGroupId, setActiveMatchesGroupId] = useState<string | null>(null)
   const [activeStandingsGroupId, setActiveStandingsGroupId] = useState<string | null>(null)
   const [activeTeamId, setActiveTeamId] = useState<string>('')
   const [rememberedTeamId, setRememberedTeamId] = useState<string>('')
+  const [teamSearch, setTeamSearch] = useState('')
   const knockoutPhaseView = (searchParams.get('ktab') as KnockoutPhaseView | null) ?? 'matches'
   function setKnockoutPhaseView(tab: KnockoutPhaseView) {
     setSearchParams((prev) => { const next = new URLSearchParams(prev); next.set('ktab', tab); return next }, { replace: true })
@@ -162,9 +165,15 @@ export default function AgeGroupPage() {
           value: team.tournament_team_id!,
           label: team.label,
           logo: team.team_logo_url,
+          queryValue: createTeamQueryValue(team.label),
         })),
     )
   }, [activePhase])
+  const visibleTeamOptions = useMemo(() => {
+    const query = teamSearch.trim().toLowerCase()
+    if (!query) return phaseTeamOptions
+    return phaseTeamOptions.filter((team) => team.label.toLowerCase().includes(query))
+  }, [phaseTeamOptions, teamSearch])
   const teamViewMatches = useMemo(() => {
     if (!activePhase || activePhase.phase_type !== 'GROUP_STAGE' || !activeTeamId) return []
     return activePhase.groups.flatMap((group) =>
@@ -211,11 +220,17 @@ export default function AgeGroupPage() {
       lastMatch,
     }
   }, [activePhase, activeTeamId, phaseTeamOptions, standings])
+  const activeTeamOption = useMemo(
+    () => phaseTeamOptions.find((team) => team.value === activeTeamId) ?? null,
+    [activeTeamId, phaseTeamOptions],
+  )
   const useTeamTabs = phaseTeamOptions.length <= 8
+  const isFamilyFriendlyAgeGroup = program?.age_group === 'U8'
   const hasSingleGroup = (activePhase?.groups.length ?? 0) <= 1
   const isLive = useMemo(() => phases.some((phase) =>
     [...phase.groups.flatMap((g) => g.matches), ...phase.knockout_matches].some((m) => m.status === 'IN_PROGRESS')
   ), [phases])
+  const activePhaseWindowLabel = activePhase ? formatPhaseWindow(activePhase) : null
   const favoriteTeamStorageKey = slug && ageGroupId ? `rugby.favoriteTeam.${slug}.${ageGroupId}` : ''
   const filteredMatches = activeMatchesGroup
     ? activeMatchesGroup.matches.filter((match) => {
@@ -254,6 +269,16 @@ export default function AgeGroupPage() {
   }, [activePhase?.id])
 
   useEffect(() => {
+    if (!teamQuery || phaseTeamOptions.length === 0 || activeTeamId) return
+    const teamFromQuery = phaseTeamOptions.find((team) => team.queryValue === teamQuery)
+    if (!teamFromQuery) return
+    setActiveTeamId(teamFromQuery.value)
+    if (!searchParams.get('tab')) {
+      setGroupPhaseView('team')
+    }
+  }, [activeTeamId, phaseTeamOptions, searchParams, teamQuery])
+
+  useEffect(() => {
     const teamIsValid = rememberedTeamId && phaseTeamOptions.some((team) => team.value === rememberedTeamId)
     if (!activeTeamId && phaseTeamOptions.length > 0 && teamIsValid) {
       setActiveTeamId(rememberedTeamId)
@@ -263,16 +288,35 @@ export default function AgeGroupPage() {
       }
       return
     }
+    if (!activeTeamId && phaseTeamOptions.length > 0 && isFamilyFriendlyAgeGroup && !searchParams.get('tab')) {
+      setActiveTeamId(phaseTeamOptions[0].value)
+      setGroupPhaseView('team')
+      return
+    }
     if (!activeTeamId && phaseTeamOptions.length > 0 && useTeamTabs) {
       setActiveTeamId(phaseTeamOptions[0].value)
     }
-  }, [activeTeamId, phaseTeamOptions, rememberedTeamId, useTeamTabs])
+  }, [activeTeamId, isFamilyFriendlyAgeGroup, phaseTeamOptions, rememberedTeamId, searchParams, useTeamTabs])
 
   useEffect(() => {
     if (!favoriteTeamStorageKey || typeof window === 'undefined') return
     const stored = window.localStorage.getItem(favoriteTeamStorageKey) ?? ''
     setRememberedTeamId(stored)
   }, [favoriteTeamStorageKey])
+
+  useEffect(() => {
+    if (phaseTeamOptions.length === 0) return
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (!activeTeamOption) {
+        next.delete('team')
+        return next
+      }
+      if (next.get('team') === activeTeamOption.queryValue) return prev
+      next.set('team', activeTeamOption.queryValue)
+      return next
+    }, { replace: true })
+  }, [activeTeamOption, phaseTeamOptions.length, setSearchParams])
 
   useEffect(() => {
     if (slug && tournament?.slug && tournament.slug !== slug && ageGroupId) {
@@ -341,9 +385,84 @@ export default function AgeGroupPage() {
         <p className="mt-2 text-sm text-slate-700">
           Consulta le partite della fase, le classifiche dei gironi e l’eventuale fase a eliminazione.
         </p>
-        {activePhaseFieldSummary.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void downloadPublicAgeGroupProgramPdf(ageGroupId!)}
+            className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:text-slate-950"
+          >
+            <Download className="h-4 w-4" />
+            PDF calendario
+          </button>
+          {program.field_map_url ? (
+            <a
+              href={program.field_map_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:text-slate-950"
+            >
+              <ExternalLink className="h-4 w-4" />
+              Mappa campi categoria
+            </a>
+          ) : null}
+        </div>
+        {activePhase?.phase_type === 'GROUP_STAGE' && phaseTeamOptions.length > 0 && (
+          <div className="mt-4 rounded-[1.2rem] border bg-white/85 px-4 py-4 shadow-sm" style={{ borderColor: theme.softBorder }}>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.14em]" style={{ color: theme.accent }}>Trova subito la tua squadra</p>
+                <p className="mt-1 text-sm text-slate-600">
+                  {isFamilyFriendlyAgeGroup
+                    ? 'Flusso rapido pensato per Under 8: scegli la squadra e apri subito solo le sue partite.'
+                    : 'Seleziona una squadra per aprire rapidamente la vista dedicata.'}
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="min-w-[240px]">
+                  <label className="block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                    Squadra
+                  </label>
+                  <select
+                    value={activeTeamId}
+                    onChange={(e) => setActiveTeamId(e.target.value)}
+                    className="mt-2 w-full rounded-xl border bg-white px-3 py-2.5 text-sm text-slate-900"
+                    style={{ borderColor: theme.softBorder }}
+                  >
+                    <option value="">Seleziona squadra</option>
+                    {phaseTeamOptions.map((team) => (
+                      <option key={team.value} value={team.value}>{team.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setGroupPhaseView('team')}
+                  disabled={!activeTeamId}
+                  className="rounded-full px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  style={{ backgroundColor: theme.primary }}
+                >
+                  Vai alla mia squadra
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {(activePhaseFieldSummary.length > 0 || program.field_map_url) && (
           <div className="mt-4 rounded-[1.2rem] border bg-white/80 px-4 py-3" style={{ borderColor: theme.softBorder }}>
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Impianti della categoria</p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Impianti della categoria</p>
+              {program.field_map_url ? (
+                <a
+                  href={program.field_map_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-slate-950"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Apri mappa dedicata
+                </a>
+              ) : null}
+            </div>
             <div className="mt-2 flex flex-wrap gap-2">
               {activePhaseFieldSummary.map((facility) => (
                 facility.maps_url ? (
@@ -392,6 +511,9 @@ export default function AgeGroupPage() {
                 style={activePhase?.id === phase.id ? { backgroundColor: theme.primary } : { borderColor: theme.softBorder }}
               >
                 <span>{phase.name}</span>
+                {formatPhaseWindow(phase) ? (
+                  <span className="ml-2 text-xs font-medium opacity-80">{formatPhaseWindow(phase)}</span>
+                ) : null}
               </button>
             ))}
           </div>
@@ -446,6 +568,9 @@ export default function AgeGroupPage() {
               <section className="rounded-[1.8rem] border p-5 shadow-sm" style={{ borderColor: theme.softBorder, background: theme.contentSurface }}>
                 <div className="mb-4">
                   <h2 className="text-xl font-black text-slate-950">{activePhase.name}</h2>
+                  {activePhaseWindowLabel ? (
+                    <p className="mt-1 text-sm text-slate-500">{activePhaseWindowLabel}</p>
+                  ) : null}
                 </div>
 
                 {!hasSingleGroup && (
@@ -517,6 +642,9 @@ export default function AgeGroupPage() {
                 <div className="mb-4">
                   <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.primaryMuted }}>Classifica</p>
                   <h2 className="mt-1 text-xl font-black text-slate-950">{activePhase.name}</h2>
+                  {activePhaseWindowLabel ? (
+                    <p className="mt-1 text-sm text-slate-500">{activePhaseWindowLabel}</p>
+                  ) : null}
                 </div>
 
                 {!hasSingleGroup && (
@@ -544,7 +672,7 @@ export default function AgeGroupPage() {
                     {!hasSingleGroup && <p className="mb-4 text-sm font-black text-slate-950">{activeStandingsGroup.name}</p>}
                     {activeStandingsMeta?.is_final_phase && activeGroupCompleted && finalGroupPodium.length > 0 && (
                       <div className="mb-5">
-                        <PodiumGrid rows={finalGroupPodium} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} />
+                        <PodiumGrid rows={finalGroupPodium} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} />
                       </div>
                     )}
                     <StandingsTable
@@ -552,6 +680,7 @@ export default function AgeGroupPage() {
                       teamNameMap={teamNameMap}
                       teamLogoMap={teamLogoMap}
                       isFinalPhase={Boolean(activeStandingsMeta?.is_final_phase)}
+                      highlightedTeamId={activeTeamId}
                     />
                   </div>
                 )}
@@ -566,13 +695,30 @@ export default function AgeGroupPage() {
                   <p className="mt-2 text-sm text-slate-600">
                     Vista rapida per genitori e accompagnatori. Mostra solo le partite della squadra selezionata.
                   </p>
+                  {activePhaseWindowLabel ? (
+                    <p className="mt-2 text-sm text-slate-500">{activePhaseWindowLabel}</p>
+                  ) : null}
                 </div>
 
                 {phaseTeamOptions.length > 0 ? (
                   <>
+                    {phaseTeamOptions.length > 8 && (
+                      <div className="mb-4 max-w-md">
+                        <label className="block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+                          Cerca squadra
+                        </label>
+                        <input
+                          value={teamSearch}
+                          onChange={(e) => setTeamSearch(e.target.value)}
+                          placeholder="Scrivi il nome della squadra"
+                          className="mt-2 w-full rounded-xl border bg-white px-3 py-2.5 text-sm text-slate-900"
+                          style={{ borderColor: theme.softBorder }}
+                        />
+                      </div>
+                    )}
                     {useTeamTabs ? (
                       <div className="flex flex-wrap gap-2">
-                        {phaseTeamOptions.map((team) => (
+                        {visibleTeamOptions.map((team) => (
                           <button
                             key={team.value}
                             type="button"
@@ -601,7 +747,7 @@ export default function AgeGroupPage() {
                           style={{ borderColor: theme.softBorder }}
                         >
                           <option value="">Seleziona squadra</option>
-                          {phaseTeamOptions.map((team) => (
+                          {visibleTeamOptions.map((team) => (
                             <option key={team.value} value={team.value}>{team.label}</option>
                           ))}
                         </select>
@@ -725,6 +871,7 @@ export default function AgeGroupPage() {
                               key={match.id}
                               match={match}
                               teamLogoMap={teamLogoMap}
+                              highlightedTeamId={activeTeamId}
                               backTo={`/tornei/${slug}/${ageGroupId}`}
                               backLabel={`← ${program.display_name || program.age_group}`}
                             />
@@ -740,6 +887,11 @@ export default function AgeGroupPage() {
                         </div>
                       )}
                     </div>
+                    {!useTeamTabs && visibleTeamOptions.length === 0 && (
+                      <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                        Nessuna squadra corrisponde alla ricerca.
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
@@ -789,6 +941,9 @@ export default function AgeGroupPage() {
                 {activePhase.is_final_phase ? 'Eliminazione diretta' : 'Fase a eliminazione'}
               </p>
               <h2 className="mt-1 text-xl font-black text-slate-950">{activePhase.name}</h2>
+              {activePhaseWindowLabel ? (
+                <p className="mt-1 text-sm text-slate-500">{activePhaseWindowLabel}</p>
+              ) : null}
             </div>
             <div className="mb-4 flex flex-wrap gap-2">
               <button
@@ -835,11 +990,14 @@ export default function AgeGroupPage() {
               <div className="mb-4">
                 <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.primaryMuted }}>Classifica</p>
                 <h2 className="mt-1 text-xl font-black text-slate-950">{activePhase.name}</h2>
+                {activePhaseWindowLabel ? (
+                  <p className="mt-1 text-sm text-slate-500">{activePhaseWindowLabel}</p>
+                ) : null}
               </div>
               {finalRankingRows.length > 0 ? (
                 <>
                   <div className="mb-4">
-                    <PodiumGrid rows={finalRankingRows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} />
+                    <PodiumGrid rows={finalRankingRows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} />
                   </div>
 
                   <div className="overflow-hidden rounded-[1.3rem] border border-emerald-100 bg-white">
@@ -852,12 +1010,18 @@ export default function AgeGroupPage() {
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {finalRankingRows.map((row) => (
-                          <tr key={`${activePhase.id}-${row.position ?? 'na'}-${row.team_id ?? row.team_name}`}>
+                          <tr
+                            key={`${activePhase.id}-${row.position ?? 'na'}-${row.team_id ?? row.team_name}`}
+                            className={row.team_id && row.team_id === activeTeamId ? 'bg-amber-50' : ''}
+                          >
                             <td className="px-4 py-3 font-black text-slate-900">{row.position ?? '-'}</td>
                             <td className="px-4 py-3 font-semibold text-slate-900">
                               <div className="flex items-center gap-2">
                                 <TeamLogo src={teamLogoMap.get(row.team_id ?? '')} alt={row.team_name || teamNameMap.get(row.team_id ?? '') || 'Squadra'} />
                                 <span>{row.team_name || teamNameMap.get(row.team_id ?? '') || 'Da definire'}</span>
+                                {row.team_id && row.team_id === activeTeamId ? (
+                                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-800">La tua</span>
+                                ) : null}
                               </div>
                             </td>
                           </tr>
@@ -883,7 +1047,7 @@ export default function AgeGroupPage() {
             <h2 className="mt-1 text-xl font-black text-slate-950">{publicFinalRanking.phaseName}</h2>
           </div>
           <div className="mb-4">
-            <PodiumGrid rows={publicFinalRanking.rows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} />
+            <PodiumGrid rows={publicFinalRanking.rows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} />
           </div>
           <div className="overflow-hidden rounded-[1.3rem] border border-emerald-100 bg-white">
             <table className="min-w-full divide-y divide-emerald-100 text-sm">
@@ -895,12 +1059,18 @@ export default function AgeGroupPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {publicFinalRanking.rows.map((row) => (
-                  <tr key={`public-final-${row.position ?? 'na'}-${row.team_id ?? row.team_name}`}>
+                  <tr
+                    key={`public-final-${row.position ?? 'na'}-${row.team_id ?? row.team_name}`}
+                    className={row.team_id && row.team_id === activeTeamId ? 'bg-amber-50' : ''}
+                  >
                     <td className="px-4 py-3 font-black text-slate-900">{row.position ?? '-'}</td>
                     <td className="px-4 py-3 font-semibold text-slate-900">
                       <div className="flex items-center gap-2">
                         <TeamLogo src={teamLogoMap.get(row.team_id ?? '')} alt={row.team_name || teamNameMap.get(row.team_id ?? '') || 'Squadra'} />
                         <span>{row.team_name || teamNameMap.get(row.team_id ?? '') || 'Da definire'}</span>
+                        {row.team_id && row.team_id === activeTeamId ? (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-800">La tua</span>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -936,21 +1106,27 @@ function getAgeGroupThemeStyle(primaryColor: string | null, accentColor: string 
 function PublicMatchRow({
   match,
   teamLogoMap,
+  highlightedTeamId,
   backTo,
   backLabel,
 }: {
   match: ProgramMatch
   teamLogoMap: Map<string, string>
+  highlightedTeamId?: string
   backTo?: string
   backLabel?: string
 }) {
   const homeLogo = match.home_logo_url || teamLogoMap.get(match.home_team_id ?? '') || null
   const awayLogo = match.away_logo_url || teamLogoMap.get(match.away_team_id ?? '') || null
+  const highlightsHome = !!highlightedTeamId && match.home_team_id === highlightedTeamId
+  const highlightsAway = !!highlightedTeamId && match.away_team_id === highlightedTeamId
   return (
     <Link
       to={`/partite/${match.id}`}
       state={{ backTo: backTo ?? '..', backLabel: backLabel ?? 'Categoria' }}
-      className="block rounded-2xl border border-slate-200 bg-slate-50 p-3 transition-colors hover:border-slate-300 hover:bg-slate-100/70"
+      className={`block rounded-2xl border p-3 transition-colors hover:border-slate-300 hover:bg-slate-100/70 ${
+        highlightsHome || highlightsAway ? 'border-amber-200 bg-amber-50/70' : 'border-slate-200 bg-slate-50'
+      }`}
     >
       <div className="mb-2 flex items-center justify-end gap-3">
         <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] ${
@@ -979,17 +1155,19 @@ function PublicMatchRow({
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-3">
+        <div className={`flex items-center justify-between gap-3 rounded-xl px-3 py-3 ${highlightsHome ? 'bg-amber-100/80 ring-1 ring-amber-200' : 'bg-white'}`}>
           <span className="flex min-w-0 items-center gap-2 font-semibold text-slate-900">
             <TeamLogo src={homeLogo} alt={match.home_label} />
             <span className="truncate">{match.home_label}</span>
+            {highlightsHome ? <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-900">La tua</span> : null}
           </span>
           <span className="text-lg font-black text-slate-950">{match.home_score ?? '-'}</span>
         </div>
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-3">
+        <div className={`flex items-center justify-between gap-3 rounded-xl px-3 py-3 ${highlightsAway ? 'bg-amber-100/80 ring-1 ring-amber-200' : 'bg-white'}`}>
           <span className="flex min-w-0 items-center gap-2 font-semibold text-slate-900">
             <TeamLogo src={awayLogo} alt={match.away_label} />
             <span className="truncate">{match.away_label}</span>
+            {highlightsAway ? <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-900">La tua</span> : null}
           </span>
           <span className="text-lg font-black text-slate-950">{match.away_score ?? '-'}</span>
         </div>
@@ -1009,11 +1187,13 @@ function StandingsTable({
   teamNameMap,
   teamLogoMap,
   isFinalPhase = false,
+  highlightedTeamId,
 }: {
   rows: StandingRow[]
   teamNameMap: Map<string, string>
   teamLogoMap: Map<string, string>
   isFinalPhase?: boolean
+  highlightedTeamId?: string
 }) {
   if (rows.length === 0) {
     return (
@@ -1040,13 +1220,14 @@ function StandingsTable({
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={row.team_id} className="border-b border-slate-100 last:border-b-0">
+            <tr key={row.team_id} className={`border-b border-slate-100 last:border-b-0 ${row.team_id === highlightedTeamId ? 'bg-amber-50' : ''}`}>
               <td className="px-3 py-3 font-black text-slate-950">{index + 1}</td>
               <td className="px-3 py-3 font-semibold text-slate-900">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
                     <TeamLogo src={teamLogoMap.get(row.team_id)} alt={row.team_name ?? teamNameMap.get(row.team_id) ?? 'Squadra'} />
                     <span className="truncate">{row.team_name ?? teamNameMap.get(row.team_id) ?? row.team_id}</span>
+                    {row.team_id === highlightedTeamId ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-800">La tua</span> : null}
                   </div>
                   {isFinalPhase ? <span className="shrink-0 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{index + 1}°</span> : null}
                 </div>
@@ -1069,10 +1250,12 @@ function PodiumGrid({
   rows,
   teamNameMap,
   teamLogoMap,
+  highlightedTeamId,
 }: {
   rows: Array<{ position?: number | null; team_id?: string | null; team_name?: string | null }>
   teamNameMap: Map<string, string>
   teamLogoMap: Map<string, string>
+  highlightedTeamId?: string
 }) {
   const topRows = rows.filter((row) => typeof row.position === 'number').slice(0, 3)
   if (topRows.length === 0) return null
@@ -1083,7 +1266,9 @@ function PodiumGrid({
         <div
           key={`podium-${row.position ?? index}-${row.team_id ?? row.team_name ?? 'na'}`}
           className={`rounded-[1.4rem] border p-4 shadow-sm ${
-            index === 0
+            row.team_id && row.team_id === highlightedTeamId
+              ? 'border-amber-300 bg-amber-100'
+              : index === 0
               ? 'border-amber-200 bg-amber-50'
               : index === 1
                 ? 'border-slate-200 bg-slate-50'
@@ -1105,6 +1290,7 @@ function PodiumGrid({
               <div className="mt-1 flex items-center gap-2">
                 <TeamLogo src={teamLogoMap.get(row.team_id ?? '')} alt={row.team_name || teamNameMap.get(row.team_id ?? '') || 'Squadra'} />
                 <p className="truncate text-sm font-black text-slate-950">{row.team_name || teamNameMap.get(row.team_id ?? '') || 'Da definire'}</p>
+                {row.team_id && row.team_id === highlightedTeamId ? <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-900">La tua</span> : null}
               </div>
             </div>
           </div>
@@ -1162,10 +1348,30 @@ function compareProgramPhases(left: ProgramPhase, right: ProgramPhase) {
   return left.phase_order - right.phase_order
 }
 
+function formatPhaseWindow(phase: ProgramPhase) {
+  if (!phase.phase_start_at && !phase.estimated_end_at) return null
+  const startLabel = phase.phase_start_at
+    ? format(new Date(phase.phase_start_at), 'HH:mm', { locale: it })
+    : 'da definire'
+  const endLabel = phase.estimated_end_at
+    ? format(new Date(phase.estimated_end_at), 'HH:mm', { locale: it })
+    : 'da definire'
+  return `Inizio ${startLabel} · Fine stimata ${endLabel}`
+}
+
 function firstPhaseTimestamp(phase: ProgramPhase) {
   const timestamps = [
     ...phase.groups.flatMap((group) => group.matches.map((match) => match.scheduled_at ? new Date(match.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER)),
     ...phase.knockout_matches.map((match) => match.scheduled_at ? new Date(match.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER),
   ]
   return timestamps.length > 0 ? Math.min(...timestamps) : Number.MAX_SAFE_INTEGER
+}
+
+function createTeamQueryValue(value: string) {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
 }
