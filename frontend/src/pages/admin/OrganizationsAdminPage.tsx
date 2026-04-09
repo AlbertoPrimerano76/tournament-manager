@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useAdminOrganizations, useCreateOrganization, useUpdateOrganization, useDeleteOrganization, Organization } from '@/api/organizations'
 import { useOrganizationFields, useCreateField, useUpdateField, useDeleteField, type Field as Facility } from '@/api/fields'
 import ImageUpload from '@/components/shared/ImageUpload'
-import { Globe, Pencil, Plus, X, Building2, Trash2, Link as LinkIcon, MapPin, MapPinned, Palette, Search } from 'lucide-react'
+import { Globe, Pencil, Plus, X, Building2, Trash2, Link as LinkIcon, MapPin, Palette, Search, Undo2, AlertTriangle } from 'lucide-react'
 
 export default function OrganizationsAdminPage() {
   const { data: orgs, isLoading } = useAdminOrganizations()
@@ -456,6 +456,30 @@ function OrganizationFacilitiesDrawer({ org, onClose }: { org: Organization; onC
   const { data: facilities, isLoading } = useOrganizationFields(org.id)
   const deleteFacility = useDeleteField()
   const [editingFacility, setEditingFacility] = useState<Facility | null | 'new'>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [undoToast, setUndoToast] = useState<{ facility: Facility; timerId: ReturnType<typeof setTimeout> } | null>(null)
+
+  function handleDeleteClick(facility: Facility) {
+    setConfirmDeleteId(facility.id)
+  }
+
+  function handleConfirmDelete(facility: Facility) {
+    setConfirmDeleteId(null)
+    const timerId = setTimeout(() => {
+      deleteFacility.mutate({ id: facility.id, organizationId: org.id })
+      setUndoToast(null)
+    }, 5000)
+    setUndoToast({ facility, timerId })
+  }
+
+  function handleUndo() {
+    if (undoToast) {
+      clearTimeout(undoToast.timerId)
+      setUndoToast(null)
+    }
+  }
+
+  const hiddenId = undoToast?.facility.id
 
   return (
     <>
@@ -478,59 +502,97 @@ function OrganizationFacilitiesDrawer({ org, onClose }: { org: Organization; onC
 
           {isLoading && <p className="py-4 text-center text-sm text-gray-400">Caricamento...</p>}
 
-          {!isLoading && (facilities?.length ?? 0) === 0 && !editingFacility && (
+          {!isLoading && (facilities?.filter((f) => f.id !== hiddenId).length ?? 0) === 0 && !editingFacility && !undoToast && (
             <div className="rounded-[1.4rem] border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
               Nessun impianto configurato.
             </div>
           )}
 
           <div className="space-y-3">
-            {facilities?.map((facility) => (
+            {facilities?.filter((f) => f.id !== hiddenId).map((facility) => (
               <div key={facility.id} className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-sm">
                 {facility.photo_url && (
                   <img src={facility.photo_url} alt={facility.name} className="h-36 w-full object-cover" />
                 )}
-                <div className="flex items-start gap-3 p-4">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-900">{facility.name}</p>
-                    {facility.age_group && <p className="mt-1 text-xs font-semibold text-emerald-700">Categoria {facility.age_group}</p>}
-                    {facility.address && <p className="mt-1 text-xs text-slate-500">{facility.address}</p>}
-                    {facility.maps_url && (
-                      <a
-                        href={facility.maps_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:underline"
+                {confirmDeleteId === facility.id ? (
+                  <div className="p-4">
+                    <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-red-800">Eliminare «{facility.name}»?</p>
+                        <p className="mt-0.5 text-xs text-red-600">Avrai 5 secondi per annullare l'operazione.</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleConfirmDelete(facility)}
+                        className="flex-1 rounded-xl bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700"
                       >
-                        <MapPin className="h-3 w-3" />
-                        Apri Google Maps
-                      </a>
-                    )}
+                        Elimina
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                      >
+                        Annulla
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setEditingFacility(facility)}
-                      className="rounded-lg p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (confirm(`Eliminare "${facility.name}"?`)) {
-                          deleteFacility.mutate({ id: facility.id, organizationId: org.id })
-                        }
-                      }}
-                      className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                ) : (
+                  <div className="flex items-start gap-3 p-4">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-900">{facility.name}</p>
+                      {facility.age_group && <p className="mt-1 text-xs font-semibold text-emerald-700">Categoria {facility.age_group}</p>}
+                      {facility.address && <p className="mt-1 text-xs text-slate-500">{facility.address}</p>}
+                      {facility.maps_url && (
+                        <a
+                          href={facility.maps_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:underline"
+                        >
+                          <MapPin className="h-3 w-3" />
+                          Apri Google Maps
+                        </a>
+                      )}
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setEditingFacility(facility)}
+                        className="rounded-lg p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteClick(facility)}
+                        className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             ))}
           </div>
+
+          {undoToast && (
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-[1.3rem] border border-slate-200 bg-slate-900 px-4 py-3 text-white shadow-lg">
+              <p className="text-sm font-medium">«{undoToast.facility.name}» eliminato</p>
+              <button
+                type="button"
+                onClick={handleUndo}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-sm font-bold hover:bg-white/25"
+              >
+                <Undo2 className="h-3.5 w-3.5" />
+                Annulla
+              </button>
+            </div>
+          )}
 
           {editingFacility && (
             <div className="mt-5 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
