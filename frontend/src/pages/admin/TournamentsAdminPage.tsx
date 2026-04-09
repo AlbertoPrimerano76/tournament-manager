@@ -2001,21 +2001,22 @@ function AgeGroupConfigurationScreen({
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
-      <div className="rounded-[2rem] border border-white/80 bg-white/85 p-6 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Configurazione categoria</p>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
                 <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Categoria</p>
-                <p className="mt-1 text-lg font-black text-slate-950">{ageGroup.display_name || ageGroup.age_group}</p>
+                <p className="mt-1 text-base font-bold text-slate-950">{ageGroup.display_name || ageGroup.age_group}</p>
               </div>
-              <div className="rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3">
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
                 <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Evento</p>
-                <p className="mt-1 text-lg font-black text-slate-950">{tournament.name}</p>
+                <p className="mt-1 text-base font-bold text-slate-950">{tournament.name}</p>
               </div>
             </div>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-              Configurazione guidata della categoria: prima le squadre partecipanti, poi la formula completa del torneo.
+            <p className="mt-3 max-w-3xl text-sm text-slate-600">
+              Prima definisci le squadre partecipanti, poi costruisci formula, campi e generazione del programma.
             </p>
             {tournament.event_type === 'GATHERING' && (
               <p className="mt-3 inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-sky-700">
@@ -2033,21 +2034,30 @@ function AgeGroupConfigurationScreen({
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
+        <div className="mt-5 grid gap-2 md:grid-cols-2">
           {steps.map((step, index) => (
             <button
               key={step.id}
               type="button"
               onClick={() => setActiveStep(step.id)}
-              className={`rounded-[1.4rem] border p-4 text-left transition-colors ${
+              className={`rounded-xl border px-4 py-3 text-left transition-colors ${
                 activeStep === step.id
-                  ? 'border-slate-900 bg-slate-900 text-white'
+                  ? 'border-slate-900 bg-white text-slate-900 ring-2 ring-slate-900/10'
                   : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               }`}
             >
-              <p className={`text-xs font-bold uppercase tracking-[0.16em] ${activeStep === step.id ? 'text-white/70' : 'text-slate-400'}`}>{`Passo ${index + 1}`}</p>
-              <p className="mt-2 text-lg font-black">{step.label}</p>
-              <p className={`mt-1 text-sm ${activeStep === step.id ? 'text-white/80' : 'text-slate-500'}`}>{step.description}</p>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">{`Passo ${index + 1}`}</p>
+                  <p className="mt-1 text-sm font-bold">{step.label}</p>
+                </div>
+                {activeStep === step.id && (
+                  <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-white">
+                    Attivo
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-sm text-slate-500">{step.description}</p>
             </button>
           ))}
         </div>
@@ -2088,16 +2098,22 @@ function AgeGroupOperationsScreen({
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
-      <div className="rounded-[2rem] border border-white/80 bg-white/85 p-6 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <Link to={`/admin/tornei/${tournament.id}/gestione`} className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 transition-colors hover:text-slate-600">
-              Risultati e ritardi
-            </Link>
-            <h1 className="mt-2 text-3xl font-black text-slate-950">{ageGroup.display_name || ageGroup.age_group}</h1>
-            <p className="mt-1 text-sm text-slate-500">{tournament.name}</p>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-              Pagina operativa semplificata per segnapunti: solo tabellini, risultati e ritardi con filtri per fase, girone e stato.
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Gestione operativa</p>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Categoria</p>
+                <p className="mt-1 text-base font-bold text-slate-950">{ageGroup.display_name || ageGroup.age_group}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Evento</p>
+                <p className="mt-1 text-base font-bold text-slate-950">{tournament.name}</p>
+              </div>
+            </div>
+            <p className="mt-3 max-w-3xl text-sm text-slate-600">
+              Vista operativa per risultati, ritardi e partite, pensata per chi aggiorna il torneo durante la giornata.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -2126,29 +2142,19 @@ function AgeGroupOperationsPanel({ ageGroup }: { ageGroup: AgeGroup }) {
   const { data: participants } = useAgeGroupParticipants(ageGroup.id)
   const { data: program } = useAdminAgeGroupProgram(ageGroup.id)
   const structure = normalizeStructureConfig(ageGroup.structure_config)
+  const totalMatches = program ? countProgramMatches(program) : 0
 
   return (
-    <section className="overflow-hidden rounded-[1.9rem] border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 bg-[linear-gradient(135deg,_#ffffff_0%,_#f8fafc_100%)] px-5 py-5">
-        <div className="mb-5 grid gap-3 md:grid-cols-3">
-          <div className="rounded-[1.4rem] border border-sky-200 bg-sky-50 px-4 py-3">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Flusso guidato</p>
-            <p className="mt-2 text-sm text-sky-900">Scegli fase e stato, poi apri solo la partita da aggiornare.</p>
-          </div>
-          <div className="rounded-[1.4rem] border border-amber-200 bg-amber-50 px-4 py-3">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">Risultati</p>
-            <p className="mt-2 text-sm text-amber-900">Inserisci o correggi il punteggio con una vista lineare e semplice.</p>
-          </div>
-          <div className="rounded-[1.4rem] border border-emerald-200 bg-emerald-50 px-4 py-3">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Ritardi</p>
-            <p className="mt-2 text-sm text-emerald-900">Aggiorna il ritardo e propagalo sulle partite successive del campo.</p>
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-3">
-          <InfoField label="Fasi configurate" value={`${structure.phases.length}`} />
-          <InfoField label="Durata incontro" value={structure.schedule.match_duration_minutes ? `${structure.schedule.match_duration_minutes} min` : 'Da definire'} />
-          <InfoField label="Intervallo" value={structure.schedule.interval_minutes !== null ? `${structure.schedule.interval_minutes} min` : 'Da definire'} />
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 bg-slate-50 px-5 py-5">
+        <p className="text-sm text-slate-600">
+          Apri solo le partite da aggiornare. Filtri, risultati e ritardi sono raccolti qui per lavorare velocemente sul campo.
+        </p>
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <InfoField label="Squadre" value={`${participants?.length ?? 0}`} />
+          <InfoField label="Partite" value={program ? `${totalMatches}` : '0'} />
+          <InfoField label="Fasi" value={`${structure.phases.length}`} />
+          <InfoField label="Durata" value={structure.schedule.match_duration_minutes ? `${structure.schedule.match_duration_minutes} min` : 'Da definire'} />
         </div>
       </div>
 
@@ -2179,9 +2185,9 @@ function AgeGroupOperationsPanel({ ageGroup }: { ageGroup: AgeGroup }) {
 
 function InfoField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3">
-      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{label}</p>
-      <p className="mt-2 text-sm font-semibold text-slate-900">{value}</p>
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">{label}</p>
+      <p className="mt-1 text-base font-bold text-slate-950">{value}</p>
     </div>
   )
 }
@@ -2277,7 +2283,6 @@ function AgeGroupConfigurationPanel({
     ? Math.max(structure.expected_teams - (participants?.length ?? 0), 0)
     : null
   const validationErrors = validateStructureConfig(structure)
-  const formulaStatus = validationErrors.length === 0 ? 'Pronta' : 'Bozza incompleta'
   const isGathering = tournament.event_type === 'GATHERING'
   const isStructureDirty = serializeStructureForComparison(normalizeStructureConfig(ageGroup.structure_config)) !== serializeStructureForComparison(structure)
     || (ageGroup.structure_template_name ?? '') !== selectedTemplateName
@@ -2742,111 +2747,111 @@ function AgeGroupConfigurationPanel({
       <div className={pageMode ? 'space-y-5' : 'grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_360px]'}>
         <div className="space-y-5">
           {currentTab === 'formula' && (
-          <section className="overflow-hidden rounded-[1.9rem] border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 bg-[linear-gradient(135deg,_#ffffff_0%,_#f8fafc_100%)] px-5 py-5">
-              <div className="flex items-start justify-between gap-3">
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 bg-slate-50 px-5 py-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Passo 2</p>
-                  <p className="mt-1 text-lg font-black text-slate-950">Formula e fasi</p>
-                  <p className="mt-1 text-sm text-slate-600">Dopo aver completato le squadre, definisci fase per fase data, ora, campi e struttura.</p>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Passo 2</p>
+                  <p className="mt-1 text-lg font-black text-slate-950">Formula, campi e generazione</p>
+                  <p className="mt-1 text-sm text-slate-600">Definisci base calendario, fasi e passaggi. Le azioni principali sono qui sopra, non disperse nella pagina.</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={addPhase}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-                >
-                  <Plus className="h-4 w-4" />
-                  Aggiungi fase
-                </button>
-              </div>
-
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Squadre inserite</p>
-                  <p className="mt-2 text-2xl font-black text-slate-950">{participants?.length ?? 0}</p>
-                </div>
-                <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Squadre attese</p>
-                  <p className="mt-2 text-2xl font-black text-slate-950">{structure.expected_teams ?? '?'}</p>
-                </div>
-                <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Da inserire</p>
-                  <p className="mt-2 text-2xl font-black text-slate-950">{remainingSlots ?? '?'}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="px-5 py-5">
-              <div className={`mb-5 rounded-[1.5rem] border px-4 py-4 ${
-                readiness.isReady
-                  ? 'border-emerald-200 bg-emerald-50'
-                  : 'border-amber-200 bg-amber-50'
-              }`}>
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <p className={`text-xs font-bold uppercase tracking-[0.16em] ${readiness.isReady ? 'text-emerald-700' : 'text-amber-700'}`}>
-                      Pronto per generare?
-                    </p>
-                    <p className="mt-2 text-sm font-semibold text-slate-900">
-                      {readiness.isReady
-                        ? 'Sì. La categoria ha una configurazione coerente per creare le partite.'
-                        : 'Non ancora. Qui sotto trovi cosa blocca la generazione.'}
-                    </p>
-                  </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveStructure()}
+                    disabled={updateStructure.isPending || updateAgeGroup.isPending}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-50"
+                  >
+                    <Save className="h-4 w-4" />
+                    {updateStructure.isPending || updateAgeGroup.isPending ? 'Salvataggio...' : 'Salva bozza'}
+                  </button>
                   <button
                     type="button"
                     onClick={() => void handleGenerateProgram()}
                     disabled={generateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
-                    className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
+                    <Sparkles className="h-4 w-4" />
                     {generateProgram.isPending ? 'Rigenerazione...' : program?.generated ? 'Rigenera' : 'Genera'}
                   </button>
-                </div>
-
-                {program?.generated && (
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  {program?.generated && (
                     <button
                       type="button"
                       onClick={() => void handleDeleteProgram()}
                       disabled={generateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending}
-                      className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50"
                     >
-                      {deleteProgram.isPending ? 'Cancellazione...' : 'Cancella tutto'}
+                      <Trash2 className="h-4 w-4" />
+                      {deleteProgram.isPending ? 'Cancellazione...' : 'Cancella programma'}
                     </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-4">
+                <InfoField label="Squadre inserite" value={`${participants?.length ?? 0}`} />
+                <InfoField label="Squadre attese" value={`${structure.expected_teams ?? '?'}`} />
+                <InfoField label="Da inserire" value={`${remainingSlots ?? '?'}`} />
+                <InfoField label="Fasi" value={`${structure.phases.length}`} />
+              </div>
+            </div>
+
+            <div className="px-5 py-5">
+              <div className={`mb-5 rounded-xl border px-4 py-4 ${
+                readiness.isReady ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'
+              }`}>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <p className={`text-[11px] font-bold uppercase tracking-[0.16em] ${readiness.isReady ? 'text-emerald-700' : 'text-amber-700'}`}>
+                      Stato configurazione
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {readiness.isReady ? 'Configurazione pronta per generare o rigenerare il programma.' : 'Ci sono ancora elementi da completare prima della generazione.'}
+                    </p>
                   </div>
-                )}
+                  <span className={`inline-flex rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] ${
+                    readiness.isReady ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    {readiness.isReady ? 'Pronto' : `${readiness.blockers.length} bloccanti`}
+                  </span>
+                </div>
 
                 {hasRecordedResults && (
-                  <div className="mt-4 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-100/60 px-4 py-3 text-sm text-amber-900">
                     Hai già inserito almeno un risultato. Il sistema manterrà intatte le partite già salvate e aggiornerà solo orari e campi delle partite future.
                   </div>
                 )}
 
                 {program?.generated && (
-                  <div className="mt-4 rounded-[1.2rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
-                    `Cancella tutto` svuota completamente il calendario della categoria. `Rigenera` ricrea le partite usando solo la formula attuale.
+                  <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+                    `Cancella programma` svuota la categoria. `Rigenera` ricrea le partite usando la formula attuale.
                   </div>
                 )}
 
-                {readiness.blockers.length > 0 && (
-                  <div className="mt-4 space-y-1 text-sm text-amber-900">
-                    {readiness.blockers.map((error) => (
-                      <p key={error}>• {error}</p>
-                    ))}
-                  </div>
-                )}
-
-                {readiness.warnings.length > 0 && (
-                  <div className="mt-4 space-y-1 text-sm text-slate-700">
-                    {readiness.warnings.map((warning) => (
-                      <p key={warning}>• {warning}</p>
-                    ))}
+                {(readiness.blockers.length > 0 || readiness.warnings.length > 0) && (
+                  <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Bloccanti</p>
+                      <div className="mt-2 space-y-1 text-sm text-amber-900">
+                        {readiness.blockers.length > 0 ? readiness.blockers.map((error) => (
+                          <p key={error}>• {error}</p>
+                        )) : <p>Nessuno.</p>}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Avvisi</p>
+                      <div className="mt-2 space-y-1 text-sm text-slate-700">
+                        {readiness.warnings.length > 0 ? readiness.warnings.map((warning) => (
+                          <p key={warning}>• {warning}</p>
+                        )) : <p>Nessuno.</p>}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
 
-              <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Template formula</p>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Template formula</p>
                 <p className="mt-1 text-sm text-slate-600">Se vuoi, parti da una struttura già esistente. Altrimenti definisci le fasi da zero qui sotto.</p>
                 <div className="mt-3 grid gap-3 lg:grid-cols-3">
                   {allTemplates.map((template) => (
@@ -2854,7 +2859,7 @@ function AgeGroupConfigurationPanel({
                       key={template.name}
                       type="button"
                       onClick={() => void handleApplyTemplate(template)}
-                      className={`rounded-[1.35rem] border p-4 text-left transition-all ${
+                      className={`rounded-xl border p-4 text-left transition-all ${
                         selectedTemplateName === template.name
                           ? 'border-emerald-300 bg-emerald-50 shadow-sm'
                           : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-white'
@@ -2868,7 +2873,7 @@ function AgeGroupConfigurationPanel({
                 </div>
               </div>
 
-                <div className="mb-5 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Base calendario</p>
@@ -3068,9 +3073,19 @@ function AgeGroupConfigurationPanel({
               </div>
 
               <div className="mt-5 space-y-4">
-                <div className="rounded-[1.3rem] border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Fasi e schema</p>
-                  <p className="mt-1 text-sm text-slate-600">Qui definisci gironi, andata/ritorno, passaggi turno e tabelloni finali.</p>
+                <div className="flex items-center justify-between gap-3 rounded-[1.3rem] border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Fasi e schema</p>
+                    <p className="mt-1 text-sm text-slate-600">Qui definisci gironi, andata/ritorno, passaggi turno e tabelloni finali.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addPhase}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Aggiungi fase
+                  </button>
                 </div>
                 {structure.phases.map((phase, index) => (
                   <div key={phase.id} className="overflow-hidden rounded-[1.6rem] border border-slate-200 bg-white shadow-sm">
@@ -3624,15 +3639,15 @@ function AgeGroupConfigurationPanel({
           )}
 
           {currentTab === 'squadre' && (
-          <section className="overflow-hidden rounded-[1.9rem] border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 bg-[linear-gradient(135deg,_#ffffff_0%,_#f8fafc_100%)] px-5 py-5">
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 bg-slate-50 px-5 py-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
                     <Users className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Passo 1</p>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Passo 1</p>
                     <p className="mt-1 text-lg font-black text-slate-950">Squadre partecipanti</p>
                   </div>
                 </div>
@@ -3650,11 +3665,11 @@ function AgeGroupConfigurationPanel({
             </div>
 
             <div className="px-5 py-5">
-              <div className={`flex flex-col gap-3 rounded-[1.4rem] border px-4 py-4 lg:flex-row lg:items-center lg:justify-between ${
+              <div className={`flex flex-col gap-3 rounded-xl border px-4 py-4 lg:flex-row lg:items-center lg:justify-between ${
                 remainingSlots === 0 ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'
               }`}>
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Passo 1</p>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Stato inserimento</p>
                   <p className={`mt-1 text-sm font-semibold ${remainingSlots === 0 ? 'text-emerald-900' : 'text-amber-900'}`}>
                     {remainingSlots === 0 ? 'Il numero squadre coincide. Puoi passare alla formula.' : 'Completa prima l’elenco squadre della categoria.'}
                   </p>
@@ -3686,7 +3701,7 @@ function AgeGroupConfigurationPanel({
               )}
 
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <p className="text-sm font-bold text-slate-900">Aggiungi squadra esistente</p>
                   <p className="mt-1 text-sm text-slate-500">Usa una squadra già creata per questo torneo.</p>
                   <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
@@ -3713,7 +3728,7 @@ function AgeGroupConfigurationPanel({
                   </div>
                 </div>
 
-                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <p className="text-sm font-bold text-slate-900">Crea nuova squadra</p>
                   <p className="mt-1 text-sm text-slate-500">Per esempio Rugby Livorno 1, Rugby Livorno 2, Verdi o Bianchi.</p>
                   <div className="mt-4 grid gap-3">
@@ -3761,7 +3776,7 @@ function AgeGroupConfigurationPanel({
 
               <div className="mt-5 space-y-3">
                 {participants && participants.length > 0 ? participants.map((participant) => (
-                  <div key={participant.id} className="rounded-[1.1rem] border border-slate-200 bg-white px-3 py-3 shadow-sm">
+                  <div key={participant.id} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                       <div className="min-w-0">
                         {editingTeamId === participant.team_id ? (
@@ -3846,7 +3861,7 @@ function AgeGroupConfigurationPanel({
                     </div>
                   </div>
                 )) : (
-                  <div className="rounded-[1.35rem] border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
                     Nessuna squadra assegnata alla categoria.
                   </div>
                 )}
@@ -3868,31 +3883,6 @@ function FormField({ label, hint, children }: { label: string; hint?: string; ch
       {hint && <span className="mt-1 block text-xs leading-5 text-slate-500">{hint}</span>}
       <div className="mt-2">{children}</div>
     </label>
-  )
-}
-
-function SummaryTile({
-  label,
-  value,
-  tone,
-}: {
-  label: string
-  value: string
-  tone: 'slate' | 'emerald' | 'amber' | 'sky' | 'fuchsia'
-}) {
-  const toneClass = {
-    slate: 'border-slate-200 bg-white',
-    emerald: 'border-emerald-200 bg-emerald-50',
-    amber: 'border-amber-200 bg-amber-50',
-    sky: 'border-sky-200 bg-sky-50',
-    fuchsia: 'border-fuchsia-200 bg-fuchsia-50',
-  }[tone]
-
-  return (
-    <div className={`rounded-[1.5rem] border px-4 py-4 shadow-sm ${toneClass}`}>
-      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{label}</p>
-      <p className="mt-2 text-base font-black text-slate-950">{value}</p>
-    </div>
   )
 }
 
