@@ -430,6 +430,79 @@ def _assign_cross_group_referees(
             assigned_referee_ids.add(selected)
 
 
+def _match_end_time(match: Match, slot_delta: timedelta) -> datetime | None:
+    if not match.scheduled_at:
+        return None
+    if match.actual_end_at and match.actual_end_at > match.scheduled_at:
+        return match.actual_end_at
+    return match.scheduled_at + slot_delta
+
+
+async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: AsyncSession) -> None:
+    slot_delta = _slot_delta(age_group)
+
+    occupied_slots: dict[tuple[str, int | None], list[tuple[datetime, datetime]]] = defaultdict(list)
+
+    other_matches_result = await db.execute(
+        select(Match)
+        .join(Phase, Match.phase_id == Phase.id)
+        .join(TournamentAgeGroup, Phase.tournament_age_group_id == TournamentAgeGroup.id)
+        .where(
+            TournamentAgeGroup.tournament_id == age_group.tournament_id,
+            TournamentAgeGroup.id != age_group.id,
+            Match.scheduled_at.is_not(None),
+            Match.field_name.is_not(None),
+        )
+    )
+    other_matches = other_matches_result.scalars().all()
+    for match in other_matches:
+        if not match.scheduled_at or not match.field_name:
+            continue
+        end_time = _match_end_time(match, slot_delta)
+        if not end_time:
+            continue
+        occupied_slots[(match.field_name, match.field_number)].append((match.scheduled_at, end_time))
+
+    age_group_matches_result = await db.execute(
+        select(Match)
+        .join(Phase, Match.phase_id == Phase.id)
+        .where(Phase.tournament_age_group_id == age_group.id)
+        .order_by(
+            Match.scheduled_at.asc().nulls_last(),
+            Phase.phase_order.asc(),
+            Match.bracket_round_order.asc().nulls_last(),
+            Match.bracket_position.asc().nulls_last(),
+        )
+    )
+    age_group_matches = age_group_matches_result.scalars().all()
+
+    for match in age_group_matches:
+        if not match.scheduled_at or not match.field_name:
+            continue
+
+        field_key = (match.field_name, match.field_number)
+        if _match_has_recorded_result(match):
+            end_time = _match_end_time(match, slot_delta)
+            if end_time:
+                occupied_slots[field_key].append((match.scheduled_at, end_time))
+            continue
+
+        candidate_start = match.scheduled_at
+        while True:
+            candidate_end = candidate_start + slot_delta
+            conflicting_slots = [
+                (start, end)
+                for start, end in occupied_slots[field_key]
+                if candidate_start < end and candidate_end > start
+            ]
+            if not conflicting_slots:
+                break
+            candidate_start = max(end for _, end in conflicting_slots)
+
+        match.scheduled_at = candidate_start
+        occupied_slots[field_key].append((candidate_start, candidate_start + slot_delta))
+
+
 def _next_power_of_two(value: int) -> int:
     if value <= 1:
         return 1
@@ -784,6 +857,7 @@ async def _sync_future_age_group_matches(age_group: TournamentAgeGroup, phases_c
                     phase_end = max(phase_end or slot_time, slot_time + match_slot_length)
         previous_phase_end = phase_end
 
+    await _resolve_age_group_field_conflicts(age_group, db)
     await _sync_tournament_dates_from_generated_program(age_group)
     await db.commit()
     await db.refresh(age_group)
@@ -1176,6 +1250,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
     if total_created_matches == 0:
         raise ValueError("La formula non produce nessuna partita con le squadre attualmente inserite")
 
+    await _resolve_age_group_field_conflicts(age_group, db)
     await _sync_tournament_dates_from_generated_program(age_group)
     await db.commit()
     await db.refresh(age_group)
@@ -1571,6 +1646,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
     if total_created_matches == 0:
         raise ValueError("La formula non produce nessuna partita con le squadre attualmente inserite")
 
+    await _resolve_age_group_field_conflicts(age_group, db)
     await _sync_tournament_dates_from_generated_program(age_group)
     await db.commit()
     await db.refresh(age_group)

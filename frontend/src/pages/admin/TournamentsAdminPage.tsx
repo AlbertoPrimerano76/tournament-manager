@@ -3347,8 +3347,8 @@ function AgeGroupConfigurationPanel({
                               onChange={(e) => setPhase(index, { knockout_progression: e.target.value as StructurePhase['knockout_progression'] })}
                               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
                             >
-                              <option value="full_bracket">Tabellone completo nella fase</option>
-                              <option value="single_round">Solo un turno, poi instradamento</option>
+                              <option value="full_bracket">La fase si chiude qui</option>
+                              <option value="single_round">Solo un turno, poi nuove fasi</option>
                             </select>
                           </FormField>
                           <FormField label="Classifica assegnata da">
@@ -3374,6 +3374,11 @@ function AgeGroupConfigurationPanel({
                           {phase.knockout_progression === 'single_round' && (
                             <div className="rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:col-span-2">
                               Questa fase genera un solo turno. Poi puoi mandare vincenti e perdenti verso nuove fasi: semifinali, finale 1-2, finale 3-4, piazzamenti, altri gironi.
+                            </div>
+                          )}
+                          {phase.knockout_progression === 'full_bracket' && (
+                            <div className="rounded-[1.2rem] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 sm:col-span-2">
+                              Usa questa opzione anche per una finale secca. Se arrivano 2 squadre, viene generata una sola partita e la fase termina qui.
                             </div>
                           )}
                         </div>
@@ -4202,8 +4207,12 @@ function estimatePhaseEndTime(structure: StructureConfig, phaseIndex: number, pa
 
 function getPhaseLaneCount(phase: StructurePhase, fallbackLaneCount: number): number {
   if (phase.phase_type === 'KNOCKOUT') return phase.knockout_field_assignments.length || fallbackLaneCount
-  const assignedLaneCount = Object.values(phase.group_field_assignments).reduce((maxCount, assignments) => Math.max(maxCount, assignments.length), 0)
-  return assignedLaneCount || fallbackLaneCount
+  const assignedLaneKeys = new Set(
+    Object.values(phase.group_field_assignments)
+      .flat()
+      .map((assignment) => `${assignment.field_name}:${assignment.field_number ?? ''}`),
+  )
+  return assignedLaneKeys.size || fallbackLaneCount
 }
 
 function buildAutoRefereeAssignments(
@@ -4418,6 +4427,7 @@ function validateStructureConfig(structure: StructureConfig): string[] {
     if (phase.phase_type === 'GROUP_STAGE') {
       const groupSizes = parseGroupSizes(phase.group_sizes)
       const totalTeamsInGroups = groupSizes.reduce((sum, size) => sum + size, 0)
+      const expectedIncomingTeams = estimateIncomingTeamsForPhase(structure, index)
       const laterPhases = structure.phases.slice(index + 1)
 
       if (!phase.num_groups || phase.num_groups <= 0) {
@@ -4432,8 +4442,8 @@ function validateStructureConfig(structure: StructureConfig): string[] {
         errors.push(`${phaseLabel}: il numero di valori in "squadre per girone" deve coincidere con i gironi.`)
       }
 
-      if (structure.expected_teams && totalTeamsInGroups > 0 && totalTeamsInGroups !== structure.expected_teams) {
-        errors.push(`${phaseLabel}: la somma delle squadre per girone deve essere ${structure.expected_teams}.`)
+      if (expectedIncomingTeams !== null && totalTeamsInGroups > 0 && totalTeamsInGroups !== expectedIncomingTeams) {
+        errors.push(`${phaseLabel}: la somma delle squadre per girone deve essere ${expectedIncomingTeams}.`)
       }
 
       const groupNames = Array.from({ length: phase.num_groups ?? 0 }, (_, groupIndex) => `Girone ${String.fromCharCode(65 + groupIndex)}`)
@@ -4510,6 +4520,51 @@ function validateStructureConfig(structure: StructureConfig): string[] {
   })
 
   return errors
+}
+
+function estimateIncomingTeamsForPhase(structure: StructureConfig, phaseIndex: number): number | null {
+  if (phaseIndex === 0) return structure.expected_teams
+
+  const phase = structure.phases[phaseIndex]
+  if (!phase) return null
+
+  const incomingRoutes = structure.phases
+    .slice(0, phaseIndex)
+    .flatMap((sourcePhase) => (
+      sourcePhase.advancement_routes
+        .filter((route) => route.target_phase_id === phase.id)
+        .map((route) => ({ sourcePhase, route }))
+    ))
+
+  if (incomingRoutes.length === 0) return null
+
+  return incomingRoutes.reduce((total, { sourcePhase, route }) => total + estimateRouteOutputCount(sourcePhase, route), 0)
+}
+
+function estimateRouteOutputCount(sourcePhase: StructurePhase, route: AdvancementRoute): number {
+  if (sourcePhase.phase_type === 'GROUP_STAGE') {
+    if (route.source_mode === 'best_extra') {
+      return Math.max(route.extra_count ?? 0, 0)
+    }
+
+    const sourceGroupCount = route.source_groups.length > 0
+      ? route.source_groups.length
+      : buildGroupNames(sourcePhase).length
+    const rankFrom = route.rank_from ?? 0
+    const rankTo = route.rank_to ?? 0
+    if (rankFrom <= 0 || rankTo < rankFrom) return 0
+    return sourceGroupCount * ((rankTo - rankFrom) + 1)
+  }
+
+  const entrants = Math.max(parseGroupSizes(sourcePhase.group_sizes).reduce((sum, value) => sum + value, 0), 0)
+  if (entrants <= 1) return 0
+
+  if (sourcePhase.knockout_progression === 'single_round') {
+    const firstRoundMatches = Math.ceil(_nextPowerOfTwoUi(entrants) / 2)
+    return route.source_mode === 'knockout_loser' ? firstRoundMatches : firstRoundMatches
+  }
+
+  return 0
 }
 
 function countProgramMatches(
