@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useAdminOrganizations, useCreateOrganization, useUpdateOrganization, useDeleteOrganization, Organization } from '@/api/organizations'
 import { useOrganizationFields, useCreateField, useUpdateField, useDeleteField, type Field as Facility } from '@/api/fields'
 import ImageUpload from '@/components/shared/ImageUpload'
-import { Globe, Pencil, Plus, X, Building2, Trash2, Link as LinkIcon, MapPin, Palette, Search, Undo2, AlertTriangle } from 'lucide-react'
+import { Globe, Pencil, Plus, X, Building2, Trash2, Link as LinkIcon, MapPin, MapPinned, Palette, Search, Undo2, AlertTriangle } from 'lucide-react'
 
 export default function OrganizationsAdminPage() {
   const { data: orgs, isLoading } = useAdminOrganizations()
