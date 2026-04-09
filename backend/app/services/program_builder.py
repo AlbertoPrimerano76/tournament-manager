@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date as date_type, datetime, time, timedelta
 import math
+import re
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -73,12 +74,24 @@ def _distribute_entries_across_groups(
     entries: list[dict[str, Any]],
     group_sizes: list[int],
 ) -> list[list[dict[str, Any]]]:
-    groups: list[list[dict[str, Any]]] = [[] for _ in group_sizes]
+    groups: list[list[dict[str, Any] | None]] = [[None for _ in range(size)] for size in group_sizes]
     if not entries:
-        return groups
+        return [[] for _ in group_sizes]
+
+    remaining_entries: list[dict[str, Any]] = []
+    for entry in entries:
+        target_group_index = entry.get("target_group_index")
+        target_group_position = entry.get("target_group_position")
+        if isinstance(target_group_index, int) and isinstance(target_group_position, int):
+            if 0 <= target_group_index < len(group_sizes) and 1 <= target_group_position <= group_sizes[target_group_index]:
+                slot_index = target_group_position - 1
+                if groups[target_group_index][slot_index] is None:
+                    groups[target_group_index][slot_index] = entry
+                    continue
+        remaining_entries.append(entry)
 
     org_buckets: dict[str | None, list[dict[str, Any]]] = defaultdict(list)
-    for entry in entries:
+    for entry in remaining_entries:
         org_buckets[entry.get("organization_id")].append(entry)
 
     ordered_entries = [
@@ -95,19 +108,23 @@ def _distribute_entries_across_groups(
         candidate_indexes = [
             index
             for index, size in enumerate(group_sizes)
-            if len(groups[index]) < size
+            if any(item is None for item in groups[index])
         ]
         if not candidate_indexes:
             break
 
         def group_sort_key(group_index: int) -> tuple[int, int, int]:
-            same_org_count = sum(1 for item in groups[group_index] if item.get("organization_id") == organization_id)
-            return (same_org_count, len(groups[group_index]), group_index)
+            assigned_items = [item for item in groups[group_index] if item is not None]
+            same_org_count = sum(1 for item in assigned_items if item.get("organization_id") == organization_id)
+            return (same_org_count, len(assigned_items), group_index)
 
         target_index = min(candidate_indexes, key=group_sort_key)
-        groups[target_index].append(entry)
+        slot_index = next((index for index, item in enumerate(groups[target_index]) if item is None), None)
+        if slot_index is None:
+            break
+        groups[target_index][slot_index] = entry
 
-    return groups
+    return [[item for item in group if item is not None] for group in groups]
 
 
 def encode_seed_note(home_label: str, away_label: str, extra_note: str | None = None) -> str:
@@ -489,6 +506,51 @@ def _entries_for_group_route(
     return entries
 
 
+def _normalize_route_target_slots(route: dict[str, Any]) -> list[str]:
+    raw_slots = route.get("target_slots")
+    if not isinstance(raw_slots, list):
+        return []
+    return [
+        str(slot).strip().upper()
+        for slot in raw_slots
+        if isinstance(slot, str) and str(slot).strip()
+    ]
+
+
+def _apply_target_slot_assignments(
+    entries: list[dict[str, Any]],
+    route: dict[str, Any],
+    target_phase_config: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    target_phase_config = target_phase_config or {}
+    target_slots = _normalize_route_target_slots(route)
+    if not target_slots:
+        return entries
+
+    phase_type = target_phase_config.get("phase_type")
+    assigned_entries: list[dict[str, Any]] = []
+    for index, entry in enumerate(entries):
+        next_entry = dict(entry)
+        if index < len(target_slots):
+            slot = target_slots[index]
+            if phase_type == "GROUP_STAGE":
+                match = re.match(r"^([A-Z])(\d+)$", slot)
+                if match:
+                    next_entry["target_group_index"] = ord(match.group(1)) - 65
+                    next_entry["target_group_position"] = int(match.group(2))
+            elif phase_type == "KNOCKOUT" and slot.isdigit():
+                next_entry["target_seed"] = int(slot)
+        assigned_entries.append(next_entry)
+    return assigned_entries
+
+
+def _sort_entries_for_knockout(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    explicit = [entry for entry in entries if isinstance(entry.get("target_seed"), int)]
+    implicit = [entry for entry in entries if not isinstance(entry.get("target_seed"), int)]
+    explicit.sort(key=lambda entry: int(entry.get("target_seed") or 0))
+    return explicit + implicit
+
+
 def _queue_group_phase_advancements(
     phase_order: int,
     group_names: list[str],
@@ -511,7 +573,12 @@ def _queue_group_phase_advancements(
             target_phase_order = phase_order_map.get(target_phase_id)
             if target_phase_order is None or target_phase_order <= phase_order:
                 continue
-            queued[target_phase_order].extend(_entries_for_group_route(route, group_names, slot_labels_by_group))
+            target_phase_config = phases_config[target_phase_order - 1] if target_phase_order - 1 < len(phases_config) else {}
+            queued[target_phase_order].extend(_apply_target_slot_assignments(
+                _entries_for_group_route(route, group_names, slot_labels_by_group),
+                route,
+                target_phase_config if isinstance(target_phase_config, dict) else {},
+            ))
         return queued
 
     next_phase_order = phase_order + 1
@@ -558,11 +625,20 @@ def _queue_knockout_phase_advancements(
             target_phase_order = phase_order_map.get(target_phase_id)
             if target_phase_order is None or target_phase_order <= phase_order:
                 continue
+            target_phase_config = phases_config[target_phase_order - 1] if target_phase_order - 1 < len(phases_config) else {}
             source_mode = route.get("source_mode")
             if source_mode == "knockout_winner":
-                queued[target_phase_order].extend(winner_entries)
+                queued[target_phase_order].extend(_apply_target_slot_assignments(
+                    winner_entries,
+                    route,
+                    target_phase_config if isinstance(target_phase_config, dict) else {},
+                ))
             elif source_mode == "knockout_loser":
-                queued[target_phase_order].extend(loser_entries)
+                queued[target_phase_order].extend(_apply_target_slot_assignments(
+                    loser_entries,
+                    route,
+                    target_phase_config if isinstance(target_phase_config, dict) else {},
+                ))
         return queued
 
     next_phase_type = phase_config.get("next_phase_type")
@@ -932,6 +1008,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             previous_phase_end = phase_end
             continue
 
+        current_entries = _sort_entries_for_knockout(current_entries)
         bracket_mode = (phase.seeding_source or {}).get("bracket_mode", "standard")
         if bracket_mode == "placement":
             buckets: dict[int, list[dict[str, Any]]] = defaultdict(list)
@@ -1338,6 +1415,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             previous_phase_end = phase_end
             continue
 
+        current_entries = _sort_entries_for_knockout(current_entries)
         bracket_mode = (phase.seeding_source or {}).get("bracket_mode", "standard")
         if bracket_mode == "placement":
             buckets: dict[int, list[dict[str, Any]]] = defaultdict(list)
@@ -1545,61 +1623,42 @@ async def get_tournament_program(tournament_slug: str, db: AsyncSession) -> Tour
 
 def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgramResponse:
     phase_days: dict[str, list[ProgramPhaseResponse]] = defaultdict(list)
+    structure = age_group.structure_config if isinstance(age_group.structure_config, dict) else {}
+    phases_config = structure.get("phases", []) if isinstance(structure.get("phases", []), list) else []
+    phases_by_order = {phase.phase_order: phase for phase in sorted(age_group.phases, key=lambda item: item.phase_order)}
+
+    for phase_order, phase_config in enumerate(phases_config, start=1):
+        phase = phases_by_order.get(phase_order)
+        if phase:
+            group_responses, knockout_matches, phase_date, phase_id, phase_name, phase_type = _serialize_phase_for_program(phase)
+        else:
+            group_responses, knockout_matches, phase_date, phase_id, phase_name, phase_type = _build_placeholder_phase_from_config(
+                age_group.id,
+                phase_order,
+                phase_config if isinstance(phase_config, dict) else {},
+                phases_config,
+            )
+
+        day_key = phase_date.isoformat() if phase_date else f"phase-{phase_order}"
+        phase_days[day_key].append(ProgramPhaseResponse(
+            id=phase_id,
+            name=phase_name,
+            phase_type=phase_type,
+            phase_order=phase_order,
+            scheduled_date=phase_date,
+            groups=group_responses,
+            knockout_matches=knockout_matches,
+        ))
 
     for phase in sorted(age_group.phases, key=lambda item: item.phase_order):
-        group_responses: list[ProgramGroupResponse] = []
-        knockout_matches: list[ProgramMatchResponse] = []
-
-        for group in sorted(phase.groups, key=lambda item: item.group_order):
-            slot_labels = (phase.advancement_config or {}).get("group_slot_labels", {}).get(group.id, [])
-            teams = [
-                ProgramTeamSlotResponse(
-                    team_id=group_team.tournament_team.team_id,
-                    tournament_team_id=group_team.tournament_team.id,
-                    label=_team_label(group_team.tournament_team),
-                    team_logo_url=group_team.tournament_team.team.logo_url or group_team.tournament_team.team.organization.logo_url,
-                    is_placeholder=False,
-                )
-                for group_team in group.group_teams
-            ]
-
-            if not teams and slot_labels:
-                teams = [
-                    ProgramTeamSlotResponse(label=label, is_placeholder=True)
-                    for label in slot_labels
-                ]
-
-            matches = [
-                _serialize_match(match, phase.name, phase.phase_type.value, group.name)
-                for match in sorted(
-                    [item for item in phase.matches if item.group_id == group.id],
-                    key=lambda item: (item.bracket_position or 0, item.scheduled_at or datetime.max),
-                )
-            ]
-
-            group_responses.append(ProgramGroupResponse(
-                id=group.id,
-                name=group.name,
-                order=group.group_order,
-                teams=teams,
-                matches=matches,
-            ))
-
-        knockout_matches = [
-            _serialize_match(match, phase.name, phase.phase_type.value, None)
-            for match in sorted(
-                [item for item in phase.matches if item.group_id is None],
-                key=lambda item: (item.bracket_round_order or 0, item.bracket_position or 0),
-            )
-        ]
-
-        scheduled_dates = [match.scheduled_at.date() for match in phase.matches if match.scheduled_at]
-        phase_date = min(scheduled_dates) if scheduled_dates else None
+        if phase.phase_order <= len(phases_config):
+            continue
+        group_responses, knockout_matches, phase_date, phase_id, phase_name, phase_type = _serialize_phase_for_program(phase)
         day_key = phase_date.isoformat() if phase_date else f"phase-{phase.phase_order}"
         phase_days[day_key].append(ProgramPhaseResponse(
-            id=phase.id,
-            name=phase.name,
-            phase_type=phase.phase_type.value,
+            id=phase_id,
+            name=phase_name,
+            phase_type=phase_type,
             phase_order=phase.phase_order,
             scheduled_date=phase_date,
             groups=group_responses,
@@ -1626,6 +1685,137 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
         generated=len(age_group.phases) > 0,
         days=days,
     )
+
+
+def _serialize_phase_for_program(
+    phase: Phase,
+) -> tuple[list[ProgramGroupResponse], list[ProgramMatchResponse], date_type | None, str, str, str]:
+    group_responses: list[ProgramGroupResponse] = []
+
+    for group in sorted(phase.groups, key=lambda item: item.group_order):
+        slot_labels = (phase.advancement_config or {}).get("group_slot_labels", {}).get(group.id, [])
+        teams = [
+            ProgramTeamSlotResponse(
+                team_id=group_team.tournament_team.team_id,
+                tournament_team_id=group_team.tournament_team.id,
+                label=_team_label(group_team.tournament_team),
+                team_logo_url=group_team.tournament_team.team.logo_url or group_team.tournament_team.team.organization.logo_url,
+                is_placeholder=False,
+            )
+            for group_team in group.group_teams
+        ]
+
+        if not teams and slot_labels:
+            teams = [
+                ProgramTeamSlotResponse(label=label, is_placeholder=True)
+                for label in slot_labels
+            ]
+
+        matches = [
+            _serialize_match(match, phase.name, phase.phase_type.value, group.name)
+            for match in sorted(
+                [item for item in phase.matches if item.group_id == group.id],
+                key=lambda item: (item.bracket_position or 0, item.scheduled_at or datetime.max),
+            )
+        ]
+
+        group_responses.append(ProgramGroupResponse(
+            id=group.id,
+            name=group.name,
+            order=group.group_order,
+            teams=teams,
+            matches=matches,
+        ))
+
+    knockout_matches = [
+        _serialize_match(match, phase.name, phase.phase_type.value, None)
+        for match in sorted(
+            [item for item in phase.matches if item.group_id is None],
+            key=lambda item: (item.bracket_round_order or 0, item.bracket_position or 0),
+        )
+    ]
+
+    scheduled_dates = [match.scheduled_at.date() for match in phase.matches if match.scheduled_at]
+    phase_date = min(scheduled_dates) if scheduled_dates else None
+    return group_responses, knockout_matches, phase_date, phase.id, phase.name, phase.phase_type.value
+
+
+def _build_placeholder_phase_from_config(
+    age_group_id: str,
+    phase_order: int,
+    phase_config: dict[str, Any],
+    phases_config: list[dict[str, Any]],
+) -> tuple[list[ProgramGroupResponse], list[ProgramMatchResponse], date_type | None, str, str, str]:
+    phase_name = str(phase_config.get("name") or f"Fase {phase_order}")
+    phase_type = "KNOCKOUT" if phase_config.get("phase_type") == "KNOCKOUT" else "GROUP_STAGE"
+    phase_id = str(phase_config.get("id") or f"placeholder-phase-{age_group_id}-{phase_order}")
+    raw_phase_date = phase_config.get("phase_date")
+    phase_date = None
+    if isinstance(raw_phase_date, str) and raw_phase_date:
+        try:
+            phase_date = date_type.fromisoformat(raw_phase_date)
+        except ValueError:
+            phase_date = None
+
+    if phase_type == "GROUP_STAGE":
+        num_groups = int(phase_config.get("num_groups") or 0)
+        group_sizes = parse_group_sizes(phase_config.get("group_sizes"), num_groups or 1, 0) if num_groups else []
+        total_groups = max(num_groups, len(group_sizes), 1)
+        slot_labels = _build_placeholder_group_slot_labels(phase_config, phases_config)
+        groups: list[ProgramGroupResponse] = []
+        for group_index in range(total_groups):
+            group_name = _group_name(group_index)
+            labels = slot_labels.get(group_name, [])
+            if not labels:
+                fallback_size = group_sizes[group_index] if group_index < len(group_sizes) else 0
+                labels = [f"Da definire {group_name} #{slot + 1}" for slot in range(fallback_size)]
+            groups.append(ProgramGroupResponse(
+                id=f"{phase_id}-group-{group_index}",
+                name=group_name,
+                order=group_index,
+                teams=[ProgramTeamSlotResponse(label=label, is_placeholder=True) for label in labels],
+                matches=[],
+            ))
+        return groups, [], phase_date, phase_id, phase_name, phase_type
+
+    return [], [], phase_date, phase_id, phase_name, phase_type
+
+
+def _build_placeholder_group_slot_labels(
+    target_phase_config: dict[str, Any],
+    phases_config: list[dict[str, Any]],
+) -> dict[str, list[str]]:
+    target_phase_id = target_phase_config.get("id")
+    if not isinstance(target_phase_id, str) or not target_phase_id:
+        return {}
+
+    labels_by_group: dict[str, dict[int, str]] = defaultdict(dict)
+    for source_phase in phases_config:
+        if not isinstance(source_phase, dict):
+            continue
+        source_phase_name = str(source_phase.get("name") or "Fase precedente")
+        for route in source_phase.get("advancement_routes", []) if isinstance(source_phase.get("advancement_routes"), list) else []:
+            if not isinstance(route, dict) or route.get("target_phase_id") != target_phase_id:
+                continue
+            route_labels = _entries_for_group_route(route, [], None)
+            if route.get("source_mode") == "knockout_winner":
+                route_labels = [{"label": f"Vincente {source_phase_name} {index + 1}"} for index, _ in enumerate(_normalize_route_target_slots(route))]
+            elif route.get("source_mode") == "knockout_loser":
+                route_labels = [{"label": f"Perdente {source_phase_name} {index + 1}"} for index, _ in enumerate(_normalize_route_target_slots(route))]
+            target_slots = _normalize_route_target_slots(route)
+            for index, slot in enumerate(target_slots):
+                match = re.match(r"^([A-Z])(\d+)$", slot)
+                if not match:
+                    continue
+                group_name = f"Girone {match.group(1)}"
+                position = int(match.group(2))
+                fallback_label = f"Da definire {group_name} #{position}"
+                labels_by_group[group_name][position] = route_labels[index]["label"] if index < len(route_labels) else fallback_label
+
+    ordered: dict[str, list[str]] = {}
+    for group_name, entries in labels_by_group.items():
+        ordered[group_name] = [label for _, label in sorted(entries.items(), key=lambda item: item[0])]
+    return ordered
 
 
 def _serialize_match(match: Match, phase_name: str, phase_type: str, group_name: str | None) -> ProgramMatchResponse:

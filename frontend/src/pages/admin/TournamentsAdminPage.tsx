@@ -1299,6 +1299,7 @@ type AdvancementRoute = {
   rank_from: number | null
   rank_to: number | null
   extra_count: number | null
+  target_slots: string[]
 }
 
 type PlayingFieldConfig = {
@@ -2035,28 +2036,29 @@ function AgeGroupConfigurationScreen({
           </div>
         </div>
 
-        <div className="mt-5 grid gap-2 md:grid-cols-2">
+        <div className="mt-5 flex flex-nowrap gap-2 overflow-x-auto pb-1">
           {steps.map((step, index) => (
             <button
               key={step.id}
               type="button"
               onClick={() => setActiveStep(step.id)}
-              className={`rounded-xl border px-4 py-3 text-left transition-colors ${
-                activeStep === step.id
-                  ? 'border-slate-900 bg-white text-slate-900 ring-2 ring-slate-900/10'
-                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+              className={`min-w-[180px] rounded-xl border px-4 py-3 text-left transition-colors ${
+                step.id === 'squadre'
+                  ? activeStep === step.id
+                    ? 'border-sky-300 bg-sky-50 text-sky-950'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  : step.id === 'impostazioni'
+                    ? activeStep === step.id
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-950'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    : activeStep === step.id
+                      ? 'border-amber-300 bg-amber-50 text-amber-950'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               }`}
             >
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">{`Passo ${index + 1}`}</p>
-                  <p className="mt-1 text-sm font-bold">{step.label}</p>
-                </div>
-                {activeStep === step.id && (
-                  <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-white">
-                    Attivo
-                  </span>
-                )}
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">{`Passo ${index + 1}`}</p>
+                <p className="mt-1 text-sm font-bold">{step.label}</p>
               </div>
               <p className="mt-1 text-sm text-slate-500">{step.description}</p>
             </button>
@@ -2232,22 +2234,23 @@ function AgeGroupConfigurationPanel({
   const [templateName, setTemplateName] = useState('')
   const [templateDescription, setTemplateDescription] = useState('')
   const [selectedTemplateName, setSelectedTemplateName] = useState(ageGroup.structure_template_name ?? '')
-  const [structure, setStructure] = useState<StructureConfig>(() => normalizeStructureConfig(ageGroup.structure_config))
+  const [structure, setStructure] = useState<StructureConfig>(() => applyDefaultPhaseDates(normalizeStructureConfig(ageGroup.structure_config), tournament.start_date))
   const [scoringRules, setScoringRules] = useState<AgeGroupScoringRules>(() => normalizeScoringRules(ageGroup.scoring_rules))
   const [saveError, setSaveError] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
   const [teamError, setTeamError] = useState('')
   const [teamMessage, setTeamMessage] = useState('')
   const [rankingControlsOpen, setRankingControlsOpen] = useState(false)
+  const [activePhaseId, setActivePhaseId] = useState('')
   useEffect(() => {
     setSelectedTemplateName(ageGroup.structure_template_name ?? '')
-    setStructure(normalizeStructureConfig(ageGroup.structure_config))
+    setStructure(applyDefaultPhaseDates(normalizeStructureConfig(ageGroup.structure_config), tournament.start_date))
     setScoringRules(normalizeScoringRules(ageGroup.scoring_rules))
     setSaveError('')
     setSaveMessage('')
     setTeamError('')
     setTeamMessage('')
-  }, [ageGroup.id, ageGroup.structure_template_name, ageGroup.structure_config, ageGroup.scoring_rules])
+  }, [ageGroup.id, ageGroup.structure_template_name, ageGroup.structure_config, ageGroup.scoring_rules, tournament.start_date])
 
   useEffect(() => {
     setStructure((current) => ({
@@ -2297,6 +2300,16 @@ function AgeGroupConfigurationPanel({
     if (!organization) return
     setNewTeamName((current) => current.trim().length === 0 ? `${organization.name} ` : current)
   }, [availableOrganizations, selectedOrganizationId])
+
+  useEffect(() => {
+    if (structure.phases.length === 0) {
+      setActivePhaseId('')
+      return
+    }
+    if (!structure.phases.some((phase) => phase.id === activePhaseId)) {
+      setActivePhaseId(structure.phases[0]?.id ?? '')
+    }
+  }, [structure.phases, activePhaseId])
 
   async function handleAddTeam() {
     if (!selectedTeamId) return
@@ -2385,7 +2398,7 @@ function AgeGroupConfigurationPanel({
   async function handleApplyTemplate(template: StructureTemplate | typeof BUILTIN_TEMPLATES[number]) {
     const config = 'config' in template ? template.config : {}
     setSelectedTemplateName(template.name)
-    setStructure(normalizeStructureConfig(config))
+    setStructure(applyDefaultPhaseDates(normalizeStructureConfig(config), tournament.start_date))
   }
 
   function updateRankingCriterionOrder(index: number, direction: -1 | 1) {
@@ -2650,13 +2663,17 @@ function AgeGroupConfigurationPanel({
   }
 
   function addPhase() {
+    const newPhase = makeEmptyPhase(structure.phases.length + 1, tournament.start_date)
     setStructure((current) => ({
       ...current,
-      phases: [...current.phases, makeEmptyPhase(current.phases.length + 1)],
+      phases: [...current.phases, newPhase],
     }))
+    setActivePhaseId(newPhase.id)
   }
 
   function removePhase(index: number) {
+    const removedPhaseId = structure.phases[index]?.id ?? ''
+    const fallbackPhaseId = structure.phases[index + 1]?.id || structure.phases[index - 1]?.id || ''
     setStructure((current) => {
       const removedPhase = current.phases[index]
       return {
@@ -2669,6 +2686,9 @@ function AgeGroupConfigurationPanel({
           })),
       }
     })
+    if (removedPhaseId === activePhaseId) {
+      setActivePhaseId(fallbackPhaseId)
+    }
   }
 
   function addPlayingField() {
@@ -2745,6 +2765,10 @@ function AgeGroupConfigurationPanel({
   const currentTab = activeTab ?? 'squadre'
   const isSettingsStep = currentTab === 'impostazioni'
   const isPhasesStep = currentTab === 'fasi'
+  const activePhaseIndex = structure.phases.findIndex((phase) => phase.id === activePhaseId)
+  const activePhase = activePhaseIndex >= 0 ? structure.phases[activePhaseIndex] : null
+  const phase = activePhase ?? makeEmptyPhase(1, tournament.start_date)
+  const index = activePhaseIndex >= 0 ? activePhaseIndex : 0
 
   return (
     <div className="space-y-5">
@@ -2760,6 +2784,13 @@ function AgeGroupConfigurationPanel({
                   <p className="mt-1 text-sm text-slate-600">{isSettingsStep ? 'Qui imposti la base comune del torneo. Questo vale soprattutto per la parte a gironi.' : 'Qui definisci gironi, eliminazioni, passaggi turno e generazione del programma.'}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onStepChange?.(isSettingsStep ? 'squadre' : 'impostazioni')}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+                  >
+                    Indietro
+                  </button>
                   <button
                     type="button"
                     onClick={() => void handleSaveStructure()}
@@ -2800,6 +2831,14 @@ function AgeGroupConfigurationPanel({
                           <Trash2 className="h-4 w-4" />
                           {deleteProgram.isPending ? 'Cancellazione...' : 'Cancella programma'}
                         </button>
+                      )}
+                      {program?.generated && (
+                        <Link
+                          to={`/admin/tornei/${tournament.id}/categorie/${ageGroup.id}/gestione`}
+                          className="inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-800 transition-colors hover:bg-sky-100"
+                        >
+                          Vai alle partite
+                        </Link>
                       )}
                     </>
                   )}
@@ -3125,25 +3164,42 @@ function AgeGroupConfigurationPanel({
                     Aggiungi fase
                   </button>
                 </div>
-                {structure.phases.map((phase, index) => (
-                  <div key={phase.id} className="overflow-hidden rounded-[1.6rem] border border-slate-200 bg-white shadow-sm">
+                <div className="flex flex-wrap gap-2">
+                  {structure.phases.map((phase, index) => (
+                    <button
+                      key={phase.id}
+                      type="button"
+                      onClick={() => setActivePhaseId(phase.id)}
+                      className={`rounded-xl border px-4 py-2 text-sm font-semibold transition-colors ${
+                        activePhaseId === phase.id
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      {`Fase ${index + 1}`}
+                      {phase.name ? ` · ${phase.name}` : ''}
+                    </button>
+                  ))}
+                </div>
+                {activePhase && (
+                  <div key={activePhase.id} className="overflow-hidden rounded-[1.6rem] border border-slate-200 bg-white shadow-sm">
                     <div className={`flex items-center justify-between gap-3 border-b px-4 py-3 ${
-                      phase.phase_type === 'GROUP_STAGE'
+                      activePhase.phase_type === 'GROUP_STAGE'
                         ? 'border-sky-200 bg-sky-50'
-                        : phase.bracket_mode === 'placement'
+                        : activePhase.bracket_mode === 'placement'
                           ? 'border-fuchsia-200 bg-fuchsia-50'
-                          : phase.bracket_mode === 'group_blocks'
+                          : activePhase.bracket_mode === 'group_blocks'
                             ? 'border-violet-200 bg-violet-50'
                             : 'border-rose-200 bg-rose-50'
                     }`}>
                       <div>
-                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Fase {index + 1}</p>
-                        <p className="mt-1 text-sm font-bold text-slate-900">{phase.name || `Fase ${index + 1}`}</p>
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Fase {activePhaseIndex + 1}</p>
+                        <p className="mt-1 text-sm font-bold text-slate-900">{activePhase.name || `Fase ${activePhaseIndex + 1}`}</p>
                       </div>
                       {structure.phases.length > 1 && (
                         <button
                           type="button"
-                          onClick={() => removePhase(index)}
+                          onClick={() => removePhase(activePhaseIndex)}
                           className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -3154,16 +3210,16 @@ function AgeGroupConfigurationPanel({
                     <div className="grid gap-4 p-4 lg:grid-cols-4">
                       <FormField label="Nome fase">
                         <input
-                          value={phase.name}
-                          onChange={(e) => setPhase(index, { name: e.target.value })}
+                          value={activePhase.name}
+                          onChange={(e) => setPhase(activePhaseIndex, { name: e.target.value })}
                           placeholder="es. Gironi iniziali"
                           className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
                         />
                       </FormField>
                       <FormField label="Tipo fase">
                         <select
-                          value={phase.phase_type}
-                          onChange={(e) => setPhase(index, { phase_type: e.target.value as StructurePhase['phase_type'] })}
+                          value={activePhase.phase_type}
+                          onChange={(e) => setPhase(activePhaseIndex, { phase_type: e.target.value as StructurePhase['phase_type'] })}
                           className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
                         >
                           <option value="GROUP_STAGE">Gironi</option>
@@ -3173,16 +3229,16 @@ function AgeGroupConfigurationPanel({
                       <FormField label="Data inizio fase">
                         <input
                           type="date"
-                          value={phase.phase_date}
-                          onChange={(e) => setPhase(index, { phase_date: e.target.value })}
+                          value={activePhase.phase_date}
+                          onChange={(e) => setPhase(activePhaseIndex, { phase_date: e.target.value })}
                           className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
                         />
                       </FormField>
                       <FormField label="Ora inizio fase">
                         <input
                           type="time"
-                          value={phase.start_time}
-                          onChange={(e) => setPhase(index, { start_time: e.target.value })}
+                          value={activePhase.start_time}
+                          onChange={(e) => setPhase(activePhaseIndex, { start_time: e.target.value })}
                           className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
                         />
                       </FormField>
@@ -3192,13 +3248,13 @@ function AgeGroupConfigurationPanel({
                       <div className="rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3">
                         <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Fine fase stimata</p>
                         <p className="mt-2 text-sm font-semibold text-slate-900">
-                          {estimatePhaseEndTime(structure, index, participants?.length ?? 0) ?? 'Da definire'}
+                          {estimatePhaseEndTime(structure, activePhaseIndex, participants?.length ?? 0) ?? 'Da definire'}
                         </p>
                       </div>
                     </div>
 
                     <div className="px-4 pb-4">
-                      {phase.phase_type === 'GROUP_STAGE' ? (
+                      {activePhase.phase_type === 'GROUP_STAGE' ? (
                         <div className="grid gap-4 sm:grid-cols-2">
                           <FormField label="Numero gironi">
                             <input
@@ -3259,6 +3315,8 @@ function AgeGroupConfigurationPanel({
                               <div className="mt-4 space-y-3">
                                 {phase.advancement_routes.map((route) => {
                                   const availableTargets = structure.phases.slice(index + 1)
+                                  const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
+                                  const sourceOrderPreview = describeRouteSourceEntries(phase, route)
                                   return (
                                     <div key={route.id} className="rounded-[1.15rem] border border-slate-200 bg-slate-50 p-3">
                                       <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_180px_auto] lg:items-end">
@@ -3338,6 +3396,9 @@ function AgeGroupConfigurationPanel({
                                               })}
                                             </div>
                                           </div>
+                                          <div className="mt-3 rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                                            Ordine posizionamenti generato: {sourceOrderPreview.length > 0 ? sourceOrderPreview.join(' -> ') : 'da definire'}
+                                          </div>
                                         </>
                                       ) : (
                                         <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -3346,6 +3407,25 @@ function AgeGroupConfigurationPanel({
                                               type="number"
                                               value={route.extra_count ?? ''}
                                               onChange={(e) => setAdvancementRoute(index, route.id, { extra_count: e.target.value ? Number(e.target.value) : null })}
+                                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                                            />
+                                          </FormField>
+                                        </div>
+                                      )}
+                                      {targetPhase && (
+                                        <div className="mt-3">
+                                          <FormField
+                                            label={targetPhase.phase_type === 'GROUP_STAGE' ? 'Slot di ingresso nella fase target' : 'Seed / posizioni nella fase target'}
+                                            hint={targetPhase.phase_type === 'GROUP_STAGE'
+                                              ? 'Es. A1, B1, A2. L’ordine segue i piazzamenti qui sopra.'
+                                              : 'Es. 1, 4, 3, 2. L’ordine segue i qualificati di questo instradamento.'}
+                                          >
+                                            <input
+                                              value={route.target_slots.join(', ')}
+                                              onChange={(e) => setAdvancementRoute(index, route.id, {
+                                                target_slots: e.target.value.split(',').map((item) => item.trim().toUpperCase()).filter(Boolean),
+                                              })}
+                                              placeholder={targetPhase.phase_type === 'GROUP_STAGE' ? 'A1, B1, A2' : '1, 4, 3, 2'}
                                               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
                                             />
                                           </FormField>
@@ -3533,6 +3613,7 @@ function AgeGroupConfigurationPanel({
                             <div className="mt-4 space-y-3">
                               {phase.advancement_routes.map((route) => {
                                 const availableTargets = structure.phases.slice(index + 1)
+                                const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
                                 return (
                                   <div key={route.id} className="rounded-[1.15rem] border border-slate-200 bg-white p-3">
                                     <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_220px_auto] lg:items-end">
@@ -3568,6 +3649,25 @@ function AgeGroupConfigurationPanel({
                                         <Trash2 className="h-4 w-4" />
                                       </button>
                                     </div>
+                                    {targetPhase && (
+                                      <div className="mt-3">
+                                        <FormField
+                                          label={targetPhase.phase_type === 'GROUP_STAGE' ? 'Slot di ingresso nella fase target' : 'Seed / posizioni nella fase target'}
+                                          hint={targetPhase.phase_type === 'GROUP_STAGE'
+                                            ? 'Es. A1, B1. L’ordine segue vincenti o perdenti del turno.'
+                                            : 'Es. 1, 2, 3, 4 per decidere il seeding del tabellone.'}
+                                        >
+                                          <input
+                                            value={route.target_slots.join(', ')}
+                                            onChange={(e) => setAdvancementRoute(index, route.id, {
+                                              target_slots: e.target.value.split(',').map((item) => item.trim().toUpperCase()).filter(Boolean),
+                                            })}
+                                            placeholder={targetPhase.phase_type === 'GROUP_STAGE' ? 'A1, B1' : '1, 2, 3, 4'}
+                                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                                          />
+                                        </FormField>
+                                      </div>
+                                    )}
                                   </div>
                                 )
                               })}
@@ -3588,7 +3688,7 @@ function AgeGroupConfigurationPanel({
                       </div>
                     </div>
                   </div>
-                ))}
+                )}
               </div>
 
               <div className="mt-5 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
@@ -3636,58 +3736,6 @@ function AgeGroupConfigurationPanel({
                 </button>
               </div>}
 
-              <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-200 pt-4">
-                <button
-                  type="button"
-                  onClick={() => onStepChange?.(isSettingsStep ? 'squadre' : 'impostazioni')}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-                >
-                  Indietro
-                </button>
-                {isSettingsStep && (
-                  <button
-                    type="button"
-                    onClick={() => onStepChange?.('fasi')}
-                    className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
-                  >
-                    Next
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                )}
-                {isPhasesStep && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => void handleSaveStructure()}
-                      disabled={updateStructure.isPending || updateAgeGroup.isPending}
-                      className="inline-flex items-center gap-2 rounded-xl bg-rugby-green px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-rugby-green-dark disabled:opacity-50"
-                    >
-                      <Save className="h-4 w-4" />
-                      {updateStructure.isPending || updateAgeGroup.isPending ? 'Salvataggio...' : 'Salva bozza'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleGenerateProgram()}
-                      disabled={generateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
-                      className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      {generateProgram.isPending ? 'Rigenerazione...' : program?.generated ? 'Rigenera' : 'Genera'}
-                    </button>
-                    {program?.generated && (
-                      <button
-                        type="button"
-                        onClick={() => void handleDeleteProgram()}
-                        disabled={generateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending}
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        {deleteProgram.isPending ? 'Cancellazione...' : 'Cancella tutto'}
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
             </div>
           </section>
           )}
@@ -4215,6 +4263,7 @@ function serializeStructureForComparison(structure: StructureConfig) {
         rank_from: route.rank_from,
         rank_to: route.rank_to,
         extra_count: route.extra_count,
+        target_slots: route.target_slots,
       })),
       bracket_mode: phase.bracket_mode,
       notes: phase.notes,
@@ -4276,6 +4325,7 @@ function formatTieBreakerSummary(scoringRules: AgeGroupScoringRules): string {
 
 function validateStructureConfig(structure: StructureConfig): string[] {
   const errors: string[] = []
+  const usedTargetSlotsByPhase = new Map<string, Set<string>>()
 
   if (structure.expected_teams === null) {
     errors.push('Indica quante squadre partecipano alla categoria.')
@@ -4378,6 +4428,7 @@ function validateStructureConfig(structure: StructureConfig): string[] {
         if (route.source_mode === 'best_extra' && (!route.extra_count || route.extra_count <= 0)) {
           errors.push(`${phaseLabel}: indica quante migliori extra vuoi instradare.`)
         }
+        validateRouteTargetSlots(errors, usedTargetSlotsByPhase, phaseLabel, route, targetPhase)
       }
     }
     if (phase.phase_type === 'KNOCKOUT' && phase.bracket_mode === 'group_blocks') {
@@ -4403,6 +4454,7 @@ function validateStructureConfig(structure: StructureConfig): string[] {
         if (route.source_mode !== 'knockout_winner' && route.source_mode !== 'knockout_loser') {
           errors.push(`${phaseLabel}: nel turno singolo puoi instradare solo vincenti o perdenti.`)
         }
+        validateRouteTargetSlots(errors, usedTargetSlotsByPhase, phaseLabel, route, targetPhase)
       }
     }
   })
@@ -4542,6 +4594,18 @@ function normalizeStructureConfig(value: unknown): StructureConfig {
   }
 }
 
+function applyDefaultPhaseDates(structure: StructureConfig, tournamentStartDate?: string | null): StructureConfig {
+  if (!tournamentStartDate) return structure
+  return {
+    ...structure,
+    phases: structure.phases.map((phase) => (
+      phase.phase_date
+        ? phase
+        : { ...phase, phase_date: tournamentStartDate }
+    )),
+  }
+}
+
 function normalizeScheduleConfig(value: unknown): ScheduleConfig {
   const input = (value && typeof value === 'object') ? value as Partial<ScheduleConfig> : {}
   const rawFields = Array.isArray(input.playing_fields) ? input.playing_fields : []
@@ -4632,6 +4696,9 @@ function normalizeAdvancementRoutes(value: unknown): AdvancementRoute[] {
         rank_from: typeof input.rank_from === 'number' ? input.rank_from : null,
         rank_to: typeof input.rank_to === 'number' ? input.rank_to : null,
         extra_count: typeof input.extra_count === 'number' ? input.extra_count : null,
+        target_slots: Array.isArray((input as { target_slots?: unknown }).target_slots)
+          ? ((input as { target_slots?: unknown }).target_slots as unknown[]).filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
+          : [],
       }
     })
 }
@@ -4648,12 +4715,12 @@ function normalizeRefereeGroupAssignments(value: unknown): Record<string, string
   )
 }
 
-function makeEmptyPhase(index: number): StructurePhase {
+function makeEmptyPhase(index: number, tournamentStartDate?: string | null): StructurePhase {
   return {
     id: `phase-${index}-${Date.now()}`,
     name: `Fase ${index}`,
     phase_type: 'GROUP_STAGE',
-    phase_date: '',
+    phase_date: tournamentStartDate ?? '',
     start_time: '',
     round_trip_mode: 'single',
     knockout_progression: 'full_bracket',
@@ -4692,6 +4759,7 @@ function makeAdvancementRoute({
     rank_from: sourceMode === 'group_rank' ? rankFrom : null,
     rank_to: sourceMode === 'group_rank' ? rankTo : null,
     extra_count: sourceMode === 'best_extra' ? extraCount : null,
+    target_slots: [],
   }
 }
 
@@ -4895,11 +4963,12 @@ function describePhaseRoutes(structure: StructureConfig, phase: StructurePhase):
     return phase.advancement_routes.map((route) => {
       const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
       const targetLabel = targetPhase?.name || 'fase da definire'
+      const slotsLabel = route.target_slots.length > 0 ? ` [${route.target_slots.join(', ')}]` : ''
       if (route.source_mode === 'best_extra') {
-        return `${route.extra_count ?? '?'} migliori extra -> ${targetLabel}`
+        return `${route.extra_count ?? '?'} migliori extra -> ${targetLabel}${slotsLabel}`
       }
       const groupsLabel = route.source_groups.length > 0 ? route.source_groups.join(', ') : 'tutti i gironi'
-      return `${route.rank_from ?? '?'}-${route.rank_to ?? '?'} ${groupsLabel} -> ${targetLabel}`
+      return `${route.rank_from ?? '?'}-${route.rank_to ?? '?'} ${groupsLabel} -> ${targetLabel}${slotsLabel}`
     })
   }
 
@@ -4907,9 +4976,76 @@ function describePhaseRoutes(structure: StructureConfig, phase: StructurePhase):
     return phase.advancement_routes.map((route) => {
       const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
       const targetLabel = targetPhase?.name || 'fase da definire'
-      return `${route.source_mode === 'knockout_loser' ? 'Perdenti' : 'Vincenti'} -> ${targetLabel}`
+      const slotsLabel = route.target_slots.length > 0 ? ` [${route.target_slots.join(', ')}]` : ''
+      return `${route.source_mode === 'knockout_loser' ? 'Perdenti' : 'Vincenti'} -> ${targetLabel}${slotsLabel}`
     })
   }
 
   return []
+}
+
+function validateRouteTargetSlots(
+  errors: string[],
+  usedTargetSlotsByPhase: Map<string, Set<string>>,
+  phaseLabel: string,
+  route: AdvancementRoute,
+  targetPhase: StructurePhase,
+) {
+  if (route.target_slots.length === 0) return
+
+  const usedSlots = usedTargetSlotsByPhase.get(targetPhase.id) ?? new Set<string>()
+  const targetGroupSizes = parseGroupSizes(targetPhase.group_sizes)
+  const targetGroupCount = Math.max(targetPhase.num_groups ?? targetGroupSizes.length, targetGroupSizes.length, 1)
+
+  for (const rawSlot of route.target_slots) {
+    const normalizedSlot = rawSlot.trim().toUpperCase()
+    if (!normalizedSlot) continue
+
+    if (targetPhase.phase_type === 'GROUP_STAGE') {
+      const match = normalizedSlot.match(/^([A-Z])(\d+)$/)
+      if (!match) {
+        errors.push(`${phaseLabel}: gli slot verso ${targetPhase.name} devono essere nel formato A1, B1, A2.`)
+        continue
+      }
+      const groupIndex = match[1].charCodeAt(0) - 65
+      const slotPosition = Number(match[2])
+      if (groupIndex < 0 || groupIndex >= targetGroupCount) {
+        errors.push(`${phaseLabel}: lo slot ${normalizedSlot} punta a un girone inesistente di ${targetPhase.name}.`)
+      }
+      if (slotPosition <= 0) {
+        errors.push(`${phaseLabel}: lo slot ${normalizedSlot} non ha una posizione valida.`)
+      }
+    } else if (!/^\d+$/.test(normalizedSlot) || Number(normalizedSlot) <= 0) {
+      errors.push(`${phaseLabel}: i seed verso ${targetPhase.name} devono essere numeri positivi.`)
+    }
+
+    if (usedSlots.has(normalizedSlot)) {
+      errors.push(`${phaseLabel}: lo slot ${normalizedSlot} di ${targetPhase.name} è già usato da un altro instradamento.`)
+    } else {
+      usedSlots.add(normalizedSlot)
+    }
+  }
+
+  usedTargetSlotsByPhase.set(targetPhase.id, usedSlots)
+}
+
+function describeRouteSourceEntries(phase: StructurePhase, route: AdvancementRoute): string[] {
+  if (phase.phase_type === 'GROUP_STAGE') {
+    if (route.source_mode === 'best_extra') {
+      return Array.from({ length: route.extra_count ?? 0 }, (_, index) => `Migliore extra ${index + 1}`)
+    }
+    const groupNames = route.source_groups.length > 0 ? route.source_groups : buildGroupNames(phase)
+    const rankFrom = route.rank_from ?? 0
+    const rankTo = route.rank_to ?? 0
+    if (rankFrom <= 0 || rankTo < rankFrom) return []
+    const entries: string[] = []
+    for (const groupName of groupNames) {
+      for (let rank = rankFrom; rank <= rankTo; rank += 1) {
+        entries.push(`${rank}${groupName.replace('Girone ', '')}`)
+      }
+    }
+    return entries
+  }
+
+  return route.source_mode === 'knockout_loser' ? ['Perdente 1', 'Perdente 2', 'Perdente 3', '...'] : ['Vincente 1', 'Vincente 2', 'Vincente 3', '...']
 }
