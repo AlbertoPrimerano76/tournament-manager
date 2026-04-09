@@ -1314,7 +1314,7 @@ type ScheduleConfig = {
   playing_fields: PlayingFieldConfig[]
 }
 
-type CategoryWizardStep = 'squadre' | 'formula'
+type CategoryWizardStep = 'squadre' | 'impostazioni' | 'fasi'
 
 type StructureConfig = {
   expected_teams: number | null
@@ -1996,7 +1996,8 @@ function AgeGroupConfigurationScreen({
 
   const steps: Array<{ id: CategoryWizardStep; label: string; description: string }> = [
     { id: 'squadre', label: 'Squadre', description: 'Definisci quante sono e inseriscile.' },
-    { id: 'formula', label: 'Formula', description: 'Durata, campi, fasi e generazione.' },
+    { id: 'impostazioni', label: 'Impostazioni', description: 'Durata incontri, campi, classifica e spareggi.' },
+    { id: 'fasi', label: 'Fasi', description: 'Gironi, passaggi turno e generazione del programma.' },
   ]
 
   return (
@@ -2237,6 +2238,7 @@ function AgeGroupConfigurationPanel({
   const [saveMessage, setSaveMessage] = useState('')
   const [teamError, setTeamError] = useState('')
   const [teamMessage, setTeamMessage] = useState('')
+  const [rankingControlsOpen, setRankingControlsOpen] = useState(false)
   useEffect(() => {
     setSelectedTemplateName(ageGroup.structure_template_name ?? '')
     setStructure(normalizeStructureConfig(ageGroup.structure_config))
@@ -2741,19 +2743,21 @@ function AgeGroupConfigurationPanel({
   }
 
   const currentTab = activeTab ?? 'squadre'
+  const isSettingsStep = currentTab === 'impostazioni'
+  const isPhasesStep = currentTab === 'fasi'
 
   return (
     <div className="space-y-5">
       <div className={pageMode ? 'space-y-5' : 'grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_360px]'}>
         <div className="space-y-5">
-          {currentTab === 'formula' && (
+          {(isSettingsStep || isPhasesStep) && (
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 bg-slate-50 px-5 py-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Passo 2</p>
-                  <p className="mt-1 text-lg font-black text-slate-950">Formula, campi e generazione</p>
-                  <p className="mt-1 text-sm text-slate-600">Definisci base calendario, fasi e passaggi. Le azioni principali sono qui sopra, non disperse nella pagina.</p>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">{isSettingsStep ? 'Passo 2' : 'Passo 3'}</p>
+                  <p className="mt-1 text-lg font-black text-slate-950">{isSettingsStep ? 'Durata incontri, campi e classifica' : 'Fasi e generazione programma'}</p>
+                  <p className="mt-1 text-sm text-slate-600">{isSettingsStep ? 'Qui imposti la base comune del torneo. Questo vale soprattutto per la parte a gironi.' : 'Qui definisci gironi, eliminazioni, passaggi turno e generazione del programma.'}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -2765,25 +2769,39 @@ function AgeGroupConfigurationPanel({
                     <Save className="h-4 w-4" />
                     {updateStructure.isPending || updateAgeGroup.isPending ? 'Salvataggio...' : 'Salva bozza'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleGenerateProgram()}
-                    disabled={generateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
-                    className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    {generateProgram.isPending ? 'Rigenerazione...' : program?.generated ? 'Rigenera' : 'Genera'}
-                  </button>
-                  {program?.generated && (
+                  {isSettingsStep && (
                     <button
                       type="button"
-                      onClick={() => void handleDeleteProgram()}
-                      disabled={generateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending}
-                      className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50"
+                      onClick={() => onStepChange?.('fasi')}
+                      className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
                     >
-                      <Trash2 className="h-4 w-4" />
-                      {deleteProgram.isPending ? 'Cancellazione...' : 'Cancella programma'}
+                      Next
+                      <ArrowRight className="h-4 w-4" />
                     </button>
+                  )}
+                  {isPhasesStep && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void handleGenerateProgram()}
+                        disabled={generateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
+                        className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        {generateProgram.isPending ? 'Rigenerazione...' : program?.generated ? 'Rigenera' : 'Genera'}
+                      </button>
+                      {program?.generated && (
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteProgram()}
+                          disabled={generateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending}
+                          className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          {deleteProgram.isPending ? 'Cancellazione...' : 'Cancella programma'}
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -2797,6 +2815,7 @@ function AgeGroupConfigurationPanel({
             </div>
 
             <div className="px-5 py-5">
+              {isPhasesStep && (
               <div className={`mb-5 rounded-xl border px-4 py-4 ${
                 readiness.isReady ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'
               }`}>
@@ -2849,8 +2868,9 @@ function AgeGroupConfigurationPanel({
                   </div>
                 )}
               </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              )}
+              
+              {false && <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Template formula</p>
                 <p className="mt-1 text-sm text-slate-600">Se vuoi, parti da una struttura già esistente. Altrimenti definisci le fasi da zero qui sotto.</p>
                 <div className="mt-3 grid gap-3 lg:grid-cols-3">
@@ -2871,8 +2891,10 @@ function AgeGroupConfigurationPanel({
                     </button>
                   ))}
                 </div>
-              </div>
+              </div>}
 
+                {isSettingsStep && (
+                <div className="space-y-5">
                 <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -2960,15 +2982,26 @@ function AgeGroupConfigurationPanel({
                     <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Classifica e spareggi</p>
                     <p className="mt-1 text-base font-black text-slate-950">Punteggi e criteri in caso di parità</p>
                     <p className="mt-1 text-sm text-slate-600">
-                      I punti classifica valgono sempre nell&apos;ordine qui sotto. In caso di pari punti, i criteri vengono applicati nell&apos;ordine che imposti.
+                      Questo vale per i gironi. Qui imposti i controlli che regolano punti classifica e spareggi in caso di parità.
                     </p>
                   </div>
-                  <div className="rounded-[1.2rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                    Ordine attuale: {formatTieBreakerSummary(scoringRules)}
+                  <div className="flex items-center gap-2">
+                    <div className="rounded-[1.2rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                      Ordine attuale: {formatTieBreakerSummary(scoringRules)}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setRankingControlsOpen((current) => !current)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                    >
+                      {rankingControlsOpen ? 'Nascondi controlli' : 'Mostra controlli'}
+                    </button>
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-4 md:grid-cols-3">
+                {rankingControlsOpen && (
+                  <div className="mt-4 space-y-4">
+                    <div className="grid gap-4 md:grid-cols-3">
                   <FormField label="Punti vittoria">
                     <input
                       type="number"
@@ -2995,47 +3028,50 @@ function AgeGroupConfigurationPanel({
                   </FormField>
                 </div>
 
-                <div className="mt-4 rounded-[1.3rem] border border-slate-200 bg-white p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Ordine spareggi</p>
-                  <p className="mt-1 text-sm text-slate-600">I punti restano sempre il primo criterio. Qui ordini solo gli spareggi successivi.</p>
-                  <div className="mt-4 space-y-3">
-                    {getTieBreakerCriteria(scoringRules).map((criterion, index) => {
-                      const option = RANKING_CRITERIA_OPTIONS.find((item) => item.key === criterion)
-                      if (!option) return null
-                      return (
-                        <div key={criterion} className="flex flex-col gap-3 rounded-[1.15rem] border border-slate-200 bg-slate-50 p-3 lg:flex-row lg:items-center lg:justify-between">
-                          <div>
-                            <p className="text-sm font-bold text-slate-900">{index + 1}. {option.label}</p>
-                            <p className="mt-1 text-sm text-slate-600">{option.description}</p>
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => updateRankingCriterionOrder(index, -1)}
-                              disabled={index === 0}
-                              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              Su
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateRankingCriterionOrder(index, 1)}
-                              disabled={index === getTieBreakerCriteria(scoringRules).length - 1}
-                              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              Giù
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
+                    <div className="mt-4 rounded-[1.3rem] border border-slate-200 bg-white p-4">
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Ordine spareggi</p>
+                      <p className="mt-1 text-sm text-slate-600">I punti restano sempre il primo criterio. Qui ordini solo gli spareggi successivi.</p>
+                      <div className="mt-4 space-y-3">
+                        {getTieBreakerCriteria(scoringRules).map((criterion, index) => {
+                          const option = RANKING_CRITERIA_OPTIONS.find((item) => item.key === criterion)
+                          if (!option) return null
+                          return (
+                            <div key={criterion} className="flex flex-col gap-3 rounded-[1.15rem] border border-slate-200 bg-slate-50 p-3 lg:flex-row lg:items-center lg:justify-between">
+                              <div>
+                                <p className="text-sm font-bold text-slate-900">{index + 1}. {option.label}</p>
+                                <p className="mt-1 text-sm text-slate-600">{option.description}</p>
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => updateRankingCriterionOrder(index, -1)}
+                                  disabled={index === 0}
+                                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  Su
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => updateRankingCriterionOrder(index, 1)}
+                                  disabled={index === getTieBreakerCriteria(scoringRules).length - 1}
+                                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  Giù
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      <div className="mt-4 rounded-[1.1rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        Il criterio “squadra più distante” usa la città della squadra e la sede del torneo per stimare i km. Se una città non è riconosciuta, quel criterio viene ignorato per quella parità.
+                      </div>
+                    </div>
                   </div>
-                  <div className="mt-4 rounded-[1.1rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    Il criterio “squadra più distante” usa la città della squadra e la sede del torneo per stimare i km. Se una città non è riconosciuta, quel criterio viene ignorato per quella parità.
-                  </div>
-                </div>
+                )}
               </div>
-
+              </div>
+              )}
               {saveError && (
                 <div className="mt-4 rounded-[1.3rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   {saveError}
@@ -3065,6 +3101,8 @@ function AgeGroupConfigurationPanel({
                 </div>
               )}
 
+              {isPhasesStep && (
+              <>
               <div className="mt-5">
                 <StructurePreviewCard
                   structure={structure}
@@ -3563,8 +3601,10 @@ function AgeGroupConfigurationPanel({
                   />
                 </FormField>
               </div>
+              </>
+              )}
 
-              <div className="mt-5 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+              {false && <div className="mt-5 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
                 <p className="text-base font-black text-slate-950">Salva come template</p>
                 <p className="mt-1 text-sm leading-6 text-slate-500">Riutilizza questa formula su altri tornei e altre categorie, senza squadre ma con struttura e passaggi.</p>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -3594,44 +3634,58 @@ function AgeGroupConfigurationPanel({
                   <Save className="h-4 w-4" />
                   Salva template
                 </button>
-              </div>
+              </div>}
 
               <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-200 pt-4">
                 <button
                   type="button"
-                  onClick={() => onStepChange?.('squadre')}
+                  onClick={() => onStepChange?.(isSettingsStep ? 'squadre' : 'impostazioni')}
                   className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
                 >
                   Indietro
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSaveStructure()}
-                  disabled={updateStructure.isPending || updateAgeGroup.isPending}
-                  className="inline-flex items-center gap-2 rounded-xl bg-rugby-green px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-rugby-green-dark disabled:opacity-50"
-                >
-                  <Save className="h-4 w-4" />
-                  {updateStructure.isPending || updateAgeGroup.isPending ? 'Salvataggio...' : 'Salva bozza'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleGenerateProgram()}
-                  disabled={generateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
-                  className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  {generateProgram.isPending ? 'Rigenerazione...' : program?.generated ? 'Rigenera' : 'Genera'}
-                </button>
-                {program?.generated && (
+                {isSettingsStep && (
                   <button
                     type="button"
-                    onClick={() => void handleDeleteProgram()}
-                    disabled={generateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending}
-                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => onStepChange?.('fasi')}
+                    className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
                   >
-                    <Trash2 className="h-4 w-4" />
-                    {deleteProgram.isPending ? 'Cancellazione...' : 'Cancella tutto'}
+                    Next
+                    <ArrowRight className="h-4 w-4" />
                   </button>
+                )}
+                {isPhasesStep && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveStructure()}
+                      disabled={updateStructure.isPending || updateAgeGroup.isPending}
+                      className="inline-flex items-center gap-2 rounded-xl bg-rugby-green px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-rugby-green-dark disabled:opacity-50"
+                    >
+                      <Save className="h-4 w-4" />
+                      {updateStructure.isPending || updateAgeGroup.isPending ? 'Salvataggio...' : 'Salva bozza'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleGenerateProgram()}
+                      disabled={generateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending || !readiness.isReady}
+                      className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      {generateProgram.isPending ? 'Rigenerazione...' : program?.generated ? 'Rigenera' : 'Genera'}
+                    </button>
+                    {program?.generated && (
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteProgram()}
+                        disabled={generateProgram.isPending || deleteProgram.isPending || updateAgeGroup.isPending}
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {deleteProgram.isPending ? 'Cancellazione...' : 'Cancella tutto'}
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -3679,7 +3733,7 @@ function AgeGroupConfigurationPanel({
                 </div>
                 <button
                   type="button"
-                  onClick={() => onStepChange?.('formula')}
+                  onClick={() => onStepChange?.('impostazioni')}
                   disabled={remainingSlots !== 0}
                   className="inline-flex items-center justify-center gap-2 self-start rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
