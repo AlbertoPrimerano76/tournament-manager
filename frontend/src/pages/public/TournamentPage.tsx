@@ -18,6 +18,15 @@ export default function TournamentPage() {
   const { data: fields, isLoading: loadingFields } = usePublicTournamentFields(slug!)
   const [activeFieldPreview, setActiveFieldPreview] = useState<{ src: string; title: string } | null>(null)
 
+  const theme = useMemo(
+    () => getTournamentTheme(tournament ?? { theme_primary_color: null, theme_accent_color: null }),
+    [tournament?.theme_primary_color, tournament?.theme_accent_color],
+  )
+  const sortedAgeGroups = useMemo(
+    () => [...(ageGroups ?? [])].sort((left, right) => sortAgeGroupsAsc(left.age_group, right.age_group)),
+    [ageGroups],
+  )
+
   useEffect(() => {
     if (slug && tournament?.slug && tournament.slug !== slug) {
       navigate(`/tornei/${tournament.slug}`, { replace: true })
@@ -28,12 +37,7 @@ export default function TournamentPage() {
   if (errorT) return <ErrorMessage message="Evento non trovato" />
   if (!tournament) return null
 
-  const theme = useMemo(() => getTournamentTheme(tournament), [tournament.theme_primary_color, tournament.theme_accent_color])
   const heroMedia = tournament.venue_map_url ?? tournament.logo_url ?? null
-  const sortedAgeGroups = useMemo(
-    () => [...(ageGroups ?? [])].sort((left, right) => sortAgeGroupsAsc(left.age_group, right.age_group)),
-    [ageGroups],
-  )
 
   return (
     <div className="page-shell" style={theme.pageStyle}>
