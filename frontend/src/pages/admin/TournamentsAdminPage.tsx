@@ -90,6 +90,24 @@ export default function TournamentsAdminPage() {
     return <AgeGroupOperationsScreen tournament={tournament} ageGroupId={ageGroupId} />
   }
 
+  if (tournamentId && location.pathname.endsWith('/calendario')) {
+    const tournament = tournaments?.find((item) => item.id === tournamentId) ?? null
+
+    if (isLoading) {
+      return <div className="py-12 text-center text-sm text-slate-500">Caricamento calendario campi...</div>
+    }
+
+    if (!tournament) {
+      return (
+        <div className="rounded-[1.8rem] border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm">
+          Evento non trovato.
+        </div>
+      )
+    }
+
+    return <TournamentFieldScheduleScreen tournament={tournament} />
+  }
+
   if (tournamentId && ageGroupId) {
     const tournament = tournaments?.find((item) => item.id === tournamentId) ?? null
 
@@ -436,6 +454,13 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
+              onClick={() => navigate(`/admin/tornei/${tournament.id}/calendario`)}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Calendario impianti
+            </button>
+            <button
+              type="button"
               onClick={() => navigate(`/admin/tornei/${tournament.id}/modifica`)}
               className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
             >
@@ -464,6 +489,35 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
           <AgeGroupsOperationsPanel tournament={tournament} />
         </div>
       </section>
+    </div>
+  )
+}
+
+function TournamentFieldScheduleScreen({ tournament }: { tournament: Tournament }) {
+  return (
+    <div className="mx-auto max-w-6xl space-y-5">
+      <div className="rounded-[2rem] border border-white/80 bg-white/85 p-6 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <Link to={`/admin/tornei/${tournament.id}/gestione`} className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 transition-colors hover:text-slate-600">
+              Gestione torneo
+            </Link>
+            <h1 className="mt-2 text-3xl font-black text-slate-950">Calendario impianti</h1>
+            <p className="mt-1 text-sm text-slate-500">{tournament.name}</p>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+              Pagina dedicata ai campi del torneo: qui controlli il programma completo per impianto e campo, con eventuali sovrapposizioni evidenziate.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to={`/admin/tornei/${tournament.id}/gestione`}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Torna alla gestione
+            </Link>
+          </div>
+        </div>
+      </div>
 
       <TournamentFieldSchedulePanel tournament={tournament} />
     </div>
@@ -1306,6 +1360,7 @@ type AdvancementRoute = {
 type PlayingFieldConfig = {
   id: string
   field_name: string
+  category_label?: string
   field_number: number | null
 }
 
@@ -2041,6 +2096,12 @@ function AgeGroupConfigurationScreen({
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
+              to={`/admin/tornei/${tournament.id}/calendario`}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Calendario impianti
+            </Link>
+            <Link
               to={`/admin/tornei/${tournament.id}/modifica`}
               className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
             >
@@ -2134,16 +2195,10 @@ function AgeGroupOperationsScreen({
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
-              to={`/admin/tornei/${tournament.id}/categorie/${ageGroup.id}`}
+              to={`/admin/tornei/${tournament.id}/calendario`}
               className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
             >
-              Formula e squadre
-            </Link>
-            <Link
-              to={`/admin/tornei/${tournament.id}/gestione`}
-              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-            >
-              Torna alle categorie operative
+              Calendario impianti
             </Link>
           </div>
         </div>
@@ -3017,13 +3072,21 @@ function AgeGroupConfigurationPanel({
 
                 <div className="mt-4 space-y-3">
                   {structure.schedule.playing_fields.map((playingField, index) => (
-                    <div key={playingField.id} className="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[minmax(0,1.4fr)_180px_auto] md:items-end">
+                    <div key={playingField.id} className="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[minmax(0,1.2fr)_180px_140px_auto] md:items-end">
                       <FormField label={`Impianto ${index + 1}`}>
                         <input
                           list={`facilities-list-${ageGroup.id}`}
                           value={playingField.field_name}
                           onChange={(e) => updatePlayingField(index, { field_name: e.target.value })}
-                          placeholder="Es. Stadio Carlo Montano · U6"
+                          placeholder="Es. Stadio Carlo Montano"
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
+                        />
+                      </FormField>
+                      <FormField label="Categoria campo" hint="Opzionale">
+                        <input
+                          value={playingField.category_label ?? ''}
+                          onChange={(e) => updatePlayingField(index, { category_label: e.target.value })}
+                          placeholder="Es. U8"
                           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
                         />
                       </FormField>
@@ -3052,7 +3115,7 @@ function AgeGroupConfigurationPanel({
                   )}
                   <datalist id={`facilities-list-${ageGroup.id}`}>
                     {availableFacilities.map((facility) => (
-                      <option key={facility.id} value={formatFacilityLabel(facility.name, facility.age_group)} />
+                      <option key={facility.id} value={facility.name} />
                     ))}
                   </datalist>
                 </div>
@@ -3233,6 +3296,13 @@ function AgeGroupConfigurationPanel({
                           }`}>
                             {phase.phase_type === 'GROUP_STAGE' ? 'Gironi' : 'Eliminazione'}
                           </span>
+                          {isConclusivePhase(structure, phase.id) && (
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] ${
+                              activePhaseId === phase.id ? 'bg-amber-200/20 text-amber-100' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              Conclusiva
+                            </span>
+                          )}
                         </div>
                         <p className={`mt-1 text-xs font-medium ${
                           activePhaseId === phase.id ? 'text-slate-200' : 'text-slate-500'
@@ -3433,7 +3503,7 @@ function AgeGroupConfigurationPanel({
                                               : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
                                           }`}
                                         >
-                                          {playingField.field_name}{playingField.field_number ? ` · Campo ${playingField.field_number}` : ''}
+                                          {formatPlayingFieldLabel(playingField)}
                                         </button>
                                       )
                                     })}
@@ -3640,7 +3710,7 @@ function AgeGroupConfigurationPanel({
                                       : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
                                   }`}
                                 >
-                                  {playingField.field_name}{playingField.field_number ? ` · Campo ${playingField.field_number}` : ''}
+                                  {formatPlayingFieldLabel(playingField)}
                                 </button>
                               )
                             })}
@@ -4137,8 +4207,11 @@ function filterAssignmentsToPlayingFields(
   ))
 }
 
-function formatFacilityLabel(name: string, ageGroup: string | null | undefined) {
-  return ageGroup ? `${name} · ${ageGroup}` : name
+function formatPlayingFieldLabel(field: Pick<PlayingFieldConfig, 'field_name' | 'field_number' | 'category_label'>) {
+  const parts = [field.field_name]
+  if (field.category_label?.trim()) parts.push(field.category_label.trim())
+  if (field.field_number) parts.push(`Campo ${field.field_number}`)
+  return parts.filter(Boolean).join(' · ')
 }
 
 function estimatePhaseMatches(phase: StructurePhase): number {
@@ -4311,6 +4384,7 @@ function serializeStructureForComparison(structure: StructureConfig) {
       hide_future_phases_until_complete: structure.schedule.hide_future_phases_until_complete,
       playing_fields: structure.schedule.playing_fields.map((field) => ({
         field_name: field.field_name,
+        category_label: field.category_label ?? '',
         field_number: field.field_number,
       })),
     },
@@ -4754,6 +4828,7 @@ function normalizePlayingFieldConfig(value: unknown, index: number): PlayingFiel
     field_name: typeof input.field_name === 'string'
       ? input.field_name
       : (typeof input.facility_name === 'string' ? input.facility_name : ''),
+    category_label: typeof input.category_label === 'string' ? input.category_label : '',
     field_number: typeof input.field_number === 'number' ? input.field_number : null,
   }
 }
@@ -4905,6 +4980,7 @@ function makeEmptyPlayingField(index: number): PlayingFieldConfig {
   return {
     id: `playing-field-${index}-${Date.now()}`,
     field_name: '',
+    category_label: '',
     field_number: index,
   }
 }
@@ -5092,6 +5168,12 @@ function describePhaseRoutes(structure: StructureConfig, phase: StructurePhase):
   }
 
   return []
+}
+
+function isConclusivePhase(structure: StructureConfig, phaseId: string) {
+  const phase = structure.phases.find((item) => item.id === phaseId)
+  if (!phase) return false
+  return phase.advancement_routes.length === 0
 }
 
 function describeRouteLabelForPreview(route: AdvancementRoute, sourcePhase: StructurePhase) {

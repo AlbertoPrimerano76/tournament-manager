@@ -102,6 +102,33 @@ export default function AgeGroupPage() {
       }))
     return [...ranked, ...missing]
   }, [activePhase, standings, teamNameMap])
+  const publicFinalRanking = useMemo(() => {
+    const rankingPhase = [...visiblePhases].reverse().find((phase) => (standings?.[phase.id]?.final_ranking?.length ?? 0) > 0)
+    if (rankingPhase) {
+      return {
+        phaseName: rankingPhase.name,
+        rows: standings?.[rankingPhase.id]?.final_ranking ?? [],
+      }
+    }
+
+    const finalGroupPhase = [...visiblePhases].reverse().find((phase) => (
+      phase.phase_type === 'GROUP_STAGE'
+      && standings?.[phase.id]?.is_final_phase
+      && phase.groups.some((group) => group.matches.length > 0 && group.matches.every((match) => match.status === 'COMPLETED'))
+    ))
+    if (!finalGroupPhase) return null
+
+    const rows = finalGroupPhase.groups.flatMap((group) => standings?.[finalGroupPhase.id]?.groups?.[group.id] ?? [])
+    if (rows.length === 0) return null
+    return {
+      phaseName: finalGroupPhase.name,
+      rows: rows.map((row, index) => ({
+        position: index + 1,
+        team_id: row.team_id,
+        team_name: row.team_name,
+      })),
+    }
+  }, [visiblePhases, standings])
   const knockoutMatches = useMemo(() => {
     if (!activePhase || activePhase.phase_type === 'GROUP_STAGE') return []
     return [...activePhase.knockout_matches.filter((match) => (
@@ -295,7 +322,7 @@ export default function AgeGroupPage() {
                     rel="noreferrer"
                     className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:text-slate-950"
                   >
-                    {facility.name} · Google Maps
+                    Apri impianto
                   </a>
                 ) : (
                   <span key={facility.name} className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm">
@@ -337,7 +364,7 @@ export default function AgeGroupPage() {
                   <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] ${
                     activePhase?.id === phase.id ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'
                   }`}>
-                    Finale
+                    Conclusiva
                   </span>
                 )}
               </button>
@@ -464,14 +491,7 @@ export default function AgeGroupPage() {
               <section className="rounded-[1.8rem] border p-5 shadow-sm" style={{ borderColor: theme.softBorder, background: theme.contentSurface }}>
                 <div className="mb-4">
                   <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.primaryMuted }}>Classifica</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <h2 className="text-xl font-black text-slate-950">{activePhase.name}</h2>
-                    {activeStandingsMeta?.is_final_phase && (
-                      <span className="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-700">
-                        Classifica finale
-                      </span>
-                    )}
-                  </div>
+                  <h2 className="mt-1 text-xl font-black text-slate-950">{activePhase.name}</h2>
                 </div>
 
                 {!hasSingleGroup && (
@@ -743,7 +763,9 @@ export default function AgeGroupPage() {
                 <Trophy className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.accent }}>Fase finale</p>
+                <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.accent }}>
+                  {activePhase.is_final_phase ? 'Fase conclusiva' : 'Fase a eliminazione'}
+                </p>
                 <h2 className="mt-1 text-xl font-black text-slate-950">{activePhase.name}</h2>
               </div>
             </div>
@@ -829,6 +851,41 @@ export default function AgeGroupPage() {
           )}
         </div>
       ) : null}
+
+      {publicFinalRanking && (
+        <section className="mt-4 rounded-[1.8rem] border p-5 shadow-sm" style={{ borderColor: theme.softBorder, background: theme.contentSurface }}>
+          <div className="mb-4">
+            <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.primaryMuted }}>Classifica finale</p>
+            <h2 className="mt-1 text-xl font-black text-slate-950">{publicFinalRanking.phaseName}</h2>
+          </div>
+          <div className="mb-4">
+            <PodiumGrid rows={publicFinalRanking.rows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} />
+          </div>
+          <div className="overflow-hidden rounded-[1.3rem] border border-emerald-100 bg-white">
+            <table className="min-w-full divide-y divide-emerald-100 text-sm">
+              <thead className="bg-emerald-50 text-left text-emerald-900">
+                <tr>
+                  <th className="px-4 py-3 font-bold">Pos.</th>
+                  <th className="px-4 py-3 font-bold">Squadra</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {publicFinalRanking.rows.map((row) => (
+                  <tr key={`public-final-${row.position ?? 'na'}-${row.team_id ?? row.team_name}`}>
+                    <td className="px-4 py-3 font-black text-slate-900">{row.position ?? '-'}</td>
+                    <td className="px-4 py-3 font-semibold text-slate-900">
+                      <div className="flex items-center gap-2">
+                        <TeamLogo src={teamLogoMap.get(row.team_id ?? '')} alt={row.team_name || teamNameMap.get(row.team_id ?? '') || 'Squadra'} />
+                        <span>{row.team_name || teamNameMap.get(row.team_id ?? '') || 'Da definire'}</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
     </div>
   )
@@ -934,16 +991,16 @@ function StandingsTable({
         <tbody>
           {rows.map((row, index) => (
             <tr key={row.team_id} className="border-b border-slate-100 last:border-b-0">
-              <td className="px-3 py-3 font-black text-slate-950">
-                <RankingBadge position={index + 1} compact={!isFinalPhase} />
-              </td>
+              <td className="px-3 py-3 font-black text-slate-950">{index + 1}</td>
               <td className="px-3 py-3 font-semibold text-slate-900">
-                <div className="flex items-center gap-2">
-                  <TeamLogo src={teamLogoMap.get(row.team_id)} alt={row.team_name ?? teamNameMap.get(row.team_id) ?? 'Squadra'} />
-                  <span>{row.team_name ?? teamNameMap.get(row.team_id) ?? row.team_id}</span>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <TeamLogo src={teamLogoMap.get(row.team_id)} alt={row.team_name ?? teamNameMap.get(row.team_id) ?? 'Squadra'} />
+                    <span className="truncate">{row.team_name ?? teamNameMap.get(row.team_id) ?? row.team_id}</span>
+                  </div>
                   {isFinalPhase && (
-                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">
-                      {index + 1}
+                    <span className="shrink-0">
+                      {index === 0 ? <Trophy className="h-4 w-4 text-amber-500" /> : index === 1 ? <Medal className="h-4 w-4 text-slate-500" /> : index === 2 ? <Award className="h-4 w-4 text-orange-500" /> : null}
                     </span>
                   )}
                 </div>
@@ -1008,26 +1065,6 @@ function PodiumGrid({
         </div>
       ))}
     </div>
-  )
-}
-
-function RankingBadge({ position, compact = false }: { position: number; compact?: boolean }) {
-  const badgeClass = compact ? 'h-7 w-7 rounded-full text-xs' : 'rounded-xl px-2.5 py-1 text-xs'
-
-  if (position === 1) {
-    return <span className={`inline-flex items-center justify-center bg-amber-100 font-bold text-amber-700 ${badgeClass}`}><Trophy className="h-3.5 w-3.5" /></span>
-  }
-  if (position === 2) {
-    return <span className={`inline-flex items-center justify-center bg-slate-200 font-bold text-slate-700 ${badgeClass}`}><Medal className="h-3.5 w-3.5" /></span>
-  }
-  if (position === 3) {
-    return <span className={`inline-flex items-center justify-center bg-orange-100 font-bold text-orange-700 ${badgeClass}`}><Award className="h-3.5 w-3.5" /></span>
-  }
-
-  return (
-    <span className={`inline-flex items-center justify-center bg-slate-100 font-bold text-slate-700 ${badgeClass}`}>
-      {position}
-    </span>
   )
 }
 
