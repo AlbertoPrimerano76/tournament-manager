@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Award, ChevronLeft, Medal, Trophy } from 'lucide-react'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
@@ -25,7 +25,7 @@ export default function AgeGroupPage() {
   const navigate = useNavigate()
   const { data: tournament } = useTournament(slug!)
   const { data: facilities } = usePublicTournamentFields(slug!)
-  const { data: program, isLoading, error, refetch } = useAgeGroupProgram(ageGroupId!)
+  const { data: program, isLoading, error, refetch, dataUpdatedAt } = useAgeGroupProgram(ageGroupId!)
   const { data: standings } = useAgeGroupStandings(ageGroupId!)
   const phases = useMemo(() => flattenPhases(program), [program])
   const visiblePhases = useMemo(
@@ -60,13 +60,20 @@ export default function AgeGroupPage() {
     )
     return new Map(pairs)
   }, [phases])
+  const [searchParams, setSearchParams] = useSearchParams()
   const [activePhaseId, setActivePhaseId] = useState<string | null>(null)
-  const [groupPhaseView, setGroupPhaseView] = useState<GroupPhaseView>('matches')
+  const groupPhaseView = (searchParams.get('tab') as GroupPhaseView | null) ?? 'matches'
+  function setGroupPhaseView(tab: GroupPhaseView) {
+    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.set('tab', tab); return next }, { replace: true })
+  }
   const [activeMatchesGroupId, setActiveMatchesGroupId] = useState<string | null>(null)
   const [activeStandingsGroupId, setActiveStandingsGroupId] = useState<string | null>(null)
   const [activeTeamId, setActiveTeamId] = useState<string>('')
   const [rememberedTeamId, setRememberedTeamId] = useState<string>('')
-  const [knockoutPhaseView, setKnockoutPhaseView] = useState<KnockoutPhaseView>('matches')
+  const knockoutPhaseView = (searchParams.get('ktab') as KnockoutPhaseView | null) ?? 'matches'
+  function setKnockoutPhaseView(tab: KnockoutPhaseView) {
+    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.set('ktab', tab); return next }, { replace: true })
+  }
   const [groupStatusView, setGroupStatusView] = useState<MatchStatusView>('pending')
   const [knockoutStatusView, setKnockoutStatusView] = useState<MatchStatusView>('pending')
 
@@ -206,6 +213,9 @@ export default function AgeGroupPage() {
   }, [activePhase, activeTeamId, phaseTeamOptions, standings])
   const useTeamTabs = phaseTeamOptions.length <= 8
   const hasSingleGroup = (activePhase?.groups.length ?? 0) <= 1
+  const isLive = useMemo(() => phases.some((phase) =>
+    [...phase.groups.flatMap((g) => g.matches), ...phase.knockout_matches].some((m) => m.status === 'IN_PROGRESS')
+  ), [phases])
   const favoriteTeamStorageKey = slug && ageGroupId ? `rugby.favoriteTeam.${slug}.${ageGroupId}` : ''
   const filteredMatches = activeMatchesGroup
     ? activeMatchesGroup.matches.filter((match) => {
@@ -239,13 +249,18 @@ export default function AgeGroupPage() {
     setActiveStandingsGroupId(activePhase?.groups[0]?.id ?? null)
     setActiveTeamId('')
     setGroupStatusView('pending')
-    setKnockoutPhaseView('matches')
+    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete('ktab'); return next }, { replace: true })
     setKnockoutStatusView('pending')
   }, [activePhase?.id])
 
   useEffect(() => {
-    if (!activeTeamId && phaseTeamOptions.length > 0 && rememberedTeamId && phaseTeamOptions.some((team) => team.value === rememberedTeamId)) {
+    const teamIsValid = rememberedTeamId && phaseTeamOptions.some((team) => team.value === rememberedTeamId)
+    if (!activeTeamId && phaseTeamOptions.length > 0 && teamIsValid) {
       setActiveTeamId(rememberedTeamId)
+      // Auto-switch to "my team" tab only if the user hasn't explicitly chosen a tab
+      if (!searchParams.get('tab')) {
+        setGroupPhaseView('team')
+      }
       return
     }
     if (!activeTeamId && phaseTeamOptions.length > 0 && useTeamTabs) {
@@ -304,7 +319,24 @@ export default function AgeGroupPage() {
           </>
         )}
         <div className="relative">
-        <p className="text-xs font-bold uppercase tracking-[0.18em]" style={{ color: theme.primaryMuted }}>Categoria</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-bold uppercase tracking-[0.18em]" style={{ color: theme.primaryMuted }}>Categoria</p>
+          <div className="flex items-center gap-2">
+            {isLive && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                Live
+              </span>
+            )}
+            <button
+              onClick={() => refetch()}
+              className="text-[11px] font-medium text-slate-400 hover:text-slate-600"
+              title="Aggiorna dati"
+            >
+              Aggiornato alle {format(new Date(dataUpdatedAt), ‘HH:mm’, { locale: it })}
+            </button>
+          </div>
+        </div>
         <h1 className="mt-2 text-2xl font-black text-slate-950">{program.display_name || program.age_group}</h1>
         <p className="mt-2 text-sm text-slate-700">
           Consulta le partite della fase, le classifiche dei gironi e l’eventuale fase a eliminazione.
@@ -475,7 +507,7 @@ export default function AgeGroupPage() {
 
                     <div className="mt-4 space-y-3">
                       {filteredMatches.length > 0 ? filteredMatches.map((match) => (
-                        <PublicMatchRow key={match.id} match={match} teamLogoMap={teamLogoMap} />
+                        <PublicMatchRow key={match.id} match={match} teamLogoMap={teamLogoMap} backTo={`/tornei/${slug}/${ageGroupId}`} backLabel={`← ${program.display_name || program.age_group}`} />
                       )) : (
                         <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
                           Nessuna partita trovata con questo filtro.
@@ -700,6 +732,8 @@ export default function AgeGroupPage() {
                               key={match.id}
                               match={match}
                               teamLogoMap={teamLogoMap}
+                              backTo={`/tornei/${slug}/${ageGroupId}`}
+                              backLabel={`← ${program.display_name || program.age_group}`}
                             />
                           ))
                         ) : (
@@ -797,7 +831,7 @@ export default function AgeGroupPage() {
                 {knockoutMatches.length > 0 ? (
                 <div className="space-y-3">
                   {knockoutMatches.map((match) => (
-                    <PublicMatchRow key={match.id} match={match} teamLogoMap={teamLogoMap} />
+                    <PublicMatchRow key={match.id} match={match} teamLogoMap={teamLogoMap} backTo={`/tornei/${slug}/${ageGroupId}`} backLabel={`← ${program.display_name || program.age_group}`} />
                   ))}
                 </div>
               ) : (
@@ -912,19 +946,45 @@ function getAgeGroupThemeStyle(primaryColor: string | null, accentColor: string 
 function PublicMatchRow({
   match,
   teamLogoMap,
+  backTo,
+  backLabel,
 }: {
   match: ProgramMatch
   teamLogoMap: Map<string, string>
+  backTo?: string
+  backLabel?: string
 }) {
   const homeLogo = match.home_logo_url || teamLogoMap.get(match.home_team_id ?? '') || null
   const awayLogo = match.away_logo_url || teamLogoMap.get(match.away_team_id ?? '') || null
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+    <Link
+      to={`/partite/${match.id}`}
+      state={{ backTo: backTo ?? '..', backLabel: backLabel ?? 'Categoria' }}
+      className="block rounded-2xl border border-slate-200 bg-slate-50 p-3 transition-colors hover:border-slate-300 hover:bg-slate-100/70"
+    >
       <div className="mb-2 flex items-center justify-end gap-3">
-        <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] ${
-          match.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] ${
+          match.status === 'COMPLETED'
+            ? 'bg-emerald-100 text-emerald-700'
+            : match.status === 'IN_PROGRESS'
+              ? 'bg-amber-100 text-amber-700'
+              : match.status === 'CANCELLED' || match.status === 'POSTPONED'
+                ? 'bg-red-100 text-red-600'
+                : 'bg-slate-200 text-slate-600'
         }`}>
-          {match.status === 'COMPLETED' ? 'Finale' : 'Da giocare'}
+          {match.status === 'IN_PROGRESS' && (
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />
+          )}
+          {match.status === 'COMPLETED'
+            ? 'Finale'
+            : match.status === 'IN_PROGRESS'
+              ? 'In corso'
+              : match.status === 'CANCELLED'
+                ? 'Annullata'
+                : match.status === 'POSTPONED'
+                  ? 'Rinviata'
+                  : 'Da giocare'}
+          <span className="sr-only">{match.status === 'COMPLETED' ? 'Partita conclusa' : match.status === 'IN_PROGRESS' ? 'Partita in corso' : 'Partita da giocare'}</span>
         </span>
       </div>
 
@@ -950,7 +1010,7 @@ function PublicMatchRow({
         <p><span className="font-semibold text-slate-900">Campo:</span> {match.field_name ? `${match.field_name}${match.field_number ? ` #${match.field_number}` : ''}` : 'Da definire'}</p>
         <p><span className="font-semibold text-slate-900">Arbitro:</span> {match.referee || 'Da definire'}</p>
       </div>
-    </div>
+    </Link>
   )
 }
 
@@ -980,12 +1040,12 @@ function StandingsTable({
           <tr className="border-b border-slate-200 text-left text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
             <th className="px-3 py-3">#</th>
             <th className="px-3 py-3">Squadra</th>
-            <th className="px-3 py-3">Pt</th>
-            <th className="px-3 py-3">G</th>
-            <th className="px-3 py-3">V</th>
-            <th className="px-3 py-3">N</th>
-            <th className="px-3 py-3">P</th>
-            <th className="px-3 py-3">Diff</th>
+            <th className="px-3 py-3" title="Punti">Pt</th>
+            <th className="px-3 py-3 hidden sm:table-cell" title="Partite giocate">G</th>
+            <th className="px-3 py-3" title="Vittorie">V</th>
+            <th className="px-3 py-3 hidden sm:table-cell" title="Pareggi">N</th>
+            <th className="px-3 py-3 hidden sm:table-cell" title="Sconfitte">P</th>
+            <th className="px-3 py-3" title="Differenza punti">Diff</th>
           </tr>
         </thead>
         <tbody>
@@ -1006,10 +1066,10 @@ function StandingsTable({
                 </div>
               </td>
               <td className="px-3 py-3 font-black text-slate-950">{row.points}</td>
-              <td className="px-3 py-3 text-slate-700">{row.played}</td>
+              <td className="hidden px-3 py-3 text-slate-700 sm:table-cell">{row.played}</td>
               <td className="px-3 py-3 text-slate-700">{row.wins}</td>
-              <td className="px-3 py-3 text-slate-700">{row.draws}</td>
-              <td className="px-3 py-3 text-slate-700">{row.losses}</td>
+              <td className="hidden px-3 py-3 text-slate-700 sm:table-cell">{row.draws}</td>
+              <td className="hidden px-3 py-3 text-slate-700 sm:table-cell">{row.losses}</td>
               <td className="px-3 py-3 text-slate-700">{row.goal_diff}</td>
             </tr>
           ))}

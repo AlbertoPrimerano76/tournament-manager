@@ -1,5 +1,5 @@
-import { useParams, Link } from 'react-router-dom'
-import { useMemo, useState } from 'react'
+import { useParams, Link, useSearchParams } from 'react-router-dom'
+import { useMemo } from 'react'
 import { usePublicOrganization } from '@/api/organizations'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/api/client'
@@ -13,9 +13,18 @@ import { it } from 'date-fns/locale'
 export default function OrgPage() {
   const { orgSlug } = useParams<{ orgSlug: string }>()
   const { data: org, isLoading, error } = usePublicOrganization(orgSlug!)
-  const [search, setSearch] = useState('')
-  const [eventTypeFilter, setEventTypeFilter] = useState<'all' | Tournament['event_type']>('all')
-  const [yearFilter, setYearFilter] = useState('all')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const search = searchParams.get('q') ?? ''
+  const eventTypeFilter = (searchParams.get('type') ?? 'all') as 'all' | Tournament['event_type']
+  const yearFilter = searchParams.get('year') ?? 'all'
+
+  function setFilter(key: string, value: string) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (value === 'all' || value === '') { next.delete(key) } else { next.set(key, value) }
+      return next
+    }, { replace: true })
+  }
 
   const { data: tournaments } = useQuery({
     queryKey: ['public-org-tournaments', orgSlug],
@@ -55,6 +64,11 @@ export default function OrgPage() {
   return (
     <div className="page-shell">
       <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6">
+      <div className="mb-3">
+        <Link to="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-400 hover:text-slate-700">
+          ← Tutti gli eventi
+        </Link>
+      </div>
       <section className="surface-panel overflow-hidden border-emerald-100 bg-[linear-gradient(135deg,_#ffffff_0%,_#f7fcf8_58%,_#eefbf2_100%)]">
         <div className="p-5 sm:p-7">
           <div className="flex items-start gap-4">
@@ -96,25 +110,25 @@ export default function OrgPage() {
         </div>
       </section>
 
-      <section className="surface-panel mt-4 border-sky-100 bg-[linear-gradient(180deg,_#ffffff_0%,_#f8fbff_100%)] p-4 sm:p-5">
+      <section className="surface-panel mt-4 border-emerald-100 bg-[linear-gradient(180deg,_#ffffff_0%,_#f8fbff_100%)] p-4 sm:p-5">
         <div className="mb-4">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-sky-700/70">Eventi</p>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700/70">Eventi</p>
           <h2 className="mt-1 text-xl font-black text-slate-900">Calendario attività</h2>
         </div>
 
         <div className="mb-4 grid gap-3 md:grid-cols-3">
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => setFilter('q', e.target.value)}
             placeholder="Cerca evento"
             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
           />
-          <select value={eventTypeFilter} onChange={(e) => setEventTypeFilter(e.target.value as 'all' | Tournament['event_type'])} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
+          <select value={eventTypeFilter} onChange={(e) => setFilter('type', e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
             <option value="all">Tutti i tipi</option>
             <option value="TOURNAMENT">Tornei</option>
             <option value="GATHERING">Raggruppamenti</option>
           </select>
-          <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
+          <select value={yearFilter} onChange={(e) => setFilter('year', e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
             <option value="all">Tutti gli anni</option>
             {Array.from(new Set((tournaments ?? []).map((tournament) => String(tournament.year)))).sort((left, right) => Number(right) - Number(left)).map((year) => (
               <option key={year} value={year}>{year}</option>
@@ -141,12 +155,12 @@ export default function OrgPage() {
                       <Link
                         key={t.id}
                         to={`/tornei/${t.slug}`}
-                        className="flex items-center justify-between gap-3 rounded-[1.5rem] border border-slate-200 bg-white px-4 py-4 transition-all hover:-translate-y-0.5 hover:border-sky-200 hover:bg-sky-50/60 hover:shadow-sm"
+                        className="flex items-center justify-between gap-3 rounded-[1.5rem] border border-slate-200 bg-white px-4 py-4 transition-all hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-emerald-50/60 hover:shadow-sm"
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <p className="truncate text-base font-bold text-slate-900">{t.name}</p>
-                            <span className="rounded-full bg-sky-50 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-sky-700">
+                            <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700">
                               {EVENT_TYPE_LABELS[t.event_type]}
                             </span>
                           </div>

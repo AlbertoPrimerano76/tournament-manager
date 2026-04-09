@@ -1,13 +1,26 @@
-import { Link } from 'react-router-dom'
-import { useState } from 'react'
-import { Shield, Trophy, ArrowRight, MapPinned } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ArrowRight } from 'lucide-react'
 import { EVENT_TYPE_LABELS, useTournaments, type Tournament } from '@/api/tournaments'
 
 export default function HomePage() {
   const { data: tournaments } = useTournaments()
-  const [search, setSearch] = useState('')
-  const [eventTypeFilter, setEventTypeFilter] = useState<'all' | Tournament['event_type']>('all')
-  const [yearFilter, setYearFilter] = useState('all')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const search = searchParams.get('q') ?? ''
+  const eventTypeFilter = (searchParams.get('type') ?? 'all') as 'all' | Tournament['event_type']
+  const yearFilter = searchParams.get('year') ?? 'all'
+
+  function setFilter(key: string, value: string) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (value === 'all' || value === '') {
+        next.delete(key)
+      } else {
+        next.set(key, value)
+      }
+      return next
+    }, { replace: true })
+  }
+
   const filteredTournaments = (tournaments ?? []).filter((tournament) => {
     const matchesSearch = search.trim().length === 0
       || tournament.name.toLowerCase().includes(search.toLowerCase())
@@ -25,62 +38,13 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e9fff2_0%,_#f6f8fb_38%,_#edf2f7_100%)]">
-      <div className="mx-auto flex min-h-screen max-w-5xl flex-col justify-center px-6 py-16">
-        <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
-          <section className="relative overflow-hidden rounded-[2rem] border border-white/70 bg-[#0e3b2e] px-8 py-10 text-white shadow-[0_30px_80px_-35px_rgba(14,59,46,0.65)]">
-            <div className="absolute -right-10 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
-            <div className="absolute bottom-0 left-0 h-32 w-32 rounded-full bg-emerald-300/20 blur-2xl" />
-
-            <div className="relative z-10">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-white/75">
-                <Shield className="h-3.5 w-3.5" />
-                Gestione Tornei Rugby
-              </div>
-
-              <h1 className="mt-5 max-w-xl text-4xl font-black leading-tight sm:text-5xl">
-                Tornei, campi, risultati e organizzazione in un unico spazio.
-              </h1>
-              <p className="mt-4 max-w-xl text-sm leading-7 text-white/70 sm:text-base">
-                Portale pubblico per seguire i tornei e area amministrativa per gestire società,
-                squadre, campi di gioco e pubblicazione delle informazioni.
-              </p>
-
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Link
-                  to="/admin"
-                  className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-[#0e3b2e] transition-transform hover:-translate-y-0.5"
-                >
-                  Apri area amministrativa
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </div>
-            </div>
-          </section>
-
-          <section className="grid gap-4">
-            <InfoCard
-              icon={<Trophy className="h-5 w-5" />}
-              title="Pagine torneo più complete"
-              text="Categorie, descrizione, mappa generale e ora anche elenco campi con indirizzo, foto e Google Maps."
-            />
-            <InfoCard
-              icon={<MapPinned className="h-5 w-5" />}
-              title="Campi per ogni torneo"
-              text="Ogni torneo può avere più campi configurati direttamente dal pannello amministrativo."
-            />
-            <InfoCard
-              icon={<Shield className="h-5 w-5" />}
-              title="Area amministrativa più ordinata"
-              text="Le sezioni admin sono state rese più chiare, leggibili e visivamente coerenti."
-            />
-          </section>
-        </div>
-
-        <section className="mt-8 rounded-[1.8rem] border border-white/70 bg-white/85 p-6 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.45)] backdrop-blur">
+      <div className="mx-auto max-w-5xl px-6 py-10">
+        {/* Events list — primary content for public visitors */}
+        <section className="rounded-[1.8rem] border border-white/70 bg-white/85 p-6 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.45)] backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">Eventi attivi</p>
-              <h2 className="mt-1 text-2xl font-black text-slate-950">Apri una società e i suoi eventi</h2>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">Tornei &amp; Raggruppamenti</p>
+              <h1 className="mt-1 text-2xl font-black text-slate-950">Trova il tuo evento</h1>
             </div>
           </div>
 
@@ -88,16 +52,16 @@ export default function HomePage() {
             <div className="grid gap-3 md:grid-cols-3">
               <input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => setFilter('q', e.target.value)}
                 placeholder="Cerca società o evento"
                 className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
               />
-              <select value={eventTypeFilter} onChange={(e) => setEventTypeFilter(e.target.value as 'all' | Tournament['event_type'])} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
+              <select value={eventTypeFilter} onChange={(e) => setFilter('type', e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
                 <option value="all">Tutti i tipi</option>
                 <option value="TOURNAMENT">Tornei</option>
                 <option value="GATHERING">Raggruppamenti</option>
               </select>
-              <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
+              <select value={yearFilter} onChange={(e) => setFilter('year', e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900">
                 <option value="all">Tutti gli anni</option>
                 {Array.from(new Set((tournaments ?? []).map((tournament) => String(tournament.year)))).sort((left, right) => Number(right) - Number(left)).map((year) => (
                   <option key={year} value={year}>{year}</option>
@@ -149,27 +113,23 @@ export default function HomePage() {
             )}
           </div>
         </section>
+
+        {/* Platform info — secondary, for organisers */}
+        <div className="mt-6 flex flex-col items-center gap-3 rounded-[1.4rem] border border-white/60 bg-[#0e3b2e]/90 px-6 py-5 text-center sm:flex-row sm:text-left">
+          <div className="flex-1">
+            <p className="text-sm font-bold text-white">Sei un organizzatore?</p>
+            <p className="mt-0.5 text-xs text-white/60">Gestisci tornei, squadre e campi dall'area amministrativa.</p>
+          </div>
+          <Link
+            to="/admin"
+            className="inline-flex shrink-0 items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-[#0e3b2e] transition-transform hover:-translate-y-0.5"
+          >
+            Area amministrativa
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
       </div>
     </div>
   )
 }
 
-function InfoCard({
-  icon,
-  title,
-  text,
-}: {
-  icon: React.ReactNode
-  title: string
-  text: string
-}) {
-  return (
-    <div className="rounded-[1.5rem] border border-white/70 bg-white/80 p-5 shadow-[0_20px_60px_-40px_rgba(15,23,42,0.45)] backdrop-blur">
-      <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
-        {icon}
-      </div>
-      <h2 className="mt-4 text-lg font-bold text-slate-900">{title}</h2>
-      <p className="mt-2 text-sm leading-6 text-slate-600">{text}</p>
-    </div>
-  )
-}

@@ -899,7 +899,10 @@ def _is_final_phase_config(phases_config: list[dict[str, Any]], phase_order: int
         return False
 
     next_phase_type = phase_config.get("next_phase_type")
-    return not (isinstance(next_phase_type, str) and next_phase_type)
+    if isinstance(next_phase_type, str) and next_phase_type:
+        return False
+
+    return True
 
 
 async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> TournamentAgeGroup:

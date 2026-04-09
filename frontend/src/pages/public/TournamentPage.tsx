@@ -35,6 +35,16 @@ export default function TournamentPage() {
   return (
     <div className="page-shell" style={theme.pageStyle}>
       <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6">
+      {tournament.organization_slug && (
+        <div className="mb-3">
+          <Link
+            to={`/${tournament.organization_slug}`}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-400 hover:text-slate-700"
+          >
+            ← {tournament.organization_name ?? 'Società'}
+          </Link>
+        </div>
+      )}
       <section className="surface-panel relative overflow-hidden" style={{ borderColor: theme.softBorder, background: theme.heroSurface }}>
         {heroMedia && (
           <>
@@ -361,10 +371,14 @@ function sortAgeGroupsAsc(left: string, right: string) {
 
 function getAgeGroupCardStyle(theme: ReturnType<typeof getTournamentTheme>, ageGroup: string) {
   const paletteMap: Record<string, { accent: string; glow: string; tint: string; badge: string }> = {
-    U6: { accent: '#22c55e', glow: 'rgba(34,197,94,0.14)', tint: 'rgba(34,197,94,0.12)', badge: '#16a34a' },
-    U8: { accent: '#0ea5e9', glow: 'rgba(14,165,233,0.14)', tint: 'rgba(14,165,233,0.12)', badge: '#0284c7' },
-    U10: { accent: '#f59e0b', glow: 'rgba(245,158,11,0.14)', tint: 'rgba(245,158,11,0.12)', badge: '#d97706' },
-    U12: { accent: '#8b5cf6', glow: 'rgba(139,92,246,0.14)', tint: 'rgba(139,92,246,0.12)', badge: '#7c3aed' },
+    U6:  { accent: '#22c55e', glow: 'rgba(34,197,94,0.14)',   tint: 'rgba(34,197,94,0.12)',   badge: '#16a34a' },
+    U8:  { accent: '#0ea5e9', glow: 'rgba(14,165,233,0.14)',  tint: 'rgba(14,165,233,0.12)',  badge: '#0284c7' },
+    U10: { accent: '#f59e0b', glow: 'rgba(245,158,11,0.14)',  tint: 'rgba(245,158,11,0.12)',  badge: '#d97706' },
+    U12: { accent: '#8b5cf6', glow: 'rgba(139,92,246,0.14)',  tint: 'rgba(139,92,246,0.12)',  badge: '#7c3aed' },
+    U14: { accent: '#ec4899', glow: 'rgba(236,72,153,0.14)',  tint: 'rgba(236,72,153,0.12)',  badge: '#db2777' },
+    U16: { accent: '#f97316', glow: 'rgba(249,115,22,0.14)',  tint: 'rgba(249,115,22,0.12)',  badge: '#ea580c' },
+    U18: { accent: '#06b6d4', glow: 'rgba(6,182,212,0.14)',   tint: 'rgba(6,182,212,0.12)',   badge: '#0891b2' },
+    U20: { accent: '#64748b', glow: 'rgba(100,116,139,0.14)', tint: 'rgba(100,116,139,0.12)', badge: '#475569' },
   }
   const palette = paletteMap[ageGroup] ?? { accent: theme.accent, glow: `${theme.accent}22`, tint: `${theme.accent}12`, badge: theme.primary }
   return {

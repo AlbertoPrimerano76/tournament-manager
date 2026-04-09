@@ -114,6 +114,10 @@ export interface Match {
   away_tries: number | null
   referee: string | null
   notes: string | null
+  home_label: string | null
+  away_label: string | null
+  home_logo_url: string | null
+  away_logo_url: string | null
 }
 
 export interface ProgramTeamSlot {
@@ -315,6 +319,16 @@ export function useAgeGroupParticipants(ageGroupId: string) {
   })
 }
 
+function hasLiveMatches(program: AgeGroupProgram): boolean {
+  return program.days.some((day) =>
+    day.phases.some((phase) =>
+      [...phase.groups.flatMap((g) => g.matches), ...phase.knockout_matches].some(
+        (m) => m.status === 'IN_PROGRESS',
+      ),
+    ),
+  )
+}
+
 export function useAgeGroupProgram(ageGroupId: string) {
   return useQuery({
     queryKey: ['age-group-program', ageGroupId],
@@ -323,6 +337,7 @@ export function useAgeGroupProgram(ageGroupId: string) {
       return res.data
     },
     enabled: !!ageGroupId,
+    refetchInterval: (query) => (query.state.data && hasLiveMatches(query.state.data) ? 30_000 : false),
   })
 }
 
@@ -334,6 +349,7 @@ export function useAgeGroupStandings(ageGroupId: string) {
       return res.data
     },
     enabled: !!ageGroupId,
+    refetchInterval: 30_000,
   })
 }
 
@@ -393,6 +409,7 @@ export function useMatch(matchId: string) {
       return res.data
     },
     enabled: !!matchId,
+    refetchInterval: (query) => (query.state.data?.status === 'IN_PROGRESS' ? 15_000 : false),
   })
 }
 

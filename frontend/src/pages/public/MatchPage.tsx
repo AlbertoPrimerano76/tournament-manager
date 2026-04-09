@@ -1,79 +1,174 @@
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useLocation } from 'react-router-dom'
 import { useMatch } from '@/api/tournaments'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import ErrorMessage from '@/components/shared/ErrorMessage'
-import { ArrowLeft, Clock, MapPin, User } from 'lucide-react'
-import { format } from 'date-fns'
+import { ArrowLeft, Clock, MapPin, User, Share2 } from 'lucide-react'
+import { format, formatDistanceToNow, isFuture } from 'date-fns'
 import { it } from 'date-fns/locale'
 
 const statusLabels: Record<string, string> = {
   SCHEDULED: 'Programmata',
   IN_PROGRESS: 'In corso',
-  COMPLETED: 'Completata',
+  COMPLETED: 'Finale',
   CANCELLED: 'Cancellata',
   POSTPONED: 'Rinviata',
 }
 
+const statusColors: Record<string, string> = {
+  SCHEDULED: 'bg-slate-100 text-slate-600',
+  IN_PROGRESS: 'bg-amber-100 text-amber-700',
+  COMPLETED: 'bg-emerald-100 text-emerald-700',
+  CANCELLED: 'bg-red-100 text-red-700',
+  POSTPONED: 'bg-orange-100 text-orange-700',
+}
+
 export default function MatchPage() {
   const { matchId } = useParams<{ matchId: string }>()
+  const location = useLocation()
+  const backLabel: string = (location.state as { backLabel?: string } | null)?.backLabel ?? 'Categoria'
+  const backTo: string = (location.state as { backTo?: string } | null)?.backTo ?? '..'
+
   const { data: match, isLoading, error } = useMatch(matchId!)
 
   if (isLoading) return <LoadingSpinner className="py-16" />
   if (error) return <ErrorMessage message="Partita non trovata" />
   if (!match) return null
 
+  const homeLabel = match.home_label ?? 'Squadra A'
+  const awayLabel = match.away_label ?? 'Squadra B'
+  const isScheduled = match.status === 'SCHEDULED' || match.status === 'POSTPONED'
+  const isCompleted = match.status === 'COMPLETED'
+
+  const countdown =
+    isScheduled && match.scheduled_at && isFuture(new Date(match.scheduled_at))
+      ? formatDistanceToNow(new Date(match.scheduled_at), { locale: it, addSuffix: false })
+      : null
+
+  function handleShare() {
+    if (navigator.share) {
+      navigator.share({
+        title: `${homeLabel} vs ${awayLabel}`,
+        text: isCompleted
+          ? `${homeLabel} ${match.home_score} – ${match.away_score} ${awayLabel}`
+          : `${homeLabel} vs ${awayLabel}`,
+        url: window.location.href,
+      }).catch(() => {/* dismissed */})
+    } else {
+      navigator.clipboard?.writeText(window.location.href)
+    }
+  }
+
   return (
-    <div className="max-w-lg mx-auto">
-      <div className="bg-rugby-green text-white px-4 pt-4 pb-8">
-        <Link to=".." className="flex items-center gap-1 text-white/70 text-sm mb-4">
-          <ArrowLeft className="h-4 w-4" />
-          Indietro
-        </Link>
+    <div className="mx-auto max-w-lg px-4 py-4">
+      {/* Back nav */}
+      <Link
+        to={backTo}
+        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        {backLabel}
+      </Link>
 
-        {match.bracket_round && (
-          <p className="text-white/70 text-xs uppercase tracking-wider mb-2">{match.bracket_round}</p>
-        )}
-
-        {/* Score display */}
-        <div className="grid grid-cols-3 items-center gap-4 py-4">
-          <p className="text-center font-bold text-lg">
-            {match.home_team_id ? match.home_team_id.slice(0, 8) : 'TBD'}
-          </p>
-          <div className="text-center">
-            {match.status === 'COMPLETED' ? (
-              <div className="text-4xl font-black">
-                {match.home_score} – {match.away_score}
-              </div>
-            ) : (
-              <div className="text-white/70 font-medium">vs</div>
+      {/* Match card */}
+      <div className="overflow-hidden rounded-[1.6rem] border border-slate-200 bg-white shadow-sm">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+          <div className="flex items-center gap-2">
+            {match.bracket_round && (
+              <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+                {match.bracket_round}
+              </span>
             )}
-            <p className="text-xs text-white/60 mt-1">{statusLabels[match.status] || match.status}</p>
           </div>
-          <p className="text-center font-bold text-lg">
-            {match.away_team_id ? match.away_team_id.slice(0, 8) : 'TBD'}
-          </p>
+          <div className="flex items-center gap-2">
+            <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] ${statusColors[match.status] ?? statusColors.SCHEDULED}`}>
+              {statusLabels[match.status] ?? match.status}
+            </span>
+            <button
+              onClick={handleShare}
+              className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              title="Condividi partita"
+            >
+              <Share2 className="h-4 w-4" />
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* Details */}
-      <div className="px-4 py-4 space-y-3">
-        {match.scheduled_at && (
-          <DetailRow icon={<Clock className="h-4 w-4" />} label="Orario">
-            {format(new Date(match.scheduled_at), "EEEE d MMMM yyyy, HH:mm", { locale: it })}
-          </DetailRow>
-        )}
-        {match.field_name && (
-          <DetailRow icon={<MapPin className="h-4 w-4" />} label="Campo">
-            {match.field_name}{match.field_number ? ` — Campo ${match.field_number}` : ''}
-          </DetailRow>
-        )}
-        {match.referee && (
-          <DetailRow icon={<User className="h-4 w-4" />} label="Arbitro">
-            {match.referee}
-          </DetailRow>
-        )}
+        {/* Score section */}
+        <div className="px-5 py-6">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+            {/* Home team */}
+            <div className="flex flex-col items-center gap-2 text-center">
+              {match.home_logo_url && (
+                <img
+                  src={match.home_logo_url}
+                  alt={homeLabel}
+                  className="h-12 w-12 rounded-full border border-slate-100 object-contain"
+                />
+              )}
+              <p className="text-sm font-bold leading-tight text-slate-900">{homeLabel}</p>
+            </div>
+
+            {/* Score / vs */}
+            <div className="flex flex-col items-center gap-1">
+              {isCompleted ? (
+                <div className="text-4xl font-black tabular-nums text-slate-950">
+                  {match.home_score} <span className="font-light text-slate-400">–</span> {match.away_score}
+                </div>
+              ) : (
+                <div className="text-2xl font-black text-slate-300">vs</div>
+              )}
+              {countdown && (
+                <p className="mt-1 text-center text-xs text-slate-400">
+                  tra {countdown}
+                </p>
+              )}
+            </div>
+
+            {/* Away team */}
+            <div className="flex flex-col items-center gap-2 text-center">
+              {match.away_logo_url && (
+                <img
+                  src={match.away_logo_url}
+                  alt={awayLabel}
+                  className="h-12 w-12 rounded-full border border-slate-100 object-contain"
+                />
+              )}
+              <p className="text-sm font-bold leading-tight text-slate-900">{awayLabel}</p>
+            </div>
+          </div>
+
+          {/* Tries row */}
+          {isCompleted && (match.home_tries != null || match.away_tries != null) && (
+            <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-center text-xs text-slate-400">
+              <span>{match.home_tries ?? 0} mete</span>
+              <span className="font-medium text-slate-300">mete</span>
+              <span>{match.away_tries ?? 0} mete</span>
+            </div>
+          )}
+        </div>
+
+        {/* Details */}
+        <div className="border-t border-slate-100 px-5 py-4 space-y-3">
+          {match.scheduled_at && (
+            <DetailRow icon={<Clock className="h-4 w-4" />} label="Orario">
+              {format(new Date(match.scheduled_at), "EEEE d MMMM yyyy, HH:mm", { locale: it })}
+            </DetailRow>
+          )}
+          {match.field_name && (
+            <DetailRow icon={<MapPin className="h-4 w-4" />} label="Campo">
+              {match.field_name}{match.field_number ? ` — Campo ${match.field_number}` : ''}
+            </DetailRow>
+          )}
+          {match.referee && (
+            <DetailRow icon={<User className="h-4 w-4" />} label="Arbitro">
+              {match.referee}
+            </DetailRow>
+          )}
+        </div>
+
         {match.notes && (
-          <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-3 text-sm text-yellow-800">
+          <div className="border-t border-yellow-100 bg-yellow-50 px-5 py-3 text-sm text-yellow-800">
             {match.notes}
           </div>
         )}
@@ -84,11 +179,11 @@ export default function MatchPage() {
 
 function DetailRow({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-3 py-3 border-b border-gray-100">
-      <span className="text-rugby-green mt-0.5">{icon}</span>
+    <div className="flex items-start gap-3">
+      <span className="mt-0.5 text-slate-400">{icon}</span>
       <div>
-        <p className="text-xs text-gray-400 font-medium">{label}</p>
-        <p className="text-sm text-gray-900 mt-0.5">{children}</p>
+        <p className="text-xs font-medium text-slate-400">{label}</p>
+        <p className="mt-0.5 text-sm text-slate-900">{children}</p>
       </div>
     </div>
   )

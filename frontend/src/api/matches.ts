@@ -1,6 +1,35 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { Match } from './tournaments'
+
+export interface TodayMatchItem {
+  id: string
+  tournament_id: string
+  tournament_name: string
+  age_group_id: string
+  age_group_name: string
+  scheduled_at: string | null
+  field_name: string | null
+  field_number: number | null
+  status: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'BYE'
+  home_label: string | null
+  away_label: string | null
+  home_score: number | null
+  away_score: number | null
+  home_tries: number | null
+  away_tries: number | null
+}
+
+export function useTodayMatches() {
+  return useQuery({
+    queryKey: ['today-matches'],
+    queryFn: async () => {
+      const res = await apiClient.get<TodayMatchItem[]>('/api/v1/admin/matches/today')
+      return res.data
+    },
+    refetchInterval: 30_000,
+  })
+}
 
 export interface ScoreEntry {
   home_score?: number | null

@@ -1,4 +1,4 @@
-import { Calendar, Clock3, Trophy, Building2, CheckCircle2, ArrowRight, BookOpen } from 'lucide-react'
+import { Calendar, Clock3, Trophy, Building2, CheckCircle2, ArrowRight, BookOpen, Radio } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
@@ -14,6 +14,8 @@ export default function DashboardPage() {
   }
 
   const isScoreKeeper = user.role === 'SCORE_KEEPER'
+  const liveMatches = data.live_matches ?? []
+
   return (
     <div className="space-y-6">
       <section className="overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-[0_30px_80px_-48px_rgba(15,23,42,0.45)]">
@@ -48,6 +50,44 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
+
+      {liveMatches.length > 0 && (
+        <section className="rounded-[1.7rem] border border-amber-200 bg-amber-50 p-6 shadow-[0_24px_60px_-44px_rgba(15,23,42,0.2)]">
+          <div className="mb-4 flex items-center gap-2">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
+            </span>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-700/80">Live</p>
+            <Radio className="h-3.5 w-3.5 text-amber-600" />
+            <span className="ml-auto text-xs font-semibold text-amber-700">{liveMatches.length} {liveMatches.length === 1 ? 'partita in corso' : 'partite in corso'}</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {liveMatches.map((match) => (
+              <Link
+                key={match.match_id}
+                to={`/admin/tornei/${match.tournament_id}/gestione`}
+                className="flex flex-col gap-2 rounded-[1.2rem] border border-amber-200 bg-white px-4 py-3 transition-colors hover:border-amber-300 hover:bg-amber-50/60"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-[11px] font-bold uppercase tracking-[0.14em] text-amber-700">{match.tournament_name} · {match.age_group_name}</span>
+                  {match.field_number != null && (
+                    <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">Campo {match.field_number}</span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">{match.home_label}</span>
+                  <span className="shrink-0 rounded-lg bg-slate-900 px-3 py-1 text-sm font-black tabular-nums text-white">
+                    {match.home_score ?? '–'} – {match.away_score ?? '–'}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-right text-sm font-semibold text-slate-900">{match.away_label}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
       {isScoreKeeper ? (
         <>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">

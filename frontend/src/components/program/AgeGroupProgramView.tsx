@@ -1214,6 +1214,7 @@ function ProgramMatchCard({
               {adminVariant === 'results' ? (
                 <input
                   type="number"
+                  inputMode="numeric"
                   min="0"
                   value={homeScore}
                   onChange={(e) => setHomeScore(e.target.value)}
@@ -1226,6 +1227,7 @@ function ProgramMatchCard({
               {adminVariant === 'results' ? (
                 <input
                   type="number"
+                  inputMode="numeric"
                   min="0"
                   value={awayScore}
                   onChange={(e) => setAwayScore(e.target.value)}
@@ -1470,6 +1472,7 @@ function ProgramMatchCard({
                 Punti casa
                 <input
                   type="number"
+                  inputMode="numeric"
                   min="0"
                   value={homeScore}
                   onChange={(e) => setHomeScore(e.target.value)}
@@ -1480,6 +1483,7 @@ function ProgramMatchCard({
                 Punti ospite
                 <input
                   type="number"
+                  inputMode="numeric"
                   min="0"
                   value={awayScore}
                   onChange={(e) => setAwayScore(e.target.value)}
@@ -1490,6 +1494,7 @@ function ProgramMatchCard({
                 Mete casa
                 <input
                   type="number"
+                  inputMode="numeric"
                   min="0"
                   value={homeTries}
                   onChange={(e) => setHomeTries(e.target.value)}
@@ -1500,6 +1505,7 @@ function ProgramMatchCard({
                 Mete ospite
                 <input
                   type="number"
+                  inputMode="numeric"
                   min="0"
                   value={awayTries}
                   onChange={(e) => setAwayTries(e.target.value)}

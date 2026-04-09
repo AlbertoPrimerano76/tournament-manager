@@ -57,6 +57,7 @@ export default function App() {
               <Route path="tornei/nuovo" element={<TournamentsAdminPage />} />
               <Route path="tornei/:tournamentId/modifica" element={<TournamentsAdminPage />} />
               <Route path="tornei/:tournamentId/gestione" element={<TournamentsAdminPage />} />
+              <Route path="tornei/:tournamentId/calendario" element={<TournamentsAdminPage />} />
               <Route path="tornei/:tournamentId/categorie/:ageGroupId/gestione" element={<TournamentsAdminPage />} />
               <Route path="tornei/:tournamentId/categorie/:ageGroupId" element={<TournamentsAdminPage />} />
               <Route path="societa" element={<OrganizationsAdminPage />} />

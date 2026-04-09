@@ -7,9 +7,11 @@ from app.core.database import get_db
 from app.core.deps import require_editor, require_scorer, ensure_match_access
 from app.models.match import Match, MatchStatus
 from app.models.phase import Phase
+from app.models.team import TournamentTeam
 from app.models.tournament import TournamentAgeGroup
-from app.models.user import User
-from app.schemas.match import MatchCreate, MatchUpdate, MatchResponse, MatchScheduleUpdate, ScoreEntry, BulkGroupScheduleUpdate
+from app.models.user import User, UserRole
+from app.models.user_tournament_assignment import UserTournamentAssignment
+from app.schemas.match import MatchCreate, MatchUpdate, MatchResponse, MatchScheduleUpdate, ScoreEntry, BulkGroupScheduleUpdate, TodayMatchItem
 
 router = APIRouter()
 
@@ -92,6 +94,70 @@ async def _normalize_field_schedule(
             match.actual_end_at = match.actual_end_at + shift
         shifted_end = _match_end(match)
         cursor_end = shifted_end or cursor_end
+
+
+@router.get("/matches/today", response_model=list[TodayMatchItem])
+async def get_today_matches(
+    user: User = Depends(require_scorer),
+    db: AsyncSession = Depends(get_db),
+):
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = today_start + timedelta(days=1)
+
+    query = (
+        select(Match)
+        .options(
+            selectinload(Match.phase)
+            .selectinload(Phase.tournament_age_group)
+            .selectinload(TournamentAgeGroup.tournament),
+            selectinload(Match.home_team).selectinload(TournamentTeam.team),
+            selectinload(Match.away_team).selectinload(TournamentTeam.team),
+        )
+        .where(
+            Match.scheduled_at >= today_start,
+            Match.scheduled_at < today_end,
+        )
+        .order_by(
+            Match.field_number.asc().nulls_last(),
+            Match.scheduled_at.asc().nulls_last(),
+        )
+    )
+
+    if user.role == UserRole.SCORE_KEEPER:
+        query = (
+            query
+            .join(Phase, Phase.id == Match.phase_id)
+            .join(TournamentAgeGroup, TournamentAgeGroup.id == Phase.tournament_age_group_id)
+            .join(UserTournamentAssignment, UserTournamentAssignment.tournament_id == TournamentAgeGroup.tournament_id)
+            .where(UserTournamentAssignment.user_id == user.id)
+        )
+
+    result = await db.execute(query)
+    matches = result.scalars().unique().all()
+
+    items = []
+    for match in matches:
+        age_group = match.phase.tournament_age_group if match.phase else None
+        tournament = age_group.tournament if age_group else None
+        items.append(TodayMatchItem(
+            id=match.id,
+            tournament_id=tournament.id if tournament else "",
+            tournament_name=tournament.name if tournament else "",
+            age_group_id=age_group.id if age_group else "",
+            age_group_name=(age_group.display_name or age_group.age_group) if age_group else "",
+            scheduled_at=match.scheduled_at,
+            field_name=match.field_name,
+            field_number=match.field_number,
+            status=match.status,
+            home_label=match.home_team.team.name if match.home_team and match.home_team.team else None,
+            away_label=match.away_team.team.name if match.away_team and match.away_team.team else None,
+            home_score=match.home_score,
+            away_score=match.away_score,
+            home_tries=match.home_tries,
+            away_tries=match.away_tries,
+        ))
+
+    return items
 
 
 @router.post("/matches", response_model=MatchResponse, status_code=201)
