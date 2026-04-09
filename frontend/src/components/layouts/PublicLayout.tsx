@@ -28,12 +28,6 @@ export default function PublicLayout() {
             </Link>
 
             <div className="flex items-center gap-2">
-              <Link
-                to="/admin"
-                className="hidden sm:inline-flex shrink-0 items-center rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100"
-              >
-                Area amministrativa
-              </Link>
               <button
                 aria-label={mobileOpen ? 'Chiudi menu' : 'Apri menu'}
                 onClick={() => setMobileOpen((v) => !v)}
@@ -108,13 +102,6 @@ export default function PublicLayout() {
                   Sito società
                 </a>
               )}
-              <Link
-                to="/admin"
-                onClick={() => setMobileOpen(false)}
-                className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800"
-              >
-                Area amministrativa
-              </Link>
             </nav>
           </div>
         )}

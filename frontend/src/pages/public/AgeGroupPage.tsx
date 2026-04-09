@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ChevronLeft, ExternalLink } from 'lucide-react'
+import { ChevronLeft, ExternalLink, Star } from 'lucide-react'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
 import {
@@ -123,6 +123,7 @@ export default function AgeGroupPage() {
     if (rankingPhase) {
       return {
         phaseName: rankingPhase.name,
+        isProvisional: false,
         rows: standings?.[rankingPhase.id]?.final_ranking ?? [],
       }
     }
@@ -130,14 +131,18 @@ export default function AgeGroupPage() {
     const finalGroupPhase = [...visiblePhases].reverse().find((phase) => (
       phase.phase_type === 'GROUP_STAGE'
       && standings?.[phase.id]?.is_final_phase
-      && phase.groups.some((group) => group.matches.length > 0 && group.matches.every((match) => match.status === 'COMPLETED'))
+      && phase.groups.some((group) => group.matches.some((match) => match.status === 'COMPLETED'))
     ))
     if (!finalGroupPhase) return null
 
     const rows = finalGroupPhase.groups.flatMap((group) => standings?.[finalGroupPhase.id]?.groups?.[group.id] ?? [])
     if (rows.length === 0) return null
+    const allComplete = finalGroupPhase.groups.every((group) =>
+      group.matches.length > 0 && group.matches.every((match) => match.status === 'COMPLETED'),
+    )
     return {
       phaseName: finalGroupPhase.name,
+      isProvisional: !allComplete,
       rows: rows.map((row, index) => ({
         position: index + 1,
         team_id: row.team_id,
@@ -1040,9 +1045,14 @@ export default function AgeGroupPage() {
 
       {publicFinalRanking && (
         <section className="mt-4 rounded-[1.8rem] border p-5 shadow-sm" style={{ borderColor: theme.softBorder, background: theme.contentSurface }}>
-          <div className="mb-4">
-            <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.primaryMuted }}>Classifica finale</p>
-            <h2 className="mt-1 text-xl font-black text-slate-950">{publicFinalRanking.phaseName}</h2>
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.primaryMuted }}>Classifica finale</p>
+              <h2 className="mt-1 text-xl font-black text-slate-950">{publicFinalRanking.phaseName}</h2>
+            </div>
+            {publicFinalRanking.isProvisional && (
+              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold uppercase tracking-widest2 text-amber-700">Provvisoria</span>
+            )}
           </div>
           <div className="mb-4">
             <PodiumGrid rows={publicFinalRanking.rows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} />
@@ -1067,7 +1077,7 @@ export default function AgeGroupPage() {
                         <TeamLogo src={teamLogoMap.get(row.team_id ?? '')} alt={row.team_name || teamNameMap.get(row.team_id ?? '') || 'Squadra'} />
                         <span>{row.team_name || teamNameMap.get(row.team_id ?? '') || 'Da definire'}</span>
                         {row.team_id && row.team_id === activeTeamId ? (
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-800">La tua</span>
+                          <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" aria-label="La tua squadra" />
                         ) : null}
                       </div>
                     </td>

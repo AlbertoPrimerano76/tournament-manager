@@ -3077,34 +3077,17 @@ function AgeGroupConfigurationPanel({
                 </div>
 
                 <div className="mt-4 rounded-[1.25rem] border border-slate-200 bg-white p-4">
-                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-                    <FormField label="Mappa dedicata categoria" hint="Link esterno">
-                      <input
-                        type="url"
-                        value={fieldMapUrl}
-                        onChange={(e) => setFieldMapUrl(e.target.value)}
-                        placeholder="https://..."
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900"
-                      />
-                    </FormField>
-                    {fieldMapUrl.trim() ? (
-                      <a
-                        href={fieldMapUrl.trim()}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                        Apri mappa
-                      </a>
-                    ) : (
-                      <div className="rounded-xl border border-dashed border-slate-200 px-4 py-2.5 text-sm text-slate-500">
-                        Nessuna mappa dedicata impostata
-                      </div>
-                    )}
-                  </div>
+                  <ImageUpload
+                    label="Mappa dedicata categoria"
+                    value={fieldMapUrl}
+                    onChange={(v) => setFieldMapUrl(v)}
+                    folder="maps"
+                    maxDim={2000}
+                    preview="wide"
+                    placeholder="Carica immagine mappa o incolla link"
+                  />
                   <p className="mt-3 text-sm text-slate-600">
-                    Questo link comparirà nella pagina pubblica accanto a <span className="font-semibold text-slate-900">Impianti della categoria</span>.
+                    Questa immagine comparirà nella pagina pubblica accanto a <span className="font-semibold text-slate-900">Impianti della categoria</span>.
                   </p>
                 </div>
 
