@@ -2,13 +2,96 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.core.deps import require_editor, require_scorer, ensure_match_access
 from app.models.match import Match, MatchStatus
+from app.models.phase import Phase
+from app.models.tournament import TournamentAgeGroup
 from app.models.user import User
 from app.schemas.match import MatchCreate, MatchUpdate, MatchResponse, MatchScheduleUpdate, ScoreEntry, BulkGroupScheduleUpdate
 
 router = APIRouter()
+
+
+def _match_has_locked_result(match: Match) -> bool:
+    return (
+        match.home_score is not None
+        or match.away_score is not None
+        or match.home_tries is not None
+        or match.away_tries is not None
+        or match.status == MatchStatus.COMPLETED
+    )
+
+
+def _match_slot_duration(match: Match) -> timedelta:
+    age_group = match.phase.tournament_age_group if match.phase else None
+    structure = age_group.structure_config if age_group and isinstance(age_group.structure_config, dict) else {}
+    schedule = structure.get("schedule", {}) if isinstance(structure.get("schedule"), dict) else {}
+    duration = int(schedule.get("match_duration_minutes") or 12)
+    interval = int(schedule.get("interval_minutes") or 8)
+    return timedelta(minutes=max(duration, 1) + max(interval, 0))
+
+
+def _match_end(match: Match) -> datetime | None:
+    if not match.scheduled_at:
+        return None
+    if match.actual_end_at and match.actual_end_at > match.scheduled_at:
+        return match.actual_end_at
+    return match.scheduled_at + _match_slot_duration(match)
+
+
+async def _normalize_field_schedule(
+    db: AsyncSession,
+    *,
+    field_name: str | None,
+    field_number: int | None,
+    anchor_match_id: str | None = None,
+) -> None:
+    if not field_name:
+        return
+
+    result = await db.execute(
+        select(Match)
+        .options(selectinload(Match.phase).selectinload(Phase.tournament_age_group))
+        .where(
+            Match.field_name == field_name,
+            Match.field_number == field_number,
+            Match.scheduled_at.is_not(None),
+        )
+        .order_by(Match.scheduled_at.asc(), Match.id.asc())
+    )
+    matches = result.scalars().all()
+    if not matches:
+        return
+
+    cursor_end: datetime | None = None
+    for match in matches:
+        if not match.scheduled_at:
+            continue
+
+        match_end = _match_end(match)
+        if match_end is None:
+            continue
+
+        if cursor_end is None:
+            cursor_end = match_end
+            continue
+
+        if match.scheduled_at >= cursor_end:
+            cursor_end = match_end
+            continue
+
+        if _match_has_locked_result(match):
+            cursor_end = max(cursor_end, match_end)
+            continue
+
+        shift = cursor_end - match.scheduled_at
+        match.scheduled_at = cursor_end
+        if match.actual_end_at:
+            match.actual_end_at = match.actual_end_at + shift
+        shifted_end = _match_end(match)
+        cursor_end = shifted_end or cursor_end
 
 
 @router.post("/matches", response_model=MatchResponse, status_code=201)
@@ -50,7 +133,11 @@ async def update_match_schedule(
     _: User = Depends(require_editor),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Match).where(Match.id == match_id))
+    result = await db.execute(
+        select(Match)
+        .options(selectinload(Match.phase).selectinload(Phase.tournament_age_group))
+        .where(Match.id == match_id)
+    )
     match = result.scalar_one_or_none()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -99,6 +186,19 @@ async def update_match_schedule(
         for future_match in future_matches:
             if future_match.scheduled_at:
                 future_match.scheduled_at = future_match.scheduled_at + delay
+
+    await _normalize_field_schedule(
+        db,
+        field_name=match.field_name,
+        field_number=match.field_number,
+        anchor_match_id=match.id,
+    )
+    if previous_field_name and (previous_field_name != match.field_name or previous_field_number != match.field_number):
+        await _normalize_field_schedule(
+            db,
+            field_name=previous_field_name,
+            field_number=previous_field_number,
+        )
 
     await db.commit()
     await db.refresh(match)

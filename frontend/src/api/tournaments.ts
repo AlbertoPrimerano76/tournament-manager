@@ -183,6 +183,7 @@ export interface AgeGroupProgram {
   display_name: string | null
   participant_count: number
   expected_teams: number | null
+  hide_future_phases_until_complete: boolean
   generated: boolean
   days: ProgramDay[]
 }

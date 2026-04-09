@@ -1770,9 +1770,10 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
 
     days: list[ProgramDayResponse] = []
     for day_key, phases in sorted(phase_days.items(), key=lambda item: item[0]):
-        date_value = phases[0].scheduled_date
+        sorted_phases = sorted(phases, key=_program_phase_sort_key)
+        date_value = sorted_phases[0].scheduled_date
         label = date_value.strftime("%d/%m/%Y") if date_value else "Da definire"
-        days.append(ProgramDayResponse(date=date_value, label=label, phases=phases))
+        days.append(ProgramDayResponse(date=date_value, label=label, phases=sorted_phases))
 
     expected_teams = None
     if age_group.structure_config and isinstance(age_group.structure_config, dict):
@@ -1785,9 +1786,25 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
         display_name=age_group.display_name,
         participant_count=len(age_group.tournament_teams),
         expected_teams=expected_teams,
+        hide_future_phases_until_complete=bool(((structure.get("schedule") or {}) if isinstance(structure.get("schedule"), dict) else {}).get("hide_future_phases_until_complete")),
         generated=len(age_group.phases) > 0,
         days=days,
     )
+
+
+def _program_phase_sort_key(phase: ProgramPhaseResponse) -> tuple[datetime, int, str]:
+    scheduled_values = [
+        match.scheduled_at
+        for group in phase.groups
+        for match in group.matches
+        if match.scheduled_at
+    ] + [
+        match.scheduled_at
+        for match in phase.knockout_matches
+        if match.scheduled_at
+    ]
+    earliest = min(scheduled_values) if scheduled_values else datetime.max.replace(tzinfo=LOCAL_TIMEZONE)
+    return (earliest, phase.phase_order, phase.name)
 
 
 def _serialize_phase_for_program(

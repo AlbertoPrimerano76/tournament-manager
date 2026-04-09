@@ -28,6 +28,10 @@ export default function AgeGroupPage() {
   const { data: program, isLoading, error, refetch } = useAgeGroupProgram(ageGroupId!)
   const { data: standings } = useAgeGroupStandings(ageGroupId!)
   const phases = useMemo(() => flattenPhases(program), [program])
+  const visiblePhases = useMemo(
+    () => filterVisiblePhases(phases, program?.hide_future_phases_until_complete ?? false),
+    [phases, program?.hide_future_phases_until_complete],
+  )
   const teamNameMap = useMemo(() => {
     const pairs = phases.flatMap((phase) =>
       phase.groups.flatMap((group) =>
@@ -66,7 +70,7 @@ export default function AgeGroupPage() {
   const [groupStatusView, setGroupStatusView] = useState<MatchStatusView>('pending')
   const [knockoutStatusView, setKnockoutStatusView] = useState<MatchStatusView>('pending')
 
-  const activePhase = phases.find((phase) => phase.id === (activePhaseId ?? phases[0]?.id)) ?? phases[0] ?? null
+  const activePhase = visiblePhases.find((phase) => phase.id === (activePhaseId ?? visiblePhases[0]?.id)) ?? visiblePhases[0] ?? null
   const activeMatchesGroup = activePhase?.groups.find((group) => group.id === (activeMatchesGroupId ?? activePhase.groups[0]?.id)) ?? activePhase?.groups[0] ?? null
   const activeStandingsGroup = activePhase?.groups.find((group) => group.id === (activeStandingsGroupId ?? activePhase.groups[0]?.id)) ?? activePhase?.groups[0] ?? null
   const activeStandingsMeta = activePhase ? standings?.[activePhase.id] : undefined
@@ -98,18 +102,16 @@ export default function AgeGroupPage() {
       }))
     return [...ranked, ...missing]
   }, [activePhase, standings, teamNameMap])
-  const knockoutRoundGroups = useMemo(() => {
+  const knockoutMatches = useMemo(() => {
     if (!activePhase || activePhase.phase_type === 'GROUP_STAGE') return []
-    const filteredMatches = activePhase.knockout_matches.filter((match) => (
+    return [...activePhase.knockout_matches.filter((match) => (
       knockoutStatusView === 'completed' ? match.status === 'COMPLETED' : match.status !== 'COMPLETED'
-    ))
-    const groups = new Map<string, ProgramMatch[]>()
-    filteredMatches.forEach((match) => {
-      const key = match.bracket_round || activePhase.name
-      if (!groups.has(key)) groups.set(key, [])
-      groups.get(key)?.push(match)
+    ))].sort((left, right) => {
+      const leftTime = left.scheduled_at ? new Date(left.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER
+      const rightTime = right.scheduled_at ? new Date(right.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER
+      if (leftTime !== rightTime) return leftTime - rightTime
+      return (left.bracket_position ?? 0) - (right.bracket_position ?? 0)
     })
-    return Array.from(groups.entries()).map(([roundName, matches]) => ({ roundName, matches }))
   }, [activePhase, knockoutStatusView])
   const phaseTeamOptions = useMemo(() => {
     if (!activePhase || activePhase.phase_type !== 'GROUP_STAGE') return []
@@ -315,10 +317,10 @@ export default function AgeGroupPage() {
         />
       </div>
 
-      {phases.length > 1 && (
+      {visiblePhases.length > 1 && (
         <section className="mt-4 rounded-[1.8rem] border p-4 shadow-sm" style={{ borderColor: theme.softBorder, background: theme.panelSurface }}>
           <div className="flex flex-wrap gap-2">
-            {phases.map((phase) => (
+            {visiblePhases.map((phase) => (
               <button
                 key={phase.id}
                 type="button"
@@ -446,7 +448,7 @@ export default function AgeGroupPage() {
 
                     <div className="mt-4 space-y-3">
                       {filteredMatches.length > 0 ? filteredMatches.map((match) => (
-                        <PublicMatchRow key={match.id} match={match} teamLogoMap={teamLogoMap} showContext={!hasSingleGroup} />
+                        <PublicMatchRow key={match.id} match={match} teamLogoMap={teamLogoMap} />
                       )) : (
                         <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
                           Nessuna partita trovata con questo filtro.
@@ -678,7 +680,6 @@ export default function AgeGroupPage() {
                               key={match.id}
                               match={match}
                               teamLogoMap={teamLogoMap}
-                              showContext={!hasSingleGroup}
                             />
                           ))
                         ) : (
@@ -770,25 +771,14 @@ export default function AgeGroupPage() {
                 Giocate
               </button>
             </div>
-            <div className="mt-4 space-y-4">
-                {knockoutRoundGroups.length > 0 ? knockoutRoundGroups.map((roundGroup) => (
-                <section key={`${activePhase.id}-${roundGroup.roundName}`} className="rounded-[1.5rem] border bg-white p-4 shadow-sm" style={{ borderColor: theme.softBorder }}>
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Turno</p>
-                      <h3 className="mt-1 text-lg font-black text-slate-950">{roundGroup.roundName}</h3>
-                    </div>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                      {roundGroup.matches.length} partite
-                    </span>
-                  </div>
-                  <div className="space-y-3">
-                    {roundGroup.matches.map((match) => (
-                      <PublicMatchRow key={match.id} match={match} teamLogoMap={teamLogoMap} />
-                    ))}
-                  </div>
-                </section>
-              )) : (
+            <div className="mt-4 space-y-3">
+                {knockoutMatches.length > 0 ? (
+                <div className="space-y-3">
+                  {knockoutMatches.map((match) => (
+                    <PublicMatchRow key={match.id} match={match} teamLogoMap={teamLogoMap} />
+                  ))}
+                </div>
+              ) : (
                 <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500">
                   Nessuna partita in questa sezione.
                 </div>
@@ -865,23 +855,15 @@ function getAgeGroupThemeStyle(primaryColor: string | null, accentColor: string 
 function PublicMatchRow({
   match,
   teamLogoMap,
-  showContext = true,
 }: {
   match: ProgramMatch
   teamLogoMap: Map<string, string>
-  showContext?: boolean
 }) {
   const homeLogo = match.home_logo_url || teamLogoMap.get(match.home_team_id ?? '') || null
   const awayLogo = match.away_logo_url || teamLogoMap.get(match.away_team_id ?? '') || null
-  const contextLabel = match.bracket_round || match.group_name || match.phase_name
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        {showContext ? (
-          <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-            {contextLabel}
-          </span>
-        ) : <span />}
+      <div className="mb-2 flex items-center justify-end gap-3">
         <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] ${
           match.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'
         }`}>
@@ -1065,5 +1047,42 @@ function TeamLogo({ src, alt }: { src?: string | null; alt: string }) {
 
 function flattenPhases(program?: { days: Array<{ phases: ProgramPhase[] }> }) {
   if (!program) return []
-  return program.days.flatMap((day) => day.phases)
+  return [...program.days.flatMap((day) => day.phases)].sort(compareProgramPhases)
+}
+
+function filterVisiblePhases(phases: ProgramPhase[], hideFuture: boolean) {
+  if (!hideFuture) return phases
+  const visible: ProgramPhase[] = []
+  for (const phase of phases) {
+    if (visible.length === 0) {
+      visible.push(phase)
+      continue
+    }
+    if (!isPhaseComplete(visible[visible.length - 1])) break
+    visible.push(phase)
+  }
+  return visible
+}
+
+function isPhaseComplete(phase: ProgramPhase) {
+  const matches = [
+    ...phase.groups.flatMap((group) => group.matches),
+    ...phase.knockout_matches,
+  ]
+  return matches.length > 0 && matches.every((match) => match.status === 'COMPLETED')
+}
+
+function compareProgramPhases(left: ProgramPhase, right: ProgramPhase) {
+  const leftTime = firstPhaseTimestamp(left)
+  const rightTime = firstPhaseTimestamp(right)
+  if (leftTime !== rightTime) return leftTime - rightTime
+  return left.phase_order - right.phase_order
+}
+
+function firstPhaseTimestamp(phase: ProgramPhase) {
+  const timestamps = [
+    ...phase.groups.flatMap((group) => group.matches.map((match) => match.scheduled_at ? new Date(match.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER)),
+    ...phase.knockout_matches.map((match) => match.scheduled_at ? new Date(match.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER),
+  ]
+  return timestamps.length > 0 ? Math.min(...timestamps) : Number.MAX_SAFE_INTEGER
 }

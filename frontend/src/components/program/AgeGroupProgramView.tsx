@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AgeGroupProgram, ProgramGroup, ProgramMatch, TournamentParticipant } from '@/api/tournaments'
+import type { AgeGroupProgram, ProgramGroup, ProgramMatch, ProgramPhase, TournamentParticipant } from '@/api/tournaments'
 import { useBulkScheduleGroupMatches, useBulkSchedulePhaseMatches, useEnterMatchScore, useUpdateMatchSchedule } from '@/api/matches'
 import { useMoveAgeGroupTeam, useRegenerateAgeGroupPhase, useUpdateMatchParticipants } from '@/api/tournaments'
 import KnockoutBracket from '@/components/public/KnockoutBracket'
@@ -1208,10 +1208,7 @@ function ProgramMatchCard({
     } ${highlight ? 'ring-2 ring-amber-300 ring-offset-2' : ''}`}>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
-            {match.group_name || match.bracket_round || match.phase_name}
-          </p>
-          <div className="mt-2 grid gap-2 text-sm">
+          <div className="grid gap-2 text-sm">
             <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2">
               <span className="truncate font-semibold text-slate-900">{match.home_label}</span>
               {adminVariant === 'results' ? (
@@ -1560,7 +1557,39 @@ function statusLabel(status: string) {
 }
 
 function flattenPhases(program: AgeGroupProgram) {
-  return program.days.flatMap((day) => day.phases)
+  const phases = [...program.days.flatMap((day) => day.phases)].sort(compareProgramPhases)
+  if (!program.hide_future_phases_until_complete) return phases
+
+  const visible: ProgramPhase[] = []
+  for (const phase of phases) {
+    if (visible.length === 0) {
+      visible.push(phase)
+      continue
+    }
+    if (!isProgramPhaseComplete(visible[visible.length - 1])) break
+    visible.push(phase)
+  }
+  return visible
+}
+
+function isProgramPhaseComplete(phase: ProgramPhase) {
+  const matches = [...phase.groups.flatMap((group) => group.matches), ...phase.knockout_matches]
+  return matches.length > 0 && matches.every((match) => match.status === 'COMPLETED')
+}
+
+function compareProgramPhases(left: ProgramPhase, right: ProgramPhase) {
+  const leftTime = firstProgramPhaseTimestamp(left)
+  const rightTime = firstProgramPhaseTimestamp(right)
+  if (leftTime !== rightTime) return leftTime - rightTime
+  return left.phase_order - right.phase_order
+}
+
+function firstProgramPhaseTimestamp(phase: ProgramPhase) {
+  const timestamps = [
+    ...phase.groups.flatMap((group) => group.matches.map((match) => match.scheduled_at ? new Date(match.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER)),
+    ...phase.knockout_matches.map((match) => match.scheduled_at ? new Date(match.scheduled_at).getTime() : Number.MAX_SAFE_INTEGER),
+  ]
+  return timestamps.length > 0 ? Math.min(...timestamps) : Number.MAX_SAFE_INTEGER
 }
 
 function buildBracketRounds(matches: ProgramMatch[]) {

@@ -70,6 +70,7 @@ class AgeGroupProgramResponse(BaseModel):
     display_name: str | None = None
     participant_count: int
     expected_teams: int | None = None
+    hide_future_phases_until_complete: bool = False
     generated: bool
     days: list[ProgramDayResponse]
 

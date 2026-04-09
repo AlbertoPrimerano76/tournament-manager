@@ -1313,6 +1313,7 @@ type ScheduleConfig = {
   start_time: string
   match_duration_minutes: number | null
   interval_minutes: number | null
+  hide_future_phases_until_complete: boolean
   playing_fields: PlayingFieldConfig[]
 }
 
@@ -1384,6 +1385,7 @@ const BUILTIN_TEMPLATES: Array<{
         start_time: '09:30',
         match_duration_minutes: 12,
         interval_minutes: 8,
+        hide_future_phases_until_complete: false,
         playing_fields: [],
       },
       notes: '',
@@ -1421,6 +1423,7 @@ const BUILTIN_TEMPLATES: Array<{
         start_time: '09:30',
         match_duration_minutes: 12,
         interval_minutes: 8,
+        hide_future_phases_until_complete: false,
         playing_fields: [],
       },
       notes: '',
@@ -1479,6 +1482,7 @@ const BUILTIN_TEMPLATES: Array<{
         start_time: '09:30',
         match_duration_minutes: 12,
         interval_minutes: 8,
+        hide_future_phases_until_complete: false,
         playing_fields: [],
       },
       notes: '',
@@ -1537,6 +1541,7 @@ const BUILTIN_TEMPLATES: Array<{
         start_time: '09:30',
         match_duration_minutes: 12,
         interval_minutes: 8,
+        hide_future_phases_until_complete: false,
         playing_fields: [],
       },
       notes: '',
@@ -2992,6 +2997,24 @@ function AgeGroupConfigurationPanel({
                   </FormField>
                 </div>
 
+                <div className="mt-4 rounded-[1.25rem] border border-slate-200 bg-white p-4">
+                  <label className="inline-flex items-start gap-3 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={structure.schedule.hide_future_phases_until_complete}
+                      onChange={(e) => setStructure((current) => ({
+                        ...current,
+                        schedule: { ...current.schedule, hide_future_phases_until_complete: e.target.checked },
+                      }))}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                    />
+                    <span>
+                      <span className="block font-semibold text-slate-900">Mostra la fase successiva solo a fase precedente completata</span>
+                      <span className="mt-1 block text-sm text-slate-600">Nella parte pubblica le fasi future restano nascoste finché tutte le partite della fase precedente non sono finali.</span>
+                    </span>
+                  </label>
+                </div>
+
                 <div className="mt-4 space-y-3">
                   {structure.schedule.playing_fields.map((playingField, index) => (
                     <div key={playingField.id} className="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[minmax(0,1.4fr)_180px_auto] md:items-end">
@@ -4285,6 +4308,7 @@ function serializeStructureForComparison(structure: StructureConfig) {
       start_time: structure.schedule.start_time,
       match_duration_minutes: structure.schedule.match_duration_minutes,
       interval_minutes: structure.schedule.interval_minutes,
+      hide_future_phases_until_complete: structure.schedule.hide_future_phases_until_complete,
       playing_fields: structure.schedule.playing_fields.map((field) => ({
         field_name: field.field_name,
         field_number: field.field_number,
@@ -4718,6 +4742,7 @@ function normalizeScheduleConfig(value: unknown): ScheduleConfig {
     start_time: typeof input.start_time === 'string' && input.start_time ? input.start_time : '09:30',
     match_duration_minutes: typeof input.match_duration_minutes === 'number' ? input.match_duration_minutes : 12,
     interval_minutes: typeof input.interval_minutes === 'number' ? input.interval_minutes : 8,
+    hide_future_phases_until_complete: typeof input.hide_future_phases_until_complete === 'boolean' ? input.hide_future_phases_until_complete : false,
     playing_fields: rawFields.map((field, index) => normalizePlayingFieldConfig(field, index)),
   }
 }
