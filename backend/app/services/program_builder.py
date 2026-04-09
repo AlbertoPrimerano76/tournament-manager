@@ -812,6 +812,22 @@ def _phase_bucket_name(phase_config: dict[str, Any], default_name: str = "Tabell
     return default_name
 
 
+def _is_final_phase_config(phases_config: list[dict[str, Any]], phase_order: int) -> bool:
+    if phase_order <= 0 or phase_order > len(phases_config):
+        return True
+
+    phase_config = phases_config[phase_order - 1]
+    if not isinstance(phase_config, dict):
+        return True
+
+    routes = phase_config.get("advancement_routes")
+    if isinstance(routes, list) and any(isinstance(route, dict) for route in routes):
+        return False
+
+    next_phase_type = phase_config.get("next_phase_type")
+    return not (isinstance(next_phase_type, str) and next_phase_type)
+
+
 async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> TournamentAgeGroup:
     result = await db.execute(
         select(TournamentAgeGroup)
@@ -1654,6 +1670,7 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
             name=phase_name,
             phase_type=phase_type,
             phase_order=phase_order,
+            is_final_phase=_is_final_phase_config(phases_config, phase_order),
             scheduled_date=phase_date,
             groups=group_responses,
             knockout_matches=knockout_matches,
@@ -1669,6 +1686,7 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
             name=phase_name,
             phase_type=phase_type,
             phase_order=phase.phase_order,
+            is_final_phase=True,
             scheduled_date=phase_date,
             groups=group_responses,
             knockout_matches=knockout_matches,

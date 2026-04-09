@@ -3198,8 +3198,25 @@ function AgeGroupConfigurationPanel({
                           : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                       }`}
                     >
-                      {`Fase ${index + 1}`}
-                      {phase.name ? ` · ${phase.name}` : ''}
+                      <div className="text-left">
+                        <div className="flex items-center gap-2">
+                          <span>{phase.name || `Fase ${index + 1}`}</span>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] ${
+                            activePhaseId === phase.id
+                              ? 'bg-white/15 text-white'
+                              : phase.phase_type === 'GROUP_STAGE'
+                                ? 'bg-sky-100 text-sky-700'
+                                : 'bg-rose-100 text-rose-700'
+                          }`}>
+                            {phase.phase_type === 'GROUP_STAGE' ? 'Gironi' : 'Eliminazione'}
+                          </span>
+                        </div>
+                        <p className={`mt-1 text-xs font-medium ${
+                          activePhaseId === phase.id ? 'text-slate-200' : 'text-slate-500'
+                        }`}>
+                          {phase.phase_date || 'Data da definire'} · {phase.start_time || 'Ora da definire'}
+                        </p>
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -4823,6 +4840,18 @@ function StructurePreviewCard({
   isOpen: boolean
   onToggle: () => void
 }) {
+  const incomingCount = new Map<string, number>()
+  structure.phases.forEach((phase) => incomingCount.set(phase.id, 0))
+  structure.phases.forEach((phase) => {
+    phase.advancement_routes.forEach((route) => {
+      if (!route.target_phase_id) return
+      incomingCount.set(route.target_phase_id, (incomingCount.get(route.target_phase_id) ?? 0) + 1)
+    })
+  })
+  const rootPhases = structure.phases.filter((phase) => (incomingCount.get(phase.id) ?? 0) === 0)
+  const orderedRoots = rootPhases.length > 0 ? rootPhases : structure.phases.slice(0, 1)
+  const orphanPhases = structure.phases.filter((phase) => !orderedRoots.some((root) => root.id === phase.id) && (incomingCount.get(phase.id) ?? 0) === 0)
+
   return (
     <div className="rounded-[1.6rem] border border-slate-200 bg-[linear-gradient(180deg,_#ffffff_0%,_#f8fafc_100%)] p-4">
       <div className="flex items-start justify-between gap-4">
@@ -4847,124 +4876,17 @@ function StructurePreviewCard({
 
       {isOpen && (
         <>
-      <div className="mt-4 grid gap-3 xl:grid-cols-2">
-        {structure.phases.map((phase, index) => {
-          const linkedRoutes = phase.advancement_routes.map((route) => ({
-            route,
-            targetPhase: structure.phases.find((candidate) => candidate.id === route.target_phase_id),
-          }))
-          return (
-            <div key={phase.id} className="rounded-[1.5rem] border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Fase {index + 1}</p>
-                  <p className="mt-1 text-sm font-bold text-slate-900">{phase.name || `Fase ${index + 1}`}</p>
-                </div>
-                <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                  phase.phase_type === 'GROUP_STAGE'
-                    ? 'bg-sky-600 text-white'
-                    : phase.bracket_mode === 'placement'
-                      ? 'bg-fuchsia-600 text-white'
-                      : phase.bracket_mode === 'group_blocks'
-                        ? 'bg-violet-600 text-white'
-                      : 'bg-rose-600 text-white'
-                }`}>
-                  {phase.phase_type === 'GROUP_STAGE' ? 'Gironi' : phase.bracket_mode === 'placement' ? 'Piazzamenti' : phase.bracket_mode === 'group_blocks' ? 'Blocchi piazzamento' : 'Finali'}
-                </span>
-              </div>
-
-              <div className="mt-4 space-y-2">
-                {phase.phase_type === 'GROUP_STAGE' ? (
-                  <>
-                    <div className="flex flex-wrap gap-2">
-                      {buildGroupPreview(phase).map((group) => (
-                        <div key={group.label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{group.label}</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-900">{group.value}</p>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Formato</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-800">
-                        {phase.round_trip_mode === 'double' ? 'Andata e ritorno' : 'Solo andata'}
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Tabellone</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                      {phase.bracket_mode === 'placement'
-                        ? 'Piazzamenti mini rugby'
-                        : phase.bracket_mode === 'group_blocks'
-                          ? 'Blocchi 1-4, 5-8, 9-12'
-                          : 'Eliminazione standard'}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4 border-t border-slate-100 pt-4">
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Collegamenti in uscita</p>
-                {linkedRoutes.length > 0 ? (
-                  <div className="mt-3 space-y-2">
-                    {linkedRoutes.map(({ route, targetPhase }, routeIndex) => (
-                      <div key={route.id} className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-slate-400">
-                          <ArrowRight className="h-3.5 w-3.5" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-slate-900">{describeRouteLabelForPreview(route, phase)}</p>
-                          <p className="mt-1 text-sm text-slate-600">{targetPhase?.name || `Fase ${index + 2} - ${routeIndex + 1}`}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                    Nessun passaggio successivo: la fase si chiude qui.
-                  </div>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        {structure.phases.map((phase, index) => {
-          const routeLabels = describePhaseRoutes(structure, phase)
-          return (
-            <div key={`${phase.id}-flow`} className="rounded-[1.25rem] border border-slate-200 bg-white/85 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">{`Fase ${index + 1}`}</p>
-                  <p className="mt-1 text-sm font-bold text-slate-900">{phase.name || `Fase ${index + 1}`}</p>
-                </div>
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
-                  {phase.phase_type === 'GROUP_STAGE'
-                    ? 'Gironi'
-                    : phase.knockout_progression === 'single_round'
-                      ? 'Turno singolo'
-                      : 'Tabellone'}
-                </span>
-              </div>
-              <div className="mt-3 space-y-2">
-                {routeLabels.length > 0 ? routeLabels.map((label) => (
-                  <div key={label} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                    <span>{label}</span>
-                  </div>
-                )) : (
-                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                    Nessun passaggio successivo: la fase si chiude qui.
-                  </div>
-                )}
-              </div>
-            </div>
-          )
-        })}
+      <div className="mt-4 space-y-3 overflow-x-auto">
+        {orderedRoots.map((phase) => (
+          <StructureFlowBranch key={phase.id} phase={phase} structure={structure} visited={new Set<string>()} />
+        ))}
+        {orphanPhases.length > 0 && (
+          <div className="space-y-3 border-t border-slate-200 pt-3">
+            {orphanPhases.map((phase) => (
+              <StructureFlowBranch key={`${phase.id}-orphan`} phase={phase} structure={structure} visited={new Set<string>()} />
+            ))}
+          </div>
+        )}
       </div>
 
       {structure.notes && (
@@ -4978,14 +4900,94 @@ function StructurePreviewCard({
   )
 }
 
-function buildGroupPreview(phase: StructurePhase): Array<{ label: string; value: string }> {
-  if (phase.phase_type !== 'GROUP_STAGE') return []
-  const sizes = parseGroupSizes(phase.group_sizes)
-  const groupsCount = Math.max(phase.num_groups ?? sizes.length, sizes.length, 1)
-  return Array.from({ length: groupsCount }, (_, index) => ({
-    label: `Girone ${String.fromCharCode(65 + index)}`,
-    value: sizes[index] ? `${sizes[index]} squadre` : 'da definire',
-  }))
+function StructureFlowBranch({
+  phase,
+  structure,
+  visited,
+}: {
+  phase: StructurePhase
+  structure: StructureConfig
+  visited: Set<string>
+}) {
+  if (visited.has(phase.id)) return null
+
+  const nextVisited = new Set(visited)
+  nextVisited.add(phase.id)
+  const children = phase.advancement_routes
+    .map((route) => ({
+      route,
+      targetPhase: structure.phases.find((candidate) => candidate.id === route.target_phase_id) ?? null,
+    }))
+    .filter((item) => item.targetPhase && !nextVisited.has(item.targetPhase.id))
+
+  return (
+    <div className="min-w-[280px] rounded-[1.4rem] border border-slate-200 bg-white/90 p-3">
+      <div className="flex items-start gap-3">
+        <StructurePhaseMiniCard phase={phase} />
+        {children.length > 0 ? (
+          <>
+            <div className="flex min-h-[3.75rem] items-center text-slate-300">
+              <ArrowRight className="h-4 w-4" />
+            </div>
+            <div className="min-w-[240px] space-y-2">
+              {children.map(({ route, targetPhase }) => (
+                <div key={route.id} className="space-y-2">
+                  <div className="rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Instradamento</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{describeRouteLabelForPreview(route, phase)}</p>
+                  </div>
+                  {targetPhase && (
+                    <StructureFlowBranch phase={targetPhase} structure={structure} visited={nextVisited} />
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="flex min-h-[3.75rem] min-w-[180px] items-center">
+            <div className="rounded-[1rem] border border-dashed border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+              Fase conclusiva
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function StructurePhaseMiniCard({ phase }: { phase: StructurePhase }) {
+  const badgeClass = phase.phase_type === 'GROUP_STAGE' ? 'bg-sky-100 text-sky-700' : 'bg-rose-100 text-rose-700'
+  const metaLabel = phase.phase_type === 'GROUP_STAGE'
+    ? `${Math.max(phase.num_groups ?? 0, parseGroupSizes(phase.group_sizes).length, 1)} gironi`
+    : phase.bracket_mode === 'group_blocks'
+      ? 'Blocchi classifica'
+      : phase.knockout_progression === 'single_round'
+        ? 'Turno singolo'
+        : 'Tabellone'
+
+  return (
+    <div className="min-w-[220px] rounded-[1.1rem] border border-slate-200 bg-white px-3 py-3 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold text-slate-900">{phase.name || 'Fase'}</p>
+          <p className="mt-1 text-xs text-slate-500">{phase.phase_date || 'Data da definire'} · {phase.start_time || 'Ora da definire'}</p>
+        </div>
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] ${badgeClass}`}>
+          {phase.phase_type === 'GROUP_STAGE' ? 'Gironi' : 'Eliminazione'}
+        </span>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+          {metaLabel}
+        </span>
+        {phase.phase_type === 'GROUP_STAGE' && (
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+            {phase.round_trip_mode === 'double' ? 'Andata/ritorno' : 'Solo andata'}
+          </span>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function describePhaseRoutes(structure: StructureConfig, phase: StructurePhase): string[] {

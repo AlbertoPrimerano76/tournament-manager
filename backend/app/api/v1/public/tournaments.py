@@ -10,7 +10,7 @@ from app.schemas.tournament import TournamentResponse, AgeGroupResponse
 from app.schemas.organization import OrganizationResponse
 from app.services.phase_engine import get_phase_standings, get_knockout_final_ranking
 from app.schemas.program import TournamentProgramResponse, AgeGroupProgramResponse
-from app.services.program_builder import get_tournament_program, get_age_group_program
+from app.services.program_builder import get_tournament_program, get_age_group_program, _is_final_phase_config
 
 router = APIRouter()
 
@@ -126,6 +126,13 @@ async def get_tournament_age_groups(slug: str, db: AsyncSession = Depends(get_db
 @router.get("/age-groups/{age_group_id}/standings")
 async def get_standings(age_group_id: str, db: AsyncSession = Depends(get_db)):
     """Return standings for all groups in all phases of an age group."""
+    age_group_result = await db.execute(
+        select(TournamentAgeGroup).where(TournamentAgeGroup.id == age_group_id)
+    )
+    age_group = age_group_result.scalar_one_or_none()
+    structure = age_group.structure_config if age_group and isinstance(age_group.structure_config, dict) else {}
+    phases_config = structure.get("phases", []) if isinstance(structure.get("phases", []), list) else []
+
     phases_result = await db.execute(
         select(Phase).where(Phase.tournament_age_group_id == age_group_id).order_by(Phase.phase_order)
     )
@@ -138,6 +145,7 @@ async def get_standings(age_group_id: str, db: AsyncSession = Depends(get_db)):
             response[phase.id] = {
                 "phase_name": phase.name,
                 "phase_type": phase.phase_type,
+                "is_final_phase": _is_final_phase_config(phases_config, phase.phase_order),
                 "groups": {
                     group_id: [_serialize_standings_row(row) for row in rows]
                     for group_id, rows in phase_standings.items()
@@ -149,6 +157,7 @@ async def get_standings(age_group_id: str, db: AsyncSession = Depends(get_db)):
                 response[phase.id] = {
                     "phase_name": phase.name,
                     "phase_type": phase.phase_type,
+                    "is_final_phase": _is_final_phase_config(phases_config, phase.phase_order),
                     "groups": {},
                     "final_ranking": final_ranking,
                 }

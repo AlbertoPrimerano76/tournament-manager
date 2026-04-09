@@ -165,6 +165,7 @@ export interface ProgramPhase {
   name: string
   phase_type: string
   phase_order: number
+  is_final_phase: boolean
   scheduled_date: string | null
   groups: ProgramGroup[]
   knockout_matches: ProgramMatch[]
@@ -212,6 +213,7 @@ export interface StandingRow {
 export interface AgeGroupStandingsPhase {
   phase_name: string
   phase_type: string
+  is_final_phase?: boolean
   groups: Record<string, StandingRow[]>
   final_ranking?: Array<{
     position: number

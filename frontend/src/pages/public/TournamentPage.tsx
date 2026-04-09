@@ -30,6 +30,7 @@ export default function TournamentPage() {
 
   const theme = getTournamentTheme(tournament)
   const heroMedia = tournament.venue_map_url ?? tournament.logo_url ?? null
+  const sortedAgeGroups = [...(ageGroups ?? [])].sort((left, right) => sortAgeGroupsAsc(left.age_group, right.age_group))
 
   return (
     <div className="page-shell" style={theme.pageStyle}>
@@ -185,9 +186,9 @@ export default function TournamentPage() {
           <h2 className="mt-1 text-xl font-black text-slate-900">Gironi, partite e giornate</h2>
         </div>
 
-        {ageGroups && ageGroups.length > 0 ? (
+        {sortedAgeGroups.length > 0 ? (
           <div className="space-y-3">
-            {ageGroups.map((ag) => (
+            {sortedAgeGroups.map((ag) => (
               (() => {
                 const programAgeGroup = tournamentProgram?.age_groups.find((item) => item.age_group_id === ag.id)
                 const programMatches = programAgeGroup?.days.flatMap((day) => day.phases.flatMap((phase) => [
@@ -347,6 +348,15 @@ function isDarkColor(hex: string) {
 
 function formatAgeGroup(ageGroup: string) {
   return ageGroup.replace('U', 'Under ')
+}
+
+function sortAgeGroupsAsc(left: string, right: string) {
+  const leftValue = Number(left.replace(/[^0-9]/g, ''))
+  const rightValue = Number(right.replace(/[^0-9]/g, ''))
+  if (!Number.isNaN(leftValue) && !Number.isNaN(rightValue)) {
+    return leftValue - rightValue
+  }
+  return left.localeCompare(right)
 }
 
 function getAgeGroupCardStyle(theme: ReturnType<typeof getTournamentTheme>, ageGroup: string) {

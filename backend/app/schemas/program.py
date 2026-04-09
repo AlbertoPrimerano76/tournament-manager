@@ -52,6 +52,7 @@ class ProgramPhaseResponse(BaseModel):
     name: str
     phase_type: str
     phase_order: int
+    is_final_phase: bool = False
     scheduled_date: date_type | None = None
     groups: list[ProgramGroupResponse]
     knockout_matches: list[ProgramMatchResponse]
