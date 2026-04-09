@@ -3,6 +3,8 @@ from math import atan2, cos, radians, sin, sqrt
 import re
 from typing import Any
 
+from app.config.city_coordinates import CITY_COORDINATES
+
 
 DEFAULT_RANKING_CRITERIA = [
     "points",
@@ -11,42 +13,6 @@ DEFAULT_RANKING_CRITERIA = [
     "tries_for",
     "distance_from_tournament",
 ]
-
-ITALIAN_CITY_COORDINATES: dict[str, tuple[float, float]] = {
-    "ancona": (43.6158, 13.5189),
-    "arezzo": (43.4633, 11.8796),
-    "bari": (41.1171, 16.8719),
-    "belluno": (46.1408, 12.2156),
-    "benevento": (41.1298, 14.7826),
-    "bologna": (44.4949, 11.3426),
-    "cagliari": (39.2238, 9.1217),
-    "calvisano": (45.3484, 10.3436),
-    "catania": (37.5079, 15.0830),
-    "colorno": (44.9254, 10.3741),
-    "firenze": (43.7696, 11.2558),
-    "genova": (44.4056, 8.9463),
-    "laquila": (42.3498, 13.3995),
-    "livorno": (43.5485, 10.3106),
-    "lucca": (43.8429, 10.5027),
-    "milano": (45.4642, 9.1900),
-    "napoli": (40.8518, 14.2681),
-    "padova": (45.4064, 11.8768),
-    "palermo": (38.1157, 13.3615),
-    "parma": (44.8015, 10.3279),
-    "perugia": (43.1107, 12.3908),
-    "pisa": (43.7228, 10.4017),
-    "prato": (43.8777, 11.1022),
-    "roma": (41.9028, 12.4964),
-    "rovigo": (45.0703, 11.7901),
-    "siena": (43.3188, 11.3308),
-    "torino": (45.0703, 7.6869),
-    "treviso": (45.6669, 12.2430),
-    "trieste": (45.6495, 13.7768),
-    "udine": (46.0711, 13.2346),
-    "venezia": (45.4408, 12.3155),
-    "verona": (45.4384, 10.9916),
-    "vicenza": (45.5455, 11.5354),
-}
 
 
 @dataclass
@@ -442,15 +408,15 @@ def _resolve_coordinates(value: str) -> tuple[float, float] | None:
     if not normalized:
         return None
 
-    if normalized in ITALIAN_CITY_COORDINATES:
-        return ITALIAN_CITY_COORDINATES[normalized]
+    if normalized in CITY_COORDINATES:
+        return CITY_COORDINATES[normalized]
 
     for part in re.split(r"[,/()-]", normalized):
         candidate = part.strip()
-        if candidate in ITALIAN_CITY_COORDINATES:
-            return ITALIAN_CITY_COORDINATES[candidate]
+        if candidate in CITY_COORDINATES:
+            return CITY_COORDINATES[candidate]
 
-    for city, coords in ITALIAN_CITY_COORDINATES.items():
+    for city, coords in CITY_COORDINATES.items():
         if city in normalized:
             return coords
 

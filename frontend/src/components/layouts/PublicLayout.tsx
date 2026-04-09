@@ -1,14 +1,23 @@
+import { useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Menu, X } from 'lucide-react'
 import org from '@/config/org'
+
+const NAV_ITEMS = [
+  { to: '/', label: 'Eventi', end: true },
+  { to: '/guida', label: 'Guida', end: false },
+]
 
 export default function PublicLayout() {
   const location = useLocation()
   const pageContext = getPublicPageContext(location.pathname)
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:px-6">
+        <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6">
+          {/* Top row */}
           <div className="flex items-center justify-between gap-3">
             <Link to="/" className="flex min-w-0 items-center gap-3">
               <img src={org.logoUrl} alt={org.shortName} className="h-9 w-auto shrink-0 object-contain" />
@@ -18,23 +27,30 @@ export default function PublicLayout() {
               </div>
             </Link>
 
-            <Link
-              to="/admin"
-              className="inline-flex shrink-0 items-center rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100"
-            >
-              Area amministrativa
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                to="/admin"
+                className="hidden sm:inline-flex shrink-0 items-center rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100"
+              >
+                Area amministrativa
+              </Link>
+              <button
+                aria-label={mobileOpen ? 'Chiudi menu' : 'Apri menu'}
+                onClick={() => setMobileOpen((v) => !v)}
+                className="rounded-xl p-2 hover:bg-slate-100 sm:hidden"
+              >
+                {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </button>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {[
-              { to: '/', label: 'Eventi' },
-              { to: '/guida', label: 'Guida' },
-            ].map((item) => (
+          {/* Desktop nav */}
+          <div className="mt-3 hidden sm:flex flex-wrap items-center gap-2">
+            {NAV_ITEMS.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={item.to === '/'}
+                end={item.end}
                 className={({ isActive }) => `rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
                   isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
                 }`}
@@ -54,7 +70,8 @@ export default function PublicLayout() {
             )}
           </div>
 
-          <div className="flex flex-col gap-1 border-t border-slate-200/80 pt-3 sm:flex-row sm:items-center sm:justify-between">
+          {/* Context strip — desktop only */}
+          <div className="mt-3 hidden sm:flex flex-col gap-1 border-t border-slate-200/80 pt-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700/80">{pageContext.kicker}</p>
               <p className="text-sm font-semibold text-slate-800">{pageContext.title}</p>
@@ -62,6 +79,45 @@ export default function PublicLayout() {
             <p className="max-w-2xl text-sm text-slate-500">{pageContext.description}</p>
           </div>
         </div>
+
+        {/* Mobile drawer */}
+        {mobileOpen && (
+          <div className="border-t border-slate-200 bg-white px-4 py-4 sm:hidden">
+            <nav className="flex flex-col gap-1">
+              {NAV_ITEMS.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  onClick={() => setMobileOpen(false)}
+                  className={({ isActive }) => `rounded-xl px-4 py-3 text-sm font-semibold transition-colors ${
+                    isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+              {org.website && (
+                <a
+                  href={org.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-xl px-4 py-3 text-sm font-semibold text-slate-500 hover:bg-slate-100"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  Sito società
+                </a>
+              )}
+              <Link
+                to="/admin"
+                onClick={() => setMobileOpen(false)}
+                className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800"
+              >
+                Area amministrativa
+              </Link>
+            </nav>
+          </div>
+        )}
       </header>
 
       <main>

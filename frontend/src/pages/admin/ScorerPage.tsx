@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useReducer, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
-import { CheckCircle2, Clock, Play, RefreshCw } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, Play, RefreshCw } from 'lucide-react'
 import { useTodayMatches, useEnterMatchScore, type TodayMatchItem } from '@/api/matches'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -32,7 +32,7 @@ export default function ScorerPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-emerald-700/70">Segnapunti</p>
+          <p className="text-2xs font-bold uppercase tracking-widest3 text-emerald-700/70">Segnapunti</p>
           <h1 className="mt-1 text-2xl font-black text-slate-950">Partite di oggi</h1>
         </div>
         <div className="flex items-center gap-2">
@@ -40,10 +40,11 @@ export default function ScorerPage() {
             {dataUpdatedAt ? `Aggiornato alle ${format(new Date(dataUpdatedAt), 'HH:mm')}` : ''}
           </span>
           <button
+            aria-label="Aggiorna partite"
             onClick={() => refetch()}
             className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
             Aggiorna
           </button>
         </div>
@@ -68,7 +69,7 @@ export default function ScorerPage() {
             onClick={() => setStatusFilter(s)}
             className={`shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
               statusFilter === s
-                ? 'bg-[#103e31] text-white shadow'
+                ? 'bg-rugby-brand text-white shadow'
                 : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
             }`}
           >
@@ -110,12 +111,27 @@ export default function ScorerPage() {
   )
 }
 
+type ScoreState = { homeScore: string; awayScore: string; homeTries: string; awayTries: string }
+type ScoreAction =
+  | { type: 'set'; field: keyof ScoreState; value: string }
+  | { type: 'init'; match: TodayMatchItem }
+
+function scoreReducer(_state: ScoreState, action: ScoreAction): ScoreState {
+  if (action.type === 'init') {
+    return {
+      homeScore: action.match.home_score != null ? String(action.match.home_score) : '',
+      awayScore: action.match.away_score != null ? String(action.match.away_score) : '',
+      homeTries: action.match.home_tries != null ? String(action.match.home_tries) : '',
+      awayTries: action.match.away_tries != null ? String(action.match.away_tries) : '',
+    }
+  }
+  return { ..._state, [action.field]: action.value }
+}
+
 function MatchCard({ match }: { match: TodayMatchItem }) {
   const [editing, setEditing] = useState(false)
-  const [homeScore, setHomeScore] = useState('')
-  const [awayScore, setAwayScore] = useState('')
-  const [homeTries, setHomeTries] = useState('')
-  const [awayTries, setAwayTries] = useState('')
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [scores, dispatch] = useReducer(scoreReducer, { homeScore: '', awayScore: '', homeTries: '', awayTries: '' })
   const enterScore = useEnterMatchScore()
   const qc = useQueryClient()
 
@@ -123,26 +139,21 @@ function MatchCard({ match }: { match: TodayMatchItem }) {
   const isInProgress = match.status === 'IN_PROGRESS'
 
   function openEdit() {
-    setHomeScore(match.home_score != null ? String(match.home_score) : '')
-    setAwayScore(match.away_score != null ? String(match.away_score) : '')
-    setHomeTries(match.home_tries != null ? String(match.home_tries) : '')
-    setAwayTries(match.away_tries != null ? String(match.away_tries) : '')
+    dispatch({ type: 'init', match })
     setEditing(true)
   }
 
   async function handleSubmit(status: 'IN_PROGRESS' | 'COMPLETED') {
-    const hs = parseInt(homeScore)
-    const as_ = parseInt(awayScore)
-    if (isNaN(hs) || isNaN(as_)) return
+    const hs = parseInt(scores.homeScore)
+    const as_ = parseInt(scores.awayScore)
+    if (isNaN(hs) || isNaN(as_) || hs < 0 || as_ < 0) return
+    const ht = scores.homeTries !== '' ? parseInt(scores.homeTries) : undefined
+    const at = scores.awayTries !== '' ? parseInt(scores.awayTries) : undefined
+    if (ht !== undefined && ht < 0) return
+    if (at !== undefined && at < 0) return
     await enterScore.mutateAsync({
       matchId: match.id,
-      data: {
-        home_score: hs,
-        away_score: as_,
-        home_tries: homeTries !== '' ? parseInt(homeTries) : undefined,
-        away_tries: awayTries !== '' ? parseInt(awayTries) : undefined,
-        status,
-      },
+      data: { home_score: hs, away_score: as_, home_tries: ht, away_tries: at, status },
     })
     qc.invalidateQueries({ queryKey: ['today-matches'] })
     setEditing(false)
@@ -155,6 +166,7 @@ function MatchCard({ match }: { match: TodayMatchItem }) {
     })
     qc.invalidateQueries({ queryKey: ['today-matches'] })
     setEditing(false)
+    setConfirmClear(false)
   }
 
   return (
@@ -181,18 +193,22 @@ function MatchCard({ match }: { match: TodayMatchItem }) {
                   type="number"
                   inputMode="numeric"
                   min={0}
-                  value={homeScore}
-                  onChange={(e) => setHomeScore(e.target.value)}
+                  max={999}
+                  value={scores.homeScore}
+                  onChange={(e) => dispatch({ type: 'set', field: 'homeScore', value: e.target.value })}
                   placeholder="0"
+                  aria-label="Punteggio casa"
                   className="w-full rounded-2xl border-2 border-slate-200 py-4 text-center text-3xl font-black text-slate-900 focus:border-emerald-500 focus:outline-none"
                 />
                 <input
                   type="number"
                   inputMode="numeric"
                   min={0}
-                  value={homeTries}
-                  onChange={(e) => setHomeTries(e.target.value)}
+                  max={99}
+                  value={scores.homeTries}
+                  onChange={(e) => dispatch({ type: 'set', field: 'homeTries', value: e.target.value })}
                   placeholder="Mete"
+                  aria-label="Mete casa"
                   className="w-full rounded-xl border border-slate-200 py-2 text-center text-sm text-slate-600 focus:border-emerald-400 focus:outline-none"
                 />
               </div>
@@ -203,18 +219,22 @@ function MatchCard({ match }: { match: TodayMatchItem }) {
                   type="number"
                   inputMode="numeric"
                   min={0}
-                  value={awayScore}
-                  onChange={(e) => setAwayScore(e.target.value)}
+                  max={999}
+                  value={scores.awayScore}
+                  onChange={(e) => dispatch({ type: 'set', field: 'awayScore', value: e.target.value })}
                   placeholder="0"
+                  aria-label="Punteggio ospite"
                   className="w-full rounded-2xl border-2 border-slate-200 py-4 text-center text-3xl font-black text-slate-900 focus:border-emerald-500 focus:outline-none"
                 />
                 <input
                   type="number"
                   inputMode="numeric"
                   min={0}
-                  value={awayTries}
-                  onChange={(e) => setAwayTries(e.target.value)}
+                  max={99}
+                  value={scores.awayTries}
+                  onChange={(e) => dispatch({ type: 'set', field: 'awayTries', value: e.target.value })}
                   placeholder="Mete"
+                  aria-label="Mete ospite"
                   className="w-full rounded-xl border border-slate-200 py-2 text-center text-sm text-slate-600 focus:border-emerald-400 focus:outline-none"
                 />
               </div>
@@ -239,21 +259,45 @@ function MatchCard({ match }: { match: TodayMatchItem }) {
               </button>
             </div>
 
-            <div className="flex gap-2">
-              <button
-                onClick={handleClear}
-                disabled={enterScore.isPending}
-                className="flex-1 rounded-xl border border-red-200 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
-              >
-                Cancella risultato
-              </button>
-              <button
-                onClick={() => setEditing(false)}
-                className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-              >
-                Annulla
-              </button>
-            </div>
+            {confirmClear ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+                <div className="mb-3 flex items-center gap-2 text-red-700">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <p className="text-sm font-semibold">Confermi la cancellazione del risultato?</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleClear}
+                    disabled={enterScore.isPending}
+                    className="flex-1 rounded-xl bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    Sì, cancella
+                  </button>
+                  <button
+                    onClick={() => setConfirmClear(false)}
+                    className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    Annulla
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setConfirmClear(true)}
+                  disabled={enterScore.isPending}
+                  className="flex-1 rounded-xl border border-red-200 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                >
+                  Cancella risultato
+                </button>
+                <button
+                  onClick={() => setEditing(false)}
+                  className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Annulla
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex items-center gap-3">
@@ -280,7 +324,7 @@ function MatchCard({ match }: { match: TodayMatchItem }) {
         <div className="flex gap-2 border-t border-slate-100 px-4 py-3">
           <button
             onClick={openEdit}
-            className="flex-1 rounded-xl bg-[#103e31] py-3 text-sm font-bold text-white"
+            className="flex-1 rounded-xl bg-rugby-brand py-3 text-sm font-bold text-white"
           >
             {isCompleted ? 'Modifica risultato' : 'Inserisci risultato'}
           </button>

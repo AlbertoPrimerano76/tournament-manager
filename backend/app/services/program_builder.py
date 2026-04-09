@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date as date_type, datetime, time, timedelta
+import json
 import math
 import re
 from typing import Any
@@ -26,8 +27,17 @@ from app.schemas.program import (
 )
 
 
-AUTO_SEED_PREFIX = "AUTOSEED::"
-LOCAL_TIMEZONE = ZoneInfo("Europe/Rome")
+_SEED_TYPE_KEY = "_seed"
+_LEGACY_SEED_PREFIX = "AUTOSEED::"
+_DEFAULT_TIMEZONE = "Europe/Rome"
+
+
+def _tournament_tz(age_group: TournamentAgeGroup) -> ZoneInfo:
+    tz_name = getattr(age_group.tournament, "timezone", None) or _DEFAULT_TIMEZONE
+    try:
+        return ZoneInfo(tz_name)
+    except Exception:
+        return ZoneInfo(_DEFAULT_TIMEZONE)
 
 
 def _match_has_recorded_result(match: Match) -> bool:
@@ -128,16 +138,37 @@ def _distribute_entries_across_groups(
 
 
 def encode_seed_note(home_label: str, away_label: str, extra_note: str | None = None) -> str:
-    note = f"{AUTO_SEED_PREFIX}{home_label}||{away_label}"
+    """Encode placeholder team labels as a JSON seed note stored in match.notes."""
+    payload: dict[str, Any] = {_SEED_TYPE_KEY: True, "home": home_label, "away": away_label}
     if extra_note:
-        note = f"{note}||{extra_note}"
-    return note
+        payload["note"] = extra_note
+    return json.dumps(payload, ensure_ascii=False)
 
 
 def decode_seed_note(note: str | None) -> tuple[str | None, str | None, str | None]:
-    if not note or not note.startswith(AUTO_SEED_PREFIX):
+    """Return (home_label, away_label, clean_notes).
+
+    Handles both the current JSON format and the legacy AUTOSEED:: string format
+    so that existing DB records continue to work without a migration.
+    Returns (None, None, note) when the note is not a seed note.
+    """
+    if not note:
         return None, None, note
-    payload = note[len(AUTO_SEED_PREFIX):]
+
+    # Current JSON format
+    if note.startswith("{"):
+        try:
+            data = json.loads(note)
+            if isinstance(data, dict) and data.get(_SEED_TYPE_KEY):
+                return data.get("home"), data.get("away"), data.get("note")
+        except (json.JSONDecodeError, AttributeError):
+            pass
+        return None, None, note
+
+    # Legacy string format — kept for backward compatibility with existing rows
+    if not note.startswith(_LEGACY_SEED_PREFIX):
+        return None, None, note
+    payload = note[len(_LEGACY_SEED_PREFIX):]
     parts = payload.split("||")
     home = parts[0] if len(parts) > 0 else None
     away = parts[1] if len(parts) > 1 else None
@@ -152,7 +183,7 @@ def _default_phase_date(age_group: TournamentAgeGroup, phase_index: int) -> date
         day_offset = min(phase_index, max_days)
     else:
         day_offset = phase_index
-    return datetime.combine(start_date + timedelta(days=day_offset), time(hour=12), tzinfo=LOCAL_TIMEZONE)
+    return datetime.combine(start_date + timedelta(days=day_offset), time(hour=12), tzinfo=_tournament_tz(age_group))
 
 
 def _team_label(tt: TournamentTeam) -> str:
@@ -212,7 +243,7 @@ def _phase_start_datetime(age_group: TournamentAgeGroup, phase_index: int) -> da
         return None
     schedule = _schedule_settings(age_group)
     start = _parse_start_time(schedule.get("start_time"))
-    return datetime.combine(base.date(), start, tzinfo=LOCAL_TIMEZONE)
+    return datetime.combine(base.date(), start, tzinfo=_tournament_tz(age_group))
 
 
 def _phase_slot_duration(age_group: TournamentAgeGroup) -> timedelta:
@@ -250,7 +281,7 @@ def _resolve_phase_date(
     if isinstance(explicit_date, str) and explicit_date:
         try:
             parsed = datetime.strptime(explicit_date, "%Y-%m-%d").date()
-            return datetime.combine(parsed, time(hour=12), tzinfo=LOCAL_TIMEZONE)
+            return datetime.combine(parsed, time(hour=12), tzinfo=_tournament_tz(age_group))
         except ValueError:
             pass
     return _default_phase_date(age_group, phase_index)
@@ -267,7 +298,7 @@ def _resolve_phase_start(
         return fallback_start
     explicit_start = phase_config.get("start_time")
     if isinstance(explicit_start, str) and explicit_start:
-        return datetime.combine(base.date(), _parse_start_time(explicit_start), tzinfo=LOCAL_TIMEZONE)
+        return datetime.combine(base.date(), _parse_start_time(explicit_start), tzinfo=_tournament_tz(age_group))
     return fallback_start or _phase_start_datetime(age_group, phase_index)
 
 
@@ -1688,7 +1719,7 @@ async def _sync_tournament_dates_from_generated_program(age_group: TournamentAge
         return
 
     phase_dates = [
-        match.scheduled_at.astimezone(LOCAL_TIMEZONE).date()
+        match.scheduled_at.astimezone(_tournament_tz(age_group)).date()
         for phase in age_group.phases
         for match in phase.matches
         if match.scheduled_at
@@ -1838,7 +1869,7 @@ def _program_phase_sort_key(phase: ProgramPhaseResponse) -> tuple[datetime, int,
         for match in phase.knockout_matches
         if match.scheduled_at
     ]
-    earliest = min(scheduled_values) if scheduled_values else datetime.max.replace(tzinfo=LOCAL_TIMEZONE)
+    earliest = min(scheduled_values) if scheduled_values else datetime.max.replace(tzinfo=ZoneInfo("UTC"))
     return (earliest, phase.phase_order, phase.name)
 
 

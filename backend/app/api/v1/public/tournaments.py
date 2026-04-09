@@ -56,6 +56,7 @@ def _serialize_tournament(tournament: Tournament) -> TournamentResponse:
         logo_url=tournament.logo_url,
         theme_primary_color=tournament.theme_primary_color,
         theme_accent_color=tournament.theme_accent_color,
+        timezone=tournament.timezone,
         is_published=tournament.is_published,
         sponsor_images=tournament.sponsor_images or [],
         previous_slugs=tournament.previous_slugs or [],

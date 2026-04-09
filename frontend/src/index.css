@@ -28,6 +28,9 @@
     --tournament-accent: #166534;
     --tournament-accent-soft: #ecfdf3;
     --tournament-highlight: #d97706;
+
+    /* Admin sidebar gradient — single source of truth */
+    --sidebar-gradient: linear-gradient(180deg, #0a2f26 0%, #103e31 55%, #0f4737 100%);
   }
 }
 
@@ -39,20 +42,28 @@
     @apply bg-background text-foreground;
     -webkit-tap-highlight-color: transparent;
   }
+  /* Visible focus ring for keyboard navigation */
+  :focus-visible {
+    @apply outline-none ring-2 ring-emerald-600 ring-offset-2;
+  }
 }
 
 @layer components {
   .surface-panel {
-    @apply rounded-[1.8rem] border border-white/80 bg-white shadow-[0_24px_70px_-48px_rgba(15,23,42,0.45)];
+    @apply rounded-panel border border-white/80 bg-white shadow-[0_24px_70px_-48px_rgba(15,23,42,0.45)];
   }
 
   .surface-muted {
-    @apply rounded-[1.5rem] border border-slate-200 bg-slate-50;
+    @apply rounded-card border border-slate-200 bg-slate-50;
   }
 
   .page-shell {
     background:
       radial-gradient(circle at top, #ebfff2 0%, #f8fafc 38%, #edf2f7 100%);
+  }
+
+  .admin-sidebar {
+    background: var(--sidebar-gradient);
   }
 }
 

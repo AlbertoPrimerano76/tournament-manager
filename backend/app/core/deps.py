@@ -62,12 +62,6 @@ async def ensure_tournament_access(user: User, tournament_id: str, db: AsyncSess
 
 
 async def ensure_age_group_access(user: User, age_group_id: str, db: AsyncSession) -> str:
-    if user.role != UserRole.SCORE_KEEPER:
-        result = await db.execute(select(TournamentAgeGroup.tournament_id).where(TournamentAgeGroup.id == age_group_id))
-        tournament_id = result.scalar_one_or_none()
-        if not tournament_id:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Age group not found")
-        return tournament_id
     result = await db.execute(select(TournamentAgeGroup.tournament_id).where(TournamentAgeGroup.id == age_group_id))
     tournament_id = result.scalar_one_or_none()
     if not tournament_id:

@@ -1,6 +1,45 @@
 from datetime import date
-from pydantic import BaseModel
+from typing import Literal
+from pydantic import BaseModel, field_validator
 from app.models.tournament import AgeGroup
+
+_ALLOWED_RANKING_CRITERIA = frozenset({
+    "points",
+    "head_to_head",
+    "goal_diff",
+    "goals_for",
+    "try_diff",
+    "tries_for",
+    "distance_from_tournament",
+})
+
+
+class ScoringRules(BaseModel):
+    win_points: int = 3
+    draw_points: int = 1
+    loss_points: int = 0
+    try_bonus: bool = False
+    bonus_threshold: int = 4
+    ranking_criteria: list[str] = [
+        "points",
+        "head_to_head",
+        "try_diff",
+        "tries_for",
+        "distance_from_tournament",
+    ]
+
+    @field_validator("ranking_criteria")
+    @classmethod
+    def validate_criteria(cls, value: list[str]) -> list[str]:
+        invalid = [c for c in value if c not in _ALLOWED_RANKING_CRITERIA]
+        if invalid:
+            raise ValueError(f"Unknown ranking criteria: {invalid}")
+        if "points" not in value:
+            value = ["points", *value]
+        return value
+
+    def to_dict(self) -> dict:
+        return self.model_dump()
 
 
 class TournamentCreate(BaseModel):
@@ -17,6 +56,7 @@ class TournamentCreate(BaseModel):
     logo_url: str | None = None
     theme_primary_color: str | None = None
     theme_accent_color: str | None = None
+    timezone: str = "Europe/Rome"
     is_published: bool = False
     description: str | None = None
 
@@ -32,6 +72,7 @@ class TournamentUpdate(BaseModel):
     logo_url: str | None = None
     theme_primary_color: str | None = None
     theme_accent_color: str | None = None
+    timezone: str | None = None
     is_published: bool | None = None
     description: str | None = None
     sponsor_images: list[str] | None = None
@@ -55,6 +96,7 @@ class TournamentResponse(BaseModel):
     logo_url: str | None
     theme_primary_color: str | None
     theme_accent_color: str | None
+    timezone: str
     is_published: bool
     sponsor_images: list[str]
     previous_slugs: list[str] = []
@@ -68,23 +110,16 @@ class AgeGroupCreate(BaseModel):
     age_group: AgeGroup
     display_name: str | None = None
     field_map_url: str | None = None
-    scoring_rules: dict = {
-        "win_points": 3, "draw_points": 1, "loss_points": 0,
-        "try_bonus": False, "bonus_threshold": 4,
-        "ranking_criteria": [
-            "points",
-            "head_to_head",
-            "try_diff",
-            "tries_for",
-            "distance_from_tournament",
-        ],
-    }
+    scoring_rules: ScoringRules = ScoringRules()
+
+    def scoring_rules_dict(self) -> dict:
+        return self.scoring_rules.to_dict()
 
 
 class AgeGroupUpdate(BaseModel):
     display_name: str | None = None
     field_map_url: str | None = None
-    scoring_rules: dict | None = None
+    scoring_rules: ScoringRules | None = None
 
 
 class AgeGroupResponse(BaseModel):

@@ -293,6 +293,10 @@ async def enter_score(
         match.result_entered_by = None
         match.result_entered_at = None
     else:
+        if match.home_team_id is None or match.away_team_id is None:
+            raise HTTPException(status_code=422, detail="Non è possibile registrare un risultato per una partita senza squadre assegnate")
+        if match.status == MatchStatus.CANCELLED:
+            raise HTTPException(status_code=422, detail="Non è possibile registrare un risultato per una partita annullata")
         if body.home_score is None or body.away_score is None:
             raise HTTPException(status_code=422, detail="Inserisci entrambi i punteggi")
         if body.home_score < 0 or body.away_score < 0:

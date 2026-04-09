@@ -39,6 +39,7 @@ class Tournament(Base):
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     theme_primary_color: Mapped[str | None] = mapped_column(String(20), nullable=True)
     theme_accent_color: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="Europe/Rome")
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
     sponsor_images: Mapped[list] = mapped_column(JSON, default=list)
     previous_slugs: Mapped[list] = mapped_column(JSON, default=list)

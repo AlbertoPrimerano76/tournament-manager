@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { EVENT_TYPE_LABELS, useTournament, useTournamentAgeGroups, useTournamentProgram } from '@/api/tournaments'
 import { usePublicTournamentFields } from '@/api/fields'
@@ -28,9 +28,12 @@ export default function TournamentPage() {
   if (errorT) return <ErrorMessage message="Evento non trovato" />
   if (!tournament) return null
 
-  const theme = getTournamentTheme(tournament)
+  const theme = useMemo(() => getTournamentTheme(tournament), [tournament.theme_primary_color, tournament.theme_accent_color])
   const heroMedia = tournament.venue_map_url ?? tournament.logo_url ?? null
-  const sortedAgeGroups = [...(ageGroups ?? [])].sort((left, right) => sortAgeGroupsAsc(left.age_group, right.age_group))
+  const sortedAgeGroups = useMemo(
+    () => [...(ageGroups ?? [])].sort((left, right) => sortAgeGroupsAsc(left.age_group, right.age_group)),
+    [ageGroups],
+  )
 
   return (
     <div className="page-shell" style={theme.pageStyle}>
@@ -284,9 +287,10 @@ export default function TournamentPage() {
             <button
               type="button"
               onClick={() => setActiveFieldPreview(null)}
+              aria-label="Chiudi anteprima"
               className="absolute right-3 top-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/80 text-white shadow-lg transition-colors hover:bg-slate-800"
             >
-              <X className="h-5 w-5" />
+              <X className="h-5 w-5" aria-hidden="true" />
             </button>
             <div className="overflow-hidden rounded-[1.75rem] border border-white/15 bg-slate-950 shadow-[0_25px_80px_-30px_rgba(0,0,0,0.8)]">
               <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
@@ -369,18 +373,20 @@ function sortAgeGroupsAsc(left: string, right: string) {
   return left.localeCompare(right)
 }
 
+// Static age-group colour palette — colours are from Tailwind (see tailwind.config.js `age-*` tokens)
+const AGE_GROUP_PALETTE: Record<string, { accent: string; glow: string; tint: string; badge: string }> = {
+  U6:  { accent: '#22c55e', glow: 'rgba(34,197,94,0.14)',   tint: 'rgba(34,197,94,0.12)',   badge: '#16a34a' },
+  U8:  { accent: '#0ea5e9', glow: 'rgba(14,165,233,0.14)',  tint: 'rgba(14,165,233,0.12)',  badge: '#0284c7' },
+  U10: { accent: '#f59e0b', glow: 'rgba(245,158,11,0.14)',  tint: 'rgba(245,158,11,0.12)',  badge: '#d97706' },
+  U12: { accent: '#8b5cf6', glow: 'rgba(139,92,246,0.14)',  tint: 'rgba(139,92,246,0.12)',  badge: '#7c3aed' },
+  U14: { accent: '#ec4899', glow: 'rgba(236,72,153,0.14)',  tint: 'rgba(236,72,153,0.12)',  badge: '#db2777' },
+  U16: { accent: '#f97316', glow: 'rgba(249,115,22,0.14)',  tint: 'rgba(249,115,22,0.12)',  badge: '#ea580c' },
+  U18: { accent: '#06b6d4', glow: 'rgba(6,182,212,0.14)',   tint: 'rgba(6,182,212,0.12)',   badge: '#0891b2' },
+  U20: { accent: '#64748b', glow: 'rgba(100,116,139,0.14)', tint: 'rgba(100,116,139,0.12)', badge: '#475569' },
+}
+
 function getAgeGroupCardStyle(theme: ReturnType<typeof getTournamentTheme>, ageGroup: string) {
-  const paletteMap: Record<string, { accent: string; glow: string; tint: string; badge: string }> = {
-    U6:  { accent: '#22c55e', glow: 'rgba(34,197,94,0.14)',   tint: 'rgba(34,197,94,0.12)',   badge: '#16a34a' },
-    U8:  { accent: '#0ea5e9', glow: 'rgba(14,165,233,0.14)',  tint: 'rgba(14,165,233,0.12)',  badge: '#0284c7' },
-    U10: { accent: '#f59e0b', glow: 'rgba(245,158,11,0.14)',  tint: 'rgba(245,158,11,0.12)',  badge: '#d97706' },
-    U12: { accent: '#8b5cf6', glow: 'rgba(139,92,246,0.14)',  tint: 'rgba(139,92,246,0.12)',  badge: '#7c3aed' },
-    U14: { accent: '#ec4899', glow: 'rgba(236,72,153,0.14)',  tint: 'rgba(236,72,153,0.12)',  badge: '#db2777' },
-    U16: { accent: '#f97316', glow: 'rgba(249,115,22,0.14)',  tint: 'rgba(249,115,22,0.12)',  badge: '#ea580c' },
-    U18: { accent: '#06b6d4', glow: 'rgba(6,182,212,0.14)',   tint: 'rgba(6,182,212,0.12)',   badge: '#0891b2' },
-    U20: { accent: '#64748b', glow: 'rgba(100,116,139,0.14)', tint: 'rgba(100,116,139,0.12)', badge: '#475569' },
-  }
-  const palette = paletteMap[ageGroup] ?? { accent: theme.accent, glow: `${theme.accent}22`, tint: `${theme.accent}12`, badge: theme.primary }
+  const palette = AGE_GROUP_PALETTE[ageGroup] ?? { accent: theme.accent, glow: `${theme.accent}22`, tint: `${theme.accent}12`, badge: theme.primary }
   return {
     background: `linear-gradient(135deg, ${palette.tint} 0%, rgba(255,255,255,0.98) 42%, ${palette.glow} 100%)`,
     borderColor: palette.glow,
