@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Award, ChevronLeft, Medal, Trophy } from 'lucide-react'
+import { ChevronLeft } from 'lucide-react'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
 import {
@@ -333,7 +333,7 @@ export default function AgeGroupPage() {
               className="text-[11px] font-medium text-slate-400 hover:text-slate-600"
               title="Aggiorna dati"
             >
-              Aggiornato alle {format(new Date(dataUpdatedAt), ‘HH:mm’, { locale: it })}
+              Aggiornato alle {format(new Date(dataUpdatedAt), 'HH:mm', { locale: it })}
             </button>
           </div>
         </div>
@@ -392,13 +392,6 @@ export default function AgeGroupPage() {
                 style={activePhase?.id === phase.id ? { backgroundColor: theme.primary } : { borderColor: theme.softBorder }}
               >
                 <span>{phase.name}</span>
-                {phase.is_final_phase && (
-                  <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] ${
-                    activePhase?.id === phase.id ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'
-                  }`}>
-                    Conclusiva
-                  </span>
-                )}
               </button>
             ))}
           </div>
@@ -773,35 +766,29 @@ export default function AgeGroupPage() {
               >
                 Partite
               </button>
-              {(standings?.[activePhase.id]?.final_ranking?.length ?? 0) > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setKnockoutPhaseView('ranking')}
-                  className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                    knockoutPhaseView === 'ranking'
+              <button
+                type="button"
+                onClick={() => setKnockoutPhaseView('ranking')}
+                className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                  knockoutPhaseView === 'ranking'
                       ? 'text-white'
                       : 'border bg-white text-slate-700'
-                  }`}
-                  style={knockoutPhaseView === 'ranking' ? { backgroundColor: theme.accent } : { borderColor: theme.softBorder }}
-                >
-                  Classifica finale
-                </button>
-              )}
+                }`}
+                style={knockoutPhaseView === 'ranking' ? { backgroundColor: theme.accent } : { borderColor: theme.softBorder }}
+              >
+                Classifica
+              </button>
+              
             </div>
           </section>
 
           {knockoutPhaseView === 'matches' ? (
           <section className="rounded-[1.8rem] border p-5 shadow-sm" style={{ borderColor: theme.softBorder, background: theme.contentSurface }}>
-            <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
-                <Trophy className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.accent }}>
-                  {activePhase.is_final_phase ? 'Fase conclusiva' : 'Fase a eliminazione'}
-                </p>
-                <h2 className="mt-1 text-xl font-black text-slate-950">{activePhase.name}</h2>
-              </div>
+            <div className="mb-4">
+              <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.accent }}>
+                {activePhase.is_final_phase ? 'Eliminazione diretta' : 'Fase a eliminazione'}
+              </p>
+              <h2 className="mt-1 text-xl font-black text-slate-950">{activePhase.name}</h2>
             </div>
             <div className="mb-4 flex flex-wrap gap-2">
               <button
@@ -843,44 +830,47 @@ export default function AgeGroupPage() {
           </section>
           ) : null}
 
-          {knockoutPhaseView === 'ranking' && finalRankingRows.length > 0 && (
+          {knockoutPhaseView === 'ranking' && (
             <section className="rounded-[1.8rem] border p-5 shadow-sm" style={{ borderColor: theme.softBorder, background: theme.contentSurface }}>
               <div className="mb-4">
-                <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.primaryMuted }}>Classifica finale</p>
+                <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.primaryMuted }}>Classifica</p>
                 <h2 className="mt-1 text-xl font-black text-slate-950">{activePhase.name}</h2>
               </div>
-              <div className="mb-4">
-                <PodiumGrid rows={finalRankingRows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} />
-              </div>
+              {finalRankingRows.length > 0 ? (
+                <>
+                  <div className="mb-4">
+                    <PodiumGrid rows={finalRankingRows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} />
+                  </div>
 
-              <div className="overflow-hidden rounded-[1.3rem] border border-emerald-100 bg-white">
-                <table className="min-w-full divide-y divide-emerald-100 text-sm">
-                  <thead className="bg-emerald-50 text-left text-emerald-900">
-                    <tr>
-                      <th className="px-4 py-3 font-bold">Pos.</th>
-                      <th className="px-4 py-3 font-bold">Squadra</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {finalRankingRows.map((row) => (
-                      <tr key={`${activePhase.id}-${row.position ?? 'na'}-${row.team_id ?? row.team_name}`}>
-                        <td className="px-4 py-3 font-black text-slate-900">
-                          <div className="flex items-center gap-2">
-                            {row.position === 1 ? <Trophy className="h-4 w-4 text-amber-500" /> : row.position === 2 ? <Medal className="h-4 w-4 text-slate-500" /> : row.position === 3 ? <Award className="h-4 w-4 text-orange-500" /> : null}
-                            <span>{row.position ?? '-'}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 font-semibold text-slate-900">
-                          <div className="flex items-center gap-2">
-                            <TeamLogo src={teamLogoMap.get(row.team_id ?? '')} alt={row.team_name || teamNameMap.get(row.team_id ?? '') || 'Squadra'} />
-                            <span>{row.team_name || teamNameMap.get(row.team_id ?? '') || 'Da definire'}</span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  <div className="overflow-hidden rounded-[1.3rem] border border-emerald-100 bg-white">
+                    <table className="min-w-full divide-y divide-emerald-100 text-sm">
+                      <thead className="bg-emerald-50 text-left text-emerald-900">
+                        <tr>
+                          <th className="px-4 py-3 font-bold">Pos.</th>
+                          <th className="px-4 py-3 font-bold">Squadra</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {finalRankingRows.map((row) => (
+                          <tr key={`${activePhase.id}-${row.position ?? 'na'}-${row.team_id ?? row.team_name}`}>
+                            <td className="px-4 py-3 font-black text-slate-900">{row.position ?? '-'}</td>
+                            <td className="px-4 py-3 font-semibold text-slate-900">
+                              <div className="flex items-center gap-2">
+                                <TeamLogo src={teamLogoMap.get(row.team_id ?? '')} alt={row.team_name || teamNameMap.get(row.team_id ?? '') || 'Squadra'} />
+                                <span>{row.team_name || teamNameMap.get(row.team_id ?? '') || 'Da definire'}</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                  Classifica non ancora disponibile.
+                </div>
+              )}
             </section>
           )}
         </div>
@@ -1058,11 +1048,7 @@ function StandingsTable({
                     <TeamLogo src={teamLogoMap.get(row.team_id)} alt={row.team_name ?? teamNameMap.get(row.team_id) ?? 'Squadra'} />
                     <span className="truncate">{row.team_name ?? teamNameMap.get(row.team_id) ?? row.team_id}</span>
                   </div>
-                  {isFinalPhase && (
-                    <span className="shrink-0">
-                      {index === 0 ? <Trophy className="h-4 w-4 text-amber-500" /> : index === 1 ? <Medal className="h-4 w-4 text-slate-500" /> : index === 2 ? <Award className="h-4 w-4 text-orange-500" /> : null}
-                    </span>
-                  )}
+                  {isFinalPhase ? <span className="shrink-0 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{index + 1}°</span> : null}
                 </div>
               </td>
               <td className="px-3 py-3 font-black text-slate-950">{row.points}</td>
@@ -1105,14 +1091,14 @@ function PodiumGrid({
           }`}
         >
           <div className="flex items-center gap-3">
-            <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${
+            <div className={`flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-black ${
               index === 0
                 ? 'bg-amber-100 text-amber-700'
                 : index === 1
                   ? 'bg-slate-200 text-slate-700'
                   : 'bg-orange-100 text-orange-700'
             }`}>
-              {index === 0 ? <Trophy className="h-5 w-5" /> : index === 1 ? <Medal className="h-5 w-5" /> : <Award className="h-5 w-5" />}
+              {row.position ?? index + 1}°
             </div>
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">{row.position}° posto</p>

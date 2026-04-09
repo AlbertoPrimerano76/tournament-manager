@@ -33,15 +33,16 @@ export default function MatchPage() {
   if (isLoading) return <LoadingSpinner className="py-16" />
   if (error) return <ErrorMessage message="Partita non trovata" />
   if (!match) return null
+  const currentMatch = match
 
-  const homeLabel = match.home_label ?? 'Squadra A'
-  const awayLabel = match.away_label ?? 'Squadra B'
-  const isScheduled = match.status === 'SCHEDULED' || match.status === 'POSTPONED'
-  const isCompleted = match.status === 'COMPLETED'
+  const homeLabel = currentMatch.home_label ?? 'Squadra A'
+  const awayLabel = currentMatch.away_label ?? 'Squadra B'
+  const isScheduled = currentMatch.status === 'SCHEDULED' || currentMatch.status === 'POSTPONED'
+  const isCompleted = currentMatch.status === 'COMPLETED'
 
   const countdown =
-    isScheduled && match.scheduled_at && isFuture(new Date(match.scheduled_at))
-      ? formatDistanceToNow(new Date(match.scheduled_at), { locale: it, addSuffix: false })
+    isScheduled && currentMatch.scheduled_at && isFuture(new Date(currentMatch.scheduled_at))
+      ? formatDistanceToNow(new Date(currentMatch.scheduled_at), { locale: it, addSuffix: false })
       : null
 
   function handleShare() {
@@ -49,7 +50,7 @@ export default function MatchPage() {
       navigator.share({
         title: `${homeLabel} vs ${awayLabel}`,
         text: isCompleted
-          ? `${homeLabel} ${match.home_score} – ${match.away_score} ${awayLabel}`
+          ? `${homeLabel} ${currentMatch.home_score} – ${currentMatch.away_score} ${awayLabel}`
           : `${homeLabel} vs ${awayLabel}`,
         url: window.location.href,
       }).catch(() => {/* dismissed */})
@@ -74,15 +75,15 @@ export default function MatchPage() {
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
           <div className="flex items-center gap-2">
-            {match.bracket_round && (
+            {currentMatch.bracket_round && (
               <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
-                {match.bracket_round}
+                {currentMatch.bracket_round}
               </span>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] ${statusColors[match.status] ?? statusColors.SCHEDULED}`}>
-              {statusLabels[match.status] ?? match.status}
+            <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] ${statusColors[currentMatch.status] ?? statusColors.SCHEDULED}`}>
+              {statusLabels[currentMatch.status] ?? currentMatch.status}
             </span>
             <button
               onClick={handleShare}
@@ -99,9 +100,9 @@ export default function MatchPage() {
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
             {/* Home team */}
             <div className="flex flex-col items-center gap-2 text-center">
-              {match.home_logo_url && (
+              {currentMatch.home_logo_url && (
                 <img
-                  src={match.home_logo_url}
+                  src={currentMatch.home_logo_url}
                   alt={homeLabel}
                   className="h-12 w-12 rounded-full border border-slate-100 object-contain"
                 />
@@ -113,7 +114,7 @@ export default function MatchPage() {
             <div className="flex flex-col items-center gap-1">
               {isCompleted ? (
                 <div className="text-4xl font-black tabular-nums text-slate-950">
-                  {match.home_score} <span className="font-light text-slate-400">–</span> {match.away_score}
+                  {currentMatch.home_score} <span className="font-light text-slate-400">–</span> {currentMatch.away_score}
                 </div>
               ) : (
                 <div className="text-2xl font-black text-slate-300">vs</div>
@@ -127,9 +128,9 @@ export default function MatchPage() {
 
             {/* Away team */}
             <div className="flex flex-col items-center gap-2 text-center">
-              {match.away_logo_url && (
+              {currentMatch.away_logo_url && (
                 <img
-                  src={match.away_logo_url}
+                  src={currentMatch.away_logo_url}
                   alt={awayLabel}
                   className="h-12 w-12 rounded-full border border-slate-100 object-contain"
                 />
@@ -139,37 +140,37 @@ export default function MatchPage() {
           </div>
 
           {/* Tries row */}
-          {isCompleted && (match.home_tries != null || match.away_tries != null) && (
+          {isCompleted && (currentMatch.home_tries != null || currentMatch.away_tries != null) && (
             <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-center text-xs text-slate-400">
-              <span>{match.home_tries ?? 0} mete</span>
+              <span>{currentMatch.home_tries ?? 0} mete</span>
               <span className="font-medium text-slate-300">mete</span>
-              <span>{match.away_tries ?? 0} mete</span>
+              <span>{currentMatch.away_tries ?? 0} mete</span>
             </div>
           )}
         </div>
 
         {/* Details */}
         <div className="border-t border-slate-100 px-5 py-4 space-y-3">
-          {match.scheduled_at && (
+          {currentMatch.scheduled_at && (
             <DetailRow icon={<Clock className="h-4 w-4" />} label="Orario">
-              {format(new Date(match.scheduled_at), "EEEE d MMMM yyyy, HH:mm", { locale: it })}
+              {format(new Date(currentMatch.scheduled_at), "EEEE d MMMM yyyy, HH:mm", { locale: it })}
             </DetailRow>
           )}
-          {match.field_name && (
+          {currentMatch.field_name && (
             <DetailRow icon={<MapPin className="h-4 w-4" />} label="Campo">
-              {match.field_name}{match.field_number ? ` — Campo ${match.field_number}` : ''}
+              {currentMatch.field_name}{currentMatch.field_number ? ` — Campo ${currentMatch.field_number}` : ''}
             </DetailRow>
           )}
-          {match.referee && (
+          {currentMatch.referee && (
             <DetailRow icon={<User className="h-4 w-4" />} label="Arbitro">
-              {match.referee}
+              {currentMatch.referee}
             </DetailRow>
           )}
         </div>
 
-        {match.notes && (
+        {currentMatch.notes && (
           <div className="border-t border-yellow-100 bg-yellow-50 px-5 py-3 text-sm text-yellow-800">
-            {match.notes}
+            {currentMatch.notes}
           </div>
         )}
       </div>
