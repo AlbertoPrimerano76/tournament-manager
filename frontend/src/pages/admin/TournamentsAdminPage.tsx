@@ -5,7 +5,7 @@ import {
   useAdminTournaments, useCreateTournament, useUpdateTournament, useDeleteTournament,
   useAdminTournamentAgeGroups, useCreateAgeGroup, useDeleteAgeGroup,
   useAgeGroupParticipants, useStructureTemplates, useUpdateAgeGroupStructure,
-  useUpdateAgeGroup, useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, useGenerateAgeGroupProgram, useDeleteAgeGroupProgram, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate, type AgeGroupScoringRules,
+  useUpdateAgeGroup, useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, useGenerateAgeGroupProgram, useDeleteAgeGroupProgram, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate, type AgeGroupScoringRules, type TournamentParticipant,
 } from '@/api/tournaments'
 import { apiClient } from '@/api/client'
 import { useAdminOrganizations, useCreateOrganization } from '@/api/organizations'
@@ -2004,11 +2004,16 @@ function AgeGroupConfigurationScreen({
       <div className="rounded-[2rem] border border-white/80 bg-white/85 p-6 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <Link to="/admin/tornei" className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 transition-colors hover:text-slate-600">
-              Tornei
-            </Link>
-            <h1 className="mt-2 text-3xl font-black text-slate-950">{ageGroup.display_name || ageGroup.age_group}</h1>
-            <p className="mt-1 text-sm text-slate-500">{tournament.name}</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Categoria</p>
+                <p className="mt-1 text-lg font-black text-slate-950">{ageGroup.display_name || ageGroup.age_group}</p>
+              </div>
+              <div className="rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Evento</p>
+                <p className="mt-1 text-lg font-black text-slate-950">{tournament.name}</p>
+              </div>
+            </div>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
               Configurazione guidata della categoria: prima le squadre partecipanti, poi la formula completa del torneo.
             </p>
@@ -2349,6 +2354,24 @@ function AgeGroupConfigurationPanel({
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setTeamError(msg ?? 'Errore durante l’aggiornamento della squadra')
+    }
+  }
+
+  async function handleRemoveParticipant(participant: TournamentParticipant) {
+    const confirmed = window.confirm(
+      `Vuoi davvero cancellare "${participant.team_name}" da questa categoria del torneo?`
+    )
+    if (!confirmed) return
+
+    setTeamError('')
+    setTeamMessage('')
+
+    try {
+      await unenrollTeam.mutateAsync({ id: participant.id, ageGroupId: ageGroup.id })
+      setTeamMessage('Squadra cancellata correttamente dalla categoria')
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setTeamError(msg ?? 'Errore durante la cancellazione della squadra')
     }
   }
 
@@ -2716,13 +2739,6 @@ function AgeGroupConfigurationPanel({
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 lg:grid-cols-4">
-        <SummaryTile label="Categoria" value={ageGroup.display_name || ageGroup.age_group} tone="slate" />
-        <SummaryTile label="Formula" value={formulaStatus} tone={validationErrors.length === 0 ? 'emerald' : 'amber'} />
-        <SummaryTile label="Squadre" value={`${participants?.length ?? 0}/${structure.expected_teams ?? '?'}`} tone="sky" />
-        <SummaryTile label="Template" value={selectedTemplateName || 'Nessuno'} tone="fuchsia" />
-      </div>
-
       <div className={pageMode ? 'space-y-5' : 'grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_360px]'}>
         <div className="space-y-5">
           {currentTab === 'formula' && (
@@ -3610,48 +3626,51 @@ function AgeGroupConfigurationPanel({
           {currentTab === 'squadre' && (
           <section className="overflow-hidden rounded-[1.9rem] border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 bg-[linear-gradient(135deg,_#ffffff_0%,_#f8fafc_100%)] px-5 py-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
-                  <Users className="h-5 w-5" />
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
+                    <Users className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Passo 1</p>
+                    <p className="mt-1 text-lg font-black text-slate-950">Squadre partecipanti</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Passo 1</p>
-                  <p className="mt-1 text-lg font-black text-slate-950">Squadre partecipanti</p>
+                <div className="w-full max-w-sm">
+                  <FormField label="Quante squadre partecipano?" hint="Numero esatto da raggiungere prima di passare alla formula">
+                    <input
+                      type="number"
+                      value={structure.expected_teams ?? ''}
+                      onChange={(e) => setStructure((current) => ({ ...current, expected_teams: e.target.value ? Number(e.target.value) : null }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                    />
+                  </FormField>
                 </div>
               </div>
             </div>
 
             <div className="px-5 py-5">
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-[1.4rem] border border-sky-200 bg-sky-50 px-4 py-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">Inserite</p>
-                  <p className="mt-2 text-2xl font-black text-slate-900">{participants?.length ?? 0}</p>
-                </div>
-                <div className="rounded-[1.4rem] border border-emerald-200 bg-emerald-50 px-4 py-3">
-                  <FormField label="Squadre attese" hint="Numero esatto da raggiungere">
-                    <input
-                      type="number"
-                      value={structure.expected_teams ?? ''}
-                      onChange={(e) => setStructure((current) => ({ ...current, expected_teams: e.target.value ? Number(e.target.value) : null }))}
-                      className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
-                    />
-                  </FormField>
-                </div>
-                <div className="rounded-[1.4rem] border border-fuchsia-200 bg-fuchsia-50 px-4 py-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-fuchsia-700">Da inserire</p>
-                  <p className="mt-2 text-2xl font-black text-slate-900">{remainingSlots ?? '?'}</p>
-                </div>
-              </div>
-
-              <div className={`mt-4 rounded-[1.4rem] border px-4 py-3 ${
+              <div className={`flex flex-col gap-3 rounded-[1.4rem] border px-4 py-4 lg:flex-row lg:items-center lg:justify-between ${
                 remainingSlots === 0 ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'
               }`}>
-                <p className={`text-sm font-semibold ${remainingSlots === 0 ? 'text-emerald-900' : 'text-amber-900'}`}>
-                  {remainingSlots === 0 ? 'Il numero squadre coincide. Puoi passare alla formula.' : 'Completa prima l’elenco squadre della categoria.'}
-                </p>
-                <p className={`mt-1 text-sm ${remainingSlots === 0 ? 'text-emerald-800' : 'text-amber-800'}`}>
-                  Attese {structure.expected_teams ?? '?'} / inserite {participants?.length ?? 0}
-                </p>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Passo 1</p>
+                  <p className={`mt-1 text-sm font-semibold ${remainingSlots === 0 ? 'text-emerald-900' : 'text-amber-900'}`}>
+                    {remainingSlots === 0 ? 'Il numero squadre coincide. Puoi passare alla formula.' : 'Completa prima l’elenco squadre della categoria.'}
+                  </p>
+                  <p className={`mt-1 text-sm ${remainingSlots === 0 ? 'text-emerald-800' : 'text-amber-800'}`}>
+                    Attese {structure.expected_teams ?? '?'} / inserite {participants?.length ?? 0}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onStepChange?.('formula')}
+                  disabled={remainingSlots !== 0}
+                  className="inline-flex items-center justify-center gap-2 self-start rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                  <ArrowRight className="h-4 w-4" />
+                </button>
               </div>
 
               {teamError && (
@@ -3669,7 +3688,7 @@ function AgeGroupConfigurationPanel({
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                   <p className="text-sm font-bold text-slate-900">Aggiungi squadra esistente</p>
-                  <p className="mt-1 text-sm text-slate-500">Usa una squadra già presente nel sistema.</p>
+                  <p className="mt-1 text-sm text-slate-500">Usa una squadra già creata per questo torneo.</p>
                   <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
                     <FormField label="Squadra disponibile">
                       <select
@@ -3742,8 +3761,8 @@ function AgeGroupConfigurationPanel({
 
               <div className="mt-5 space-y-3">
                 {participants && participants.length > 0 ? participants.map((participant) => (
-                  <div key={participant.id} className="rounded-[1.35rem] border border-slate-200 bg-[linear-gradient(135deg,_#ffffff_0%,_#f8fafc_100%)] px-4 py-4 shadow-sm">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div key={participant.id} className="rounded-[1.1rem] border border-slate-200 bg-white px-3 py-3 shadow-sm">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                       <div className="min-w-0">
                         {editingTeamId === participant.team_id ? (
                           <div className="grid gap-3 md:grid-cols-2">
@@ -3763,22 +3782,21 @@ function AgeGroupConfigurationPanel({
                           <>
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="text-sm font-semibold text-slate-900">{participant.team_name}</p>
-                              {participant.is_tournament_team && (
-                                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700">
-                                  Solo questo torneo
+                              {participant.team_short_name && (
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                                  {participant.team_short_name}
                                 </span>
                               )}
                             </div>
-                            <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                            <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
                               <span>{participant.organization_name || 'Società'}</span>
                               {participant.city && <span>· {participant.city}</span>}
-                              {participant.team_short_name && <span>· {participant.team_short_name}</span>}
                             </div>
                           </>
                         )}
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {participant.is_tournament_team && editingTeamId !== participant.team_id && (
+                        {editingTeamId !== participant.team_id && (
                           <button
                             type="button"
                             onClick={() => {
@@ -3817,11 +3835,12 @@ function AgeGroupConfigurationPanel({
                         )}
                         <button
                           type="button"
-                          onClick={() => unenrollTeam.mutate({ id: participant.id, ageGroupId: ageGroup.id })}
+                          onClick={() => void handleRemoveParticipant(participant)}
+                          disabled={unenrollTeam.isPending}
                           className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100"
                         >
                           <Trash2 className="h-4 w-4" />
-                          Rimuovi
+                          Cancella squadra
                         </button>
                       </div>
                     </div>
@@ -3831,18 +3850,6 @@ function AgeGroupConfigurationPanel({
                     Nessuna squadra assegnata alla categoria.
                   </div>
                 )}
-              </div>
-
-              <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
-                <button
-                  type="button"
-                  onClick={() => onStepChange?.('formula')}
-                  disabled={remainingSlots !== 0}
-                  className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Next
-                  <ArrowRight className="h-4 w-4" />
-                </button>
               </div>
             </div>
           </section>

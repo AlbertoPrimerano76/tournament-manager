@@ -5,6 +5,9 @@ from app.core.database import get_db
 from app.core.deps import require_editor
 from app.models.organization import Organization
 from app.models.team import Team, TournamentTeam
+from app.models.phase import GroupTeam
+from app.models.match import Match
+from app.models.tournament import TournamentAgeGroup
 from app.models.user import User
 from app.schemas.team import TeamCreate, TeamUpdate, TeamResponse, TournamentTeamCreate, TournamentTeamResponse
 
@@ -22,7 +25,7 @@ async def list_teams(
     if organization_id:
         query = query.where(Team.organization_id == organization_id)
     if tournament_id:
-        query = query.where(or_(Team.tournament_id.is_(None), Team.tournament_id == tournament_id))
+        query = query.where(Team.tournament_id == tournament_id)
     else:
         query = query.where(Team.tournament_id.is_(None))
     result = await db.execute(query.order_by(Team.name))
@@ -75,6 +78,19 @@ async def enroll_team(
     _: User = Depends(require_editor),
     db: AsyncSession = Depends(get_db),
 ):
+    age_group = await db.get(TournamentAgeGroup, body.tournament_age_group_id)
+    if not age_group:
+        raise HTTPException(status_code=404, detail="Categoria torneo non trovata")
+
+    team = await db.get(Team, body.team_id)
+    if not team:
+        raise HTTPException(status_code=404, detail="Squadra non trovata")
+    if team.tournament_id != age_group.tournament_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Puoi aggiungere alla categoria solo squadre create per questo torneo.",
+        )
+
     existing_result = await db.execute(
         select(TournamentTeam).where(
             TournamentTeam.tournament_age_group_id == body.tournament_age_group_id,
@@ -102,6 +118,30 @@ async def unenroll_team(
     tt = result.scalar_one_or_none()
     if not tt:
         raise HTTPException(status_code=404, detail="Tournament team not found")
+
+    group_usage = await db.execute(
+        select(GroupTeam.id).where(GroupTeam.tournament_team_id == tt.id).limit(1)
+    )
+    if group_usage.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="La squadra non può essere rimossa perché è già assegnata a un girone. Cancella prima il programma della categoria.",
+        )
+
+    match_usage = await db.execute(
+        select(Match.id).where(
+            or_(
+                Match.home_team_id == tt.id,
+                Match.away_team_id == tt.id,
+            )
+        ).limit(1)
+    )
+    if match_usage.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="La squadra non può essere rimossa perché è già presente nelle partite generate. Cancella prima il programma della categoria.",
+        )
+
     team = await db.get(Team, tt.team_id)
     await db.delete(tt)
     await db.flush()
