@@ -54,6 +54,7 @@ class ProgramPhaseResponse(BaseModel):
     phase_order: int
     is_final_phase: bool = False
     scheduled_date: date_type | None = None
+    configured_start_at: datetime | None = None
     phase_start_at: datetime | None = None
     estimated_end_at: datetime | None = None
     groups: list[ProgramGroupResponse]

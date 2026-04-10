@@ -1810,6 +1810,12 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
                 age_group,
             )
 
+        configured_start_at = _resolve_phase_start(
+            age_group,
+            phase_order - 1,
+            phase_config if isinstance(phase_config, dict) else {},
+            None,
+        ) if phase_order <= len(phases_config) else None
         day_key = phase_date.isoformat() if phase_date else f"phase-{phase_order}"
         phase_days[day_key].append(ProgramPhaseResponse(
             id=phase_id,
@@ -1818,6 +1824,7 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
             phase_order=phase_order,
             is_final_phase=_is_final_phase_config(phases_config, phase_order),
             scheduled_date=phase_date,
+            configured_start_at=configured_start_at,
             phase_start_at=phase_start_at,
             estimated_end_at=estimated_end_at,
             groups=group_responses,
@@ -1836,6 +1843,7 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
             phase_order=phase.phase_order,
             is_final_phase=True,
             scheduled_date=phase_date,
+            configured_start_at=None,
             phase_start_at=phase_start_at,
             estimated_end_at=estimated_end_at,
             groups=group_responses,

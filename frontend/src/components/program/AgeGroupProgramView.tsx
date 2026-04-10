@@ -262,6 +262,7 @@ function AdminOperationsView({
           <p className="mt-1 text-sm text-slate-600">
             Scegli prima il filtro giusto, poi apri la partita da aggiornare.
           </p>
+          <PhaseTimingNotice phase={selectedPhase} />
         </div>
 
         {statusView === 'pending' && nextMatch && (
@@ -340,6 +341,7 @@ function AdminOperationsView({
                 key={match.id}
                 match={match}
                 mode="admin"
+                phase={selectedPhase}
                 playingFields={playingFields}
                 ageGroupId={program.age_group_id}
                 participants={participants}
@@ -359,6 +361,7 @@ function AdminOperationsView({
                 key={match.id}
                 match={match}
                 mode="admin"
+                phase={selectedPhase}
                 playingFields={playingFields}
                 ageGroupId={program.age_group_id}
                 participants={participants}
@@ -449,6 +452,7 @@ function AdminGroupsView({ program, participants }: { program: AgeGroupProgram; 
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Fase {phase.phase_order}</p>
               <h3 className="mt-1 text-lg font-black text-slate-950">{phase.name}</h3>
+              <PhaseTimingNotice phase={phase} compact />
             </div>
             <button
               type="button"
@@ -535,6 +539,7 @@ function AdminMatchesView({
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Fase {phase.phase_order}</p>
               <h3 className="mt-1 text-lg font-black text-slate-950">{phase.name}</h3>
+              <PhaseTimingNotice phase={phase} compact />
             </div>
             <button
               type="button"
@@ -557,7 +562,7 @@ function AdminMatchesView({
                     {group.matches.filter((match) => (
                       statusView === 'completed' ? match.status === 'COMPLETED' : match.status !== 'COMPLETED'
                     )).map((match) => (
-                      <ProgramMatchCard key={match.id} match={match} mode="admin" playingFields={playingFields} ageGroupId={program.age_group_id} participants={participants} group={group} />
+                      <ProgramMatchCard key={match.id} match={match} mode="admin" phase={phase} playingFields={playingFields} ageGroupId={program.age_group_id} participants={participants} group={group} />
                     ))}
                   </div>
                 </div>
@@ -761,7 +766,7 @@ function AdminKnockoutView({
             {phase.knockout_matches.filter((match) => (
               statusView === 'completed' ? match.status === 'COMPLETED' : match.status !== 'COMPLETED'
             )).map((match) => (
-              <ProgramMatchCard key={match.id} match={match} mode="admin" playingFields={playingFields} ageGroupId={program.age_group_id} participants={participants} />
+              <ProgramMatchCard key={match.id} match={match} mode="admin" phase={phase} playingFields={playingFields} ageGroupId={program.age_group_id} participants={participants} />
             ))}
           </div>
         </section>
@@ -1016,6 +1021,7 @@ function ProgramMatchCard({
   ageGroupId,
   participants = [],
   group,
+  phase,
   adminVariant = 'full',
   matchDurationMinutes = 12,
   intervalMinutes = 8,
@@ -1028,6 +1034,7 @@ function ProgramMatchCard({
   ageGroupId?: string
   participants?: TournamentParticipant[]
   group?: ProgramGroup
+  phase?: ProgramPhase
   adminVariant?: 'full' | 'results' | 'delays'
   matchDurationMinutes?: number
   intervalMinutes?: number
@@ -1093,6 +1100,9 @@ function ProgramMatchCard({
     intervalMinutes,
   )
   const visibleDelayMinutes = delayMinutes === '' ? calculatedDelayMinutes : Number(delayMinutes)
+  const propagatedDelayMinutes = phase
+    ? getPropagatedDelayForMatch(phase, match, matchDurationMinutes, intervalMinutes)
+    : 0
 
   async function handleSaveScore() {
     setScoreError('')
@@ -1267,6 +1277,12 @@ function ProgramMatchCard({
                 <span className="font-medium text-emerald-700">in orario</span>
               )}
             </p>
+            {propagatedDelayMinutes > 0 && (
+              <p>
+                <span className="font-semibold text-slate-900">Ritardo propagato:</span>{' '}
+                <span className="font-bold text-rose-600">+{propagatedDelayMinutes} min</span>
+              </p>
+            )}
           </>
         )}
       </div>
@@ -1675,6 +1691,57 @@ function deriveDelayMinutes(
   if (!slotDeadline) return 0
   const delay = Math.round((new Date(actualEndAt).getTime() - slotDeadline.getTime()) / 60_000)
   return Math.max(delay, 0)
+}
+
+function getPropagatedDelayForMatch(
+  phase: ProgramPhase,
+  targetMatch: ProgramMatch,
+  durationMinutes: number,
+  intervalMinutes: number,
+) {
+  const phaseStart = phase.configured_start_at ?? phase.phase_start_at
+  if (!phaseStart || !targetMatch.scheduled_at) return 0
+
+  const allMatches = sortMatchesBySchedule([
+    ...phase.groups.flatMap((group) => group.matches),
+    ...phase.knockout_matches,
+  ]).filter((match) => (
+    match.field_name === targetMatch.field_name
+    && match.field_number === targetMatch.field_number
+    && match.scheduled_at
+  ))
+  const matchIndex = allMatches.findIndex((match) => match.id === targetMatch.id)
+  if (matchIndex < 0) return 0
+
+  const expectedStart = new Date(phaseStart)
+  expectedStart.setMinutes(expectedStart.getMinutes() + matchIndex * (durationMinutes + intervalMinutes))
+  const actualStart = new Date(targetMatch.scheduled_at)
+  const delay = Math.round((actualStart.getTime() - expectedStart.getTime()) / 60_000)
+  return Math.max(delay, 0)
+}
+
+function formatPhaseTimingSummary(phase: ProgramPhase) {
+  const actualStart = phase.phase_start_at ? format(new Date(phase.phase_start_at), 'HH:mm', { locale: it }) : 'da definire'
+  const estimatedEnd = phase.estimated_end_at ? format(new Date(phase.estimated_end_at), 'HH:mm', { locale: it }) : 'da definire'
+  if (phase.configured_start_at && phase.phase_start_at && phase.configured_start_at !== phase.phase_start_at) {
+    return {
+      changed: true,
+      text: `Inizio previsto ${format(new Date(phase.configured_start_at), 'HH:mm', { locale: it })} · aggiornato ${actualStart} · fine stimata ${estimatedEnd}`,
+    }
+  }
+  return {
+    changed: false,
+    text: `Inizio ${actualStart} · fine stimata ${estimatedEnd}`,
+  }
+}
+
+function PhaseTimingNotice({ phase, compact = false }: { phase: ProgramPhase; compact?: boolean }) {
+  const summary = formatPhaseTimingSummary(phase)
+  return (
+    <p className={`mt-2 text-sm ${summary.changed ? 'font-semibold text-rose-700' : 'text-slate-500'} ${compact ? 'max-w-2xl' : ''}`}>
+      {summary.text}
+    </p>
+  )
 }
 
 function matchScheduleTimestamp(match: ProgramMatch) {

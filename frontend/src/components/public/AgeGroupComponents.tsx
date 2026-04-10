@@ -282,6 +282,10 @@ export function formatPhaseWindow(phase: ProgramPhase): string | null {
   const endLabel = phase.estimated_end_at
     ? format(new Date(phase.estimated_end_at), 'HH:mm', { locale: it })
     : 'da definire'
+  if (phase.configured_start_at && phase.phase_start_at && phase.configured_start_at !== phase.phase_start_at) {
+    const configuredLabel = format(new Date(phase.configured_start_at), 'HH:mm', { locale: it })
+    return `Inizio previsto ${configuredLabel} · aggiornato ${startLabel} · Fine stimata ${endLabel}`
+  }
   return `Inizio ${startLabel} · Fine stimata ${endLabel}`
 }
 

@@ -172,6 +172,7 @@ export interface ProgramPhase {
   phase_order: number
   is_final_phase: boolean
   scheduled_date: string | null
+  configured_start_at: string | null
   phase_start_at: string | null
   estimated_end_at: string | null
   groups: ProgramGroup[]
