@@ -11,6 +11,7 @@ export interface AppUser {
   is_active: boolean
   security_questions_configured: boolean
   assigned_tournament_ids: string[]
+  assigned_age_group_ids: string[]
 }
 
 export const ROLE_LABELS: Record<UserRole, string> = {
@@ -22,7 +23,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
   SUPER_ADMIN:        'Accesso completo a tutto il sistema',
   ORG_ADMIN:          'Può creare società e tornei',
-  SCORE_KEEPER:       'Vede solo i tornei assegnati e inserisce risultati e ritardi',
+  SCORE_KEEPER:       'Vede solo tornei o categorie assegnate e inserisce risultati e ritardi',
 }
 
 export const ROLE_COLORS: Record<UserRole, string> = {
@@ -47,7 +48,7 @@ export function useUsers() {
 export function useCreateUser() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (data: { email: string; password: string; role: UserRole; organization_id?: string; assigned_tournament_ids?: string[] }) => {
+    mutationFn: async (data: { email: string; password: string; role: UserRole; organization_id?: string; assigned_tournament_ids?: string[]; assigned_age_group_ids?: string[] }) => {
       const res = await apiClient.post<AppUser>('/api/v1/admin/users', data)
       return res.data
     },
@@ -58,7 +59,7 @@ export function useCreateUser() {
 export function useUpdateUser() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<{ role: UserRole; organization_id: string | null; is_active: boolean; assigned_tournament_ids: string[] }> }) => {
+    mutationFn: async ({ id, data }: { id: string; data: Partial<{ role: UserRole; organization_id: string | null; is_active: boolean; assigned_tournament_ids: string[]; assigned_age_group_ids: string[] }> }) => {
       const res = await apiClient.put<AppUser>(`/api/v1/admin/users/${id}`, data)
       return res.data
     },

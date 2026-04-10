@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useQueries } from '@tanstack/react-query'
 import {
   useUsers, useCreateUser, useUpdateUser, useDeleteUser, useResetPassword,
   AppUser, UserRole, ROLE_LABELS, ROLE_DESCRIPTIONS, ROLE_COLORS,
@@ -10,6 +11,7 @@ import {
 } from '@/api/securityQuestions'
 import { useAdminOrganizations } from '@/api/organizations'
 import { useAdminTournaments } from '@/api/tournaments'
+import { apiClient } from '@/api/client'
 import { useAuth } from '@/context/AuthContext'
 import { Plus, Pencil, Trash2, X, KeyRound, ShieldCheck, ToggleLeft, ToggleRight, ShieldQuestion, AlertTriangle } from 'lucide-react'
 import PasswordStrengthField from '@/components/PasswordStrengthField'
@@ -203,8 +205,28 @@ function UserFormDrawer({ user, onClose }: { user: AppUser | null; onClose: () =
     role: user?.role ?? 'SCORE_KEEPER' as UserRole,
     organization_id: user?.organization_id ?? '',
     assigned_tournament_ids: user?.assigned_tournament_ids ?? [],
+    assigned_age_group_ids: user?.assigned_age_group_ids ?? [],
   })
   const [error, setError] = useState('')
+
+  const ageGroupQueries = useQueries({
+    queries: (tournaments ?? []).map((tournament) => ({
+      queryKey: ['admin-tournament-age-groups', tournament.id, 'users-form'],
+      queryFn: async () => {
+        const res = await apiClient.get<Array<{ id: string; age_group: string; display_name: string | null }>>(
+          `/api/v1/admin/tournaments/${tournament.id}/age-groups`,
+        )
+        return { tournamentId: tournament.id, ageGroups: res.data }
+      },
+      enabled: form.role === 'SCORE_KEEPER',
+    })),
+  })
+  const ageGroupsByTournament = useMemo(() => new Map(
+    ageGroupQueries
+      .map((query) => query.data)
+      .filter((item): item is { tournamentId: string; ageGroups: Array<{ id: string; age_group: string; display_name: string | null }> } => Boolean(item))
+      .map((item) => [item.tournamentId, item.ageGroups] as const),
+  ), [ageGroupQueries])
 
   function set(field: string, value: string) {
     setForm(f => ({ ...f, [field]: value }))
@@ -219,6 +241,15 @@ function UserFormDrawer({ user, onClose }: { user: AppUser | null; onClose: () =
     }))
   }
 
+  function toggleAgeGroup(ageGroupId: string) {
+    setForm((current) => ({
+      ...current,
+      assigned_age_group_ids: current.assigned_age_group_ids.includes(ageGroupId)
+        ? current.assigned_age_group_ids.filter((id) => id !== ageGroupId)
+        : [...current.assigned_age_group_ids, ageGroupId],
+    }))
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
@@ -230,6 +261,7 @@ function UserFormDrawer({ user, onClose }: { user: AppUser | null; onClose: () =
             role: form.role,
             organization_id: form.organization_id || null,
             assigned_tournament_ids: form.role === 'SCORE_KEEPER' ? form.assigned_tournament_ids : [],
+            assigned_age_group_ids: form.role === 'SCORE_KEEPER' ? form.assigned_age_group_ids : [],
           },
         })
       } else {
@@ -241,6 +273,7 @@ function UserFormDrawer({ user, onClose }: { user: AppUser | null; onClose: () =
           role: form.role,
           organization_id: form.organization_id || undefined,
           assigned_tournament_ids: form.role === 'SCORE_KEEPER' ? form.assigned_tournament_ids : [],
+          assigned_age_group_ids: form.role === 'SCORE_KEEPER' ? form.assigned_age_group_ids : [],
         })
       }
       onClose()
@@ -333,23 +366,59 @@ function UserFormDrawer({ user, onClose }: { user: AppUser | null; onClose: () =
 
           {form.role === 'SCORE_KEEPER' && tournaments && tournaments.length > 0 && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Tornei assegnati</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Tornei e categorie assegnate</label>
               <div className="grid gap-2 max-h-64 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50 p-3">
                 {tournaments.map((tournament) => {
                   const checked = form.assigned_tournament_ids.includes(tournament.id)
+                  const tournamentAgeGroups = ageGroupsByTournament.get(tournament.id) ?? []
                   return (
-                    <label key={tournament.id} className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-sm transition-colors ${checked ? 'border-rugby-green bg-white' : 'border-transparent bg-white/80'}`}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleTournament(tournament.id)}
-                        className="accent-rugby-green"
-                      />
-                      <div className="min-w-0">
-                        <p className="font-semibold text-gray-900">{tournament.name}</p>
-                        <p className="text-xs text-gray-400">{tournament.slug}</p>
-                      </div>
-                    </label>
+                    <div key={tournament.id} className={`rounded-xl border px-3 py-3 text-sm transition-colors ${checked ? 'border-rugby-green bg-white' : 'border-transparent bg-white/80'}`}>
+                      <label className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleTournament(tournament.id)}
+                          className="mt-0.5 accent-rugby-green"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-gray-900">{tournament.name}</p>
+                          <p className="text-xs text-gray-400">{tournament.slug}</p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            Se selezioni il torneo intero, il segnapunti vede tutte le categorie del torneo.
+                          </p>
+                        </div>
+                      </label>
+                      {tournamentAgeGroups.length > 0 && (
+                        <div className="mt-3 border-t border-gray-100 pt-3">
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
+                            Oppure limita alle sole categorie
+                          </p>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {tournamentAgeGroups.map((ageGroup) => {
+                              const ageGroupChecked = form.assigned_age_group_ids.includes(ageGroup.id)
+                              return (
+                                <label
+                                  key={ageGroup.id}
+                                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
+                                    ageGroupChecked ? 'border-emerald-300 bg-emerald-50' : 'border-gray-200 bg-white'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={ageGroupChecked}
+                                    onChange={() => toggleAgeGroup(ageGroup.id)}
+                                    className="accent-emerald-600"
+                                  />
+                                  <span className="text-sm font-medium text-gray-800">
+                                    {ageGroup.display_name || ageGroup.age_group}
+                                  </span>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )
                 })}
               </div>

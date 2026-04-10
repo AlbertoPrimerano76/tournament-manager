@@ -224,7 +224,7 @@ function AdminOperationsView({
 
   return (
     <div className="space-y-5">
-      <section className="rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-[1.7rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="rounded-[1.35rem] border border-slate-200 bg-slate-50 p-4 lg:col-span-2">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Scegli la fase</p>
@@ -255,7 +255,7 @@ function AdminOperationsView({
         </div>
       </section>
 
-      <section className="rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-[1.7rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="mb-4">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Tabellini</p>
           <h3 className="mt-1 text-lg font-black text-slate-950">{selectedPhase.name}</h3>
@@ -1206,7 +1206,7 @@ function ProgramMatchCard({
           : 'border-amber-200 bg-amber-50/40'
         : 'border-slate-200 bg-slate-50'
     } ${highlight ? 'ring-2 ring-amber-300 ring-offset-2' : ''}`}>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
           <div className="grid gap-2 text-sm">
             <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2">
@@ -1237,7 +1237,7 @@ function ProgramMatchCard({
             </div>
           </div>
         </div>
-        <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] ${
+        <span className={`self-start rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] ${
           status === 'COMPLETED'
             ? 'bg-emerald-100 text-emerald-700'
             : status === 'IN_PROGRESS'
@@ -1250,7 +1250,7 @@ function ProgramMatchCard({
         </span>
       </div>
 
-      <div className="mt-3 grid gap-2 rounded-xl bg-white px-3 py-3 text-sm text-slate-600 sm:grid-cols-3">
+      <div className="mt-3 grid gap-2 rounded-xl bg-white px-3 py-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-3">
         <p><span className="font-semibold text-slate-900">Orario:</span> {match.scheduled_at ? format(new Date(match.scheduled_at), 'HH:mm', { locale: it }) : 'Da definire'}</p>
         <p><span className="font-semibold text-slate-900">Campo:</span> {match.field_name ? `${match.field_name}${match.field_number ? ` · Campo ${match.field_number}` : ''}` : 'Da definire'}</p>
         <p><span className="font-semibold text-slate-900">Arbitro:</span> {match.referee || 'Da definire'}</p>
@@ -1441,7 +1441,7 @@ function ProgramMatchCard({
                     className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                   />
                 </label>
-                  <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+                  <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs font-semibold text-slate-600">
                     <input
                       type="checkbox"
                       checked={propagateDelay}
@@ -1515,12 +1515,12 @@ function ProgramMatchCard({
             </div>
             )}
 
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="mt-3 grid gap-2 sm:flex sm:flex-wrap sm:items-center">
               <button
                 type="button"
                 onClick={() => void handleSaveScore()}
                 disabled={scoreMutation.isPending}
-                className="rounded-xl bg-rugby-green px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="rounded-xl bg-rugby-green px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {adminVariant === 'results' ? 'Salva punteggio e fine partita' : 'Salva risultato'}
               </button>
@@ -1528,7 +1528,7 @@ function ProgramMatchCard({
                 type="button"
                 onClick={() => void handleClearScore()}
                 disabled={scoreMutation.isPending}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
               >
                 Annulla risultato
               </button>

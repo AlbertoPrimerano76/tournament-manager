@@ -129,7 +129,10 @@ async def get_today_matches(
             .join(Phase, Phase.id == Match.phase_id)
             .join(TournamentAgeGroup, TournamentAgeGroup.id == Phase.tournament_age_group_id)
             .join(UserTournamentAssignment, UserTournamentAssignment.tournament_id == TournamentAgeGroup.tournament_id)
-            .where(UserTournamentAssignment.user_id == user.id)
+            .where(
+                UserTournamentAssignment.user_id == user.id,
+                (UserTournamentAssignment.age_group_id.is_(None)) | (UserTournamentAssignment.age_group_id == TournamentAgeGroup.id),
+            )
         )
 
     result = await db.execute(query)

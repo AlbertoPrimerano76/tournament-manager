@@ -11,8 +11,21 @@ type StatusFilter = 'all' | 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED'
 export default function ScorerPage() {
   const { data: matches = [], isLoading, dataUpdatedAt, refetch } = useTodayMatches()
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [tournamentFilter, setTournamentFilter] = useState('all')
+  const [ageGroupFilter, setAgeGroupFilter] = useState('all')
 
-  const filtered = matches.filter((m) => statusFilter === 'all' || m.status === statusFilter)
+  const tournamentOptions = Array.from(new Map(
+    matches.map((match) => [match.tournament_id, match.tournament_name] as const),
+  ).entries())
+  const ageGroupOptions = Array.from(new Map(
+    matches.map((match) => [match.age_group_id, match.age_group_name] as const),
+  ).entries())
+
+  const filtered = matches.filter((m) =>
+    (statusFilter === 'all' || m.status === statusFilter)
+    && (tournamentFilter === 'all' || m.tournament_id === tournamentFilter)
+    && (ageGroupFilter === 'all' || m.age_group_id === ageGroupFilter)
+  )
 
   const grouped = filtered.reduce<Record<string, TodayMatchItem[]>>((acc, m) => {
     const key = m.field_number != null ? `Campo ${m.field_number}` : (m.field_name ?? 'Senza campo')
@@ -62,7 +75,8 @@ export default function ScorerPage() {
         </span>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="space-y-3 rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex gap-2 overflow-x-auto pb-1">
         {(['all', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED'] as StatusFilter[]).map((s) => (
           <button
             key={s}
@@ -76,6 +90,35 @@ export default function ScorerPage() {
             {s === 'all' ? 'Tutte' : s === 'SCHEDULED' ? 'Da giocare' : s === 'IN_PROGRESS' ? 'In corso' : 'Concluse'}
           </button>
         ))}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+            Torneo
+            <select
+              value={tournamentFilter}
+              onChange={(e) => setTournamentFilter(e.target.value)}
+              className="mt-2 block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900"
+            >
+              <option value="all">Tutti i tornei</option>
+              {tournamentOptions.map(([id, name]) => (
+                <option key={id} value={id}>{name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+            Categoria
+            <select
+              value={ageGroupFilter}
+              onChange={(e) => setAgeGroupFilter(e.target.value)}
+              className="mt-2 block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900"
+            >
+              <option value="all">Tutte le categorie</option>
+              {ageGroupOptions.map(([id, name]) => (
+                <option key={id} value={id}>{name}</option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       {matches.length === 0 ? (
@@ -170,10 +213,10 @@ function MatchCard({ match }: { match: TodayMatchItem }) {
   }
 
   return (
-    <div className={`overflow-hidden rounded-[1.5rem] border bg-white shadow-sm ${
+      <div className={`overflow-hidden rounded-[1.5rem] border bg-white shadow-sm ${
       isInProgress ? 'border-amber-300' : isCompleted ? 'border-emerald-200' : 'border-slate-200'
     }`}>
-      <div className={`flex items-center justify-between gap-2 px-4 py-2 text-xs font-bold ${
+      <div className={`flex flex-col gap-1 px-4 py-2 text-xs font-bold sm:flex-row sm:items-center sm:justify-between ${
         isInProgress ? 'bg-amber-50 text-amber-700' : isCompleted ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'
       }`}>
         <span>{match.tournament_name} · {match.age_group_name}</span>
@@ -300,37 +343,44 @@ function MatchCard({ match }: { match: TodayMatchItem }) {
             )}
           </div>
         ) : (
-          <div className="flex items-center gap-3">
-            <div className="min-w-0 flex-1 text-center">
-              <p className="truncate text-sm font-bold text-slate-900">{match.home_label ?? '?'}</p>
+          <>
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1 text-center">
+                <p className="truncate text-sm font-bold text-slate-900">{match.home_label ?? '?'}</p>
+              </div>
+              <div className="shrink-0 text-center">
+                {isCompleted || isInProgress ? (
+                  <span className="rounded-xl bg-slate-900 px-4 py-2 text-xl font-black tabular-nums text-white">
+                    {match.home_score ?? '–'} – {match.away_score ?? '–'}
+                  </span>
+                ) : (
+                  <span className="text-base font-black text-slate-300">vs</span>
+                )}
+              </div>
+              <div className="min-w-0 flex-1 text-center">
+                <p className="truncate text-sm font-bold text-slate-900">{match.away_label ?? '?'}</p>
+              </div>
             </div>
-            <div className="shrink-0 text-center">
-              {isCompleted || isInProgress ? (
-                <span className="rounded-xl bg-slate-900 px-4 py-2 text-xl font-black tabular-nums text-white">
-                  {match.home_score ?? '–'} – {match.away_score ?? '–'}
-                </span>
-              ) : (
-                <span className="text-base font-black text-slate-300">vs</span>
-              )}
+            <div className="mt-3 grid gap-2 rounded-xl bg-slate-50 px-3 py-3 text-xs text-slate-600 sm:grid-cols-3">
+              <p><span className="font-semibold text-slate-900">Orario:</span> {match.scheduled_at ? format(new Date(match.scheduled_at), 'HH:mm', { locale: it }) : 'Da definire'}</p>
+              <p><span className="font-semibold text-slate-900">Campo:</span> {match.field_name ? `${match.field_name}${match.field_number ? ` · ${match.field_number}` : ''}` : 'Da definire'}</p>
+              <p><span className="font-semibold text-slate-900">Stato:</span> {isInProgress ? 'In corso' : isCompleted ? 'Conclusa' : 'Da giocare'}</p>
             </div>
-            <div className="min-w-0 flex-1 text-center">
-              <p className="truncate text-sm font-bold text-slate-900">{match.away_label ?? '?'}</p>
-            </div>
-          </div>
+          </>
         )}
       </div>
 
       {!editing && (
-        <div className="flex gap-2 border-t border-slate-100 px-4 py-3">
+        <div className="grid gap-2 border-t border-slate-100 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_120px]">
           <button
             onClick={openEdit}
-            className="flex-1 rounded-xl bg-rugby-brand py-3 text-sm font-bold text-white"
+            className="rounded-xl bg-rugby-brand py-3 text-sm font-bold text-white"
           >
             {isCompleted ? 'Modifica risultato' : 'Inserisci risultato'}
           </button>
           <Link
             to={`/admin/tornei/${match.tournament_id}/categorie/${match.age_group_id}/gestione`}
-            className="flex items-center justify-center rounded-xl border border-slate-200 px-4 py-3 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            className="flex items-center justify-center rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
           >
             Dettaglio
           </Link>

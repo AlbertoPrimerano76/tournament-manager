@@ -185,12 +185,19 @@ async def _ensure_development_schema(conn: AsyncConnection) -> None:
                 id VARCHAR(36) PRIMARY KEY NOT NULL,
                 user_id VARCHAR(36) NOT NULL,
                 tournament_id VARCHAR(36) NOT NULL,
-                UNIQUE(user_id, tournament_id),
+                age_group_id VARCHAR(36),
+                UNIQUE(user_id, tournament_id, age_group_id),
                 FOREIGN KEY(user_id) REFERENCES users(id),
-                FOREIGN KEY(tournament_id) REFERENCES tournaments(id)
+                FOREIGN KEY(tournament_id) REFERENCES tournaments(id),
+                FOREIGN KEY(age_group_id) REFERENCES tournament_age_groups(id)
             )
             """
         )
+        assignment_columns = {row[1] for row in (await conn.exec_driver_sql("PRAGMA table_info(user_tournament_assignments)")).fetchall()}
+        if "age_group_id" not in assignment_columns:
+            await conn.exec_driver_sql(
+                "ALTER TABLE user_tournament_assignments ADD COLUMN age_group_id VARCHAR(36)"
+            )
         await conn.exec_driver_sql(
             """
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -252,9 +259,13 @@ async def _ensure_development_schema(conn: AsyncConnection) -> None:
                 id VARCHAR(36) PRIMARY KEY NOT NULL,
                 user_id VARCHAR(36) NOT NULL REFERENCES users(id),
                 tournament_id VARCHAR(36) NOT NULL REFERENCES tournaments(id),
-                CONSTRAINT uq_user_tournament_assignment UNIQUE (user_id, tournament_id)
+                age_group_id VARCHAR(36) REFERENCES tournament_age_groups(id),
+                CONSTRAINT uq_user_tournament_assignment UNIQUE (user_id, tournament_id, age_group_id)
             )
             """
+        )
+        await conn.exec_driver_sql(
+            "ALTER TABLE user_tournament_assignments ADD COLUMN IF NOT EXISTS age_group_id VARCHAR(36)"
         )
         await conn.exec_driver_sql(
             """

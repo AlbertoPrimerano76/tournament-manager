@@ -53,6 +53,27 @@ async def get_assigned_tournament_ids(user: User, db: AsyncSession) -> set[str]:
     return set(result.scalars().all())
 
 
+async def get_direct_tournament_ids(user: User, db: AsyncSession) -> set[str]:
+    result = await db.execute(
+        select(UserTournamentAssignment.tournament_id).where(
+            UserTournamentAssignment.user_id == user.id,
+            UserTournamentAssignment.age_group_id.is_(None),
+        )
+    )
+    return set(result.scalars().all())
+
+
+async def get_assigned_age_group_ids(user: User, db: AsyncSession) -> set[str]:
+    result = await db.execute(
+        select(UserTournamentAssignment.age_group_id)
+        .where(
+            UserTournamentAssignment.user_id == user.id,
+            UserTournamentAssignment.age_group_id.is_not(None),
+        )
+    )
+    return {age_group_id for age_group_id in result.scalars().all() if age_group_id}
+
+
 async def ensure_tournament_access(user: User, tournament_id: str, db: AsyncSession) -> None:
     if user.role != UserRole.SCORE_KEEPER:
         return
@@ -66,19 +87,34 @@ async def ensure_age_group_access(user: User, age_group_id: str, db: AsyncSessio
     tournament_id = result.scalar_one_or_none()
     if not tournament_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Age group not found")
+    if user.role == UserRole.SCORE_KEEPER:
+        assigned_age_group_ids = await get_assigned_age_group_ids(user, db)
+        if assigned_age_group_ids and age_group_id in assigned_age_group_ids:
+            return tournament_id
+        direct_tournament_ids = await get_direct_tournament_ids(user, db)
+        if tournament_id not in direct_tournament_ids:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Age group not assigned")
     await ensure_tournament_access(user, tournament_id, db)
     return tournament_id
 
 
 async def ensure_match_access(user: User, match_id: str, db: AsyncSession) -> str:
     result = await db.execute(
-        select(TournamentAgeGroup.tournament_id)
+        select(TournamentAgeGroup.tournament_id, TournamentAgeGroup.id)
         .join(Phase, Phase.tournament_age_group_id == TournamentAgeGroup.id)
         .join(Match, Match.phase_id == Phase.id)
         .where(Match.id == match_id)
     )
-    tournament_id = result.scalar_one_or_none()
-    if not tournament_id:
+    row = result.one_or_none()
+    if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
+    tournament_id, age_group_id = row
+    if user.role == UserRole.SCORE_KEEPER:
+        assigned_age_group_ids = await get_assigned_age_group_ids(user, db)
+        if assigned_age_group_ids and age_group_id in assigned_age_group_ids:
+            return tournament_id
+        direct_tournament_ids = await get_direct_tournament_ids(user, db)
+        if tournament_id not in direct_tournament_ids:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Match not assigned")
     await ensure_tournament_access(user, tournament_id, db)
     return tournament_id

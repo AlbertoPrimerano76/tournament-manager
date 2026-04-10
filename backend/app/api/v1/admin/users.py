@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.core.deps import require_admin
 from app.core.security import hash_password, validate_password_strength
 from app.models.password_reset_token import PasswordResetToken
+from app.models.tournament import TournamentAgeGroup
 from app.models.user import User
 from app.models.user_tournament_assignment import UserTournamentAssignment
 from app.schemas.user import UserCreate, UserUpdate, UserResponse, PasswordReset
@@ -17,7 +18,40 @@ from app.services.security_questions_service import security_questions_configure
 router = APIRouter()
 
 
+async def _build_age_group_assignments(
+    age_group_ids: list[str],
+    db: AsyncSession,
+) -> list[UserTournamentAssignment]:
+    if not age_group_ids:
+        return []
+    result = await db.execute(
+        select(TournamentAgeGroup.id, TournamentAgeGroup.tournament_id)
+        .where(TournamentAgeGroup.id.in_(age_group_ids))
+    )
+    tournament_ids_by_age_group = {age_group_id: tournament_id for age_group_id, tournament_id in result.all()}
+    missing_ids = sorted(set(age_group_ids) - set(tournament_ids_by_age_group.keys()))
+    if missing_ids:
+        raise HTTPException(status_code=404, detail="Una o più categorie assegnate non esistono")
+    return [
+        UserTournamentAssignment(
+            tournament_id=tournament_ids_by_age_group[age_group_id],
+            age_group_id=age_group_id,
+        )
+        for age_group_id in age_group_ids
+    ]
+
+
 def serialize_user(user: User) -> UserResponse:
+    assigned_tournament_ids = sorted({
+        assignment.tournament_id
+        for assignment in user.tournament_assignments
+        if assignment.age_group_id is None
+    })
+    assigned_age_group_ids = sorted({
+        assignment.age_group_id
+        for assignment in user.tournament_assignments
+        if assignment.age_group_id
+    })
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -25,7 +59,8 @@ def serialize_user(user: User) -> UserResponse:
         organization_id=user.organization_id,
         is_active=user.is_active,
         security_questions_configured=security_questions_configured(user.security_questions),
-        assigned_tournament_ids=[assignment.tournament_id for assignment in user.tournament_assignments],
+        assigned_tournament_ids=assigned_tournament_ids,
+        assigned_age_group_ids=assigned_age_group_ids,
     )
 
 
@@ -64,6 +99,9 @@ async def create_user(
     await db.flush()
     for tournament_id in body.assigned_tournament_ids:
         db.add(UserTournamentAssignment(user_id=user.id, tournament_id=tournament_id))
+    for assignment in await _build_age_group_assignments(body.assigned_age_group_ids, db):
+        assignment.user_id = user.id
+        db.add(assignment)
     await db.commit()
     await db.refresh(user)
     user = (
@@ -93,14 +131,18 @@ async def update_user(
         raise HTTPException(status_code=404, detail="User not found")
     payload = body.model_dump(exclude_none=True)
     assigned_tournament_ids = payload.pop("assigned_tournament_ids", None)
+    assigned_age_group_ids = payload.pop("assigned_age_group_ids", None)
     for k, v in payload.items():
         setattr(user, k, v)
-    if assigned_tournament_ids is not None:
+    if assigned_tournament_ids is not None or assigned_age_group_ids is not None:
         for assignment in list(user.tournament_assignments):
             await db.delete(assignment)
         await db.flush()
-        for tournament_id in assigned_tournament_ids:
+        for tournament_id in assigned_tournament_ids or []:
             db.add(UserTournamentAssignment(user_id=user.id, tournament_id=tournament_id))
+        for assignment in await _build_age_group_assignments(assigned_age_group_ids or [], db):
+            assignment.user_id = user.id
+            db.add(assignment)
     await db.commit()
     user = (
         await db.execute(

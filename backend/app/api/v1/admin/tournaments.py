@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
-from app.core.deps import require_editor, require_admin, require_scorer, ensure_tournament_access, ensure_age_group_access
+from app.core.deps import require_editor, require_admin, require_scorer, ensure_tournament_access, ensure_age_group_access, get_assigned_age_group_ids
 from app.models.tournament import Tournament, TournamentAgeGroup
 from app.models.organization import Organization
 from app.models.team import TournamentTeam
@@ -133,7 +133,7 @@ async def list_all_tournaments(
             UserTournamentAssignment.user_id == user.id
         )
     result = await db.execute(query.order_by(Tournament.organization_id, Tournament.start_date.desc(), Tournament.year.desc(), Tournament.name))
-    return [_serialize_tournament(tournament) for tournament in result.scalars().all()]
+    return [_serialize_tournament(tournament) for tournament in result.scalars().unique().all()]
 
 
 @router.post("/tournaments", response_model=TournamentResponse, status_code=201)
@@ -274,9 +274,12 @@ async def list_tournament_age_groups(
     db: AsyncSession = Depends(get_db),
 ):
     await ensure_tournament_access(user, tournament_id, db)
-    result = await db.execute(
-        select(TournamentAgeGroup).where(TournamentAgeGroup.tournament_id == tournament_id)
-    )
+    query = select(TournamentAgeGroup).where(TournamentAgeGroup.tournament_id == tournament_id)
+    if user.role == UserRole.SCORE_KEEPER:
+        assigned_age_group_ids = await get_assigned_age_group_ids(user, db)
+        if assigned_age_group_ids:
+            query = query.where(TournamentAgeGroup.id.in_(assigned_age_group_ids))
+    result = await db.execute(query)
     return result.scalars().all()
 
 

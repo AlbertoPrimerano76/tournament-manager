@@ -8,6 +8,7 @@ class UserCreate(BaseModel):
     role: UserRole = UserRole.SCORE_KEEPER
     organization_id: str | None = None
     assigned_tournament_ids: list[str] = []
+    assigned_age_group_ids: list[str] = []
 
 
 class UserUpdate(BaseModel):
@@ -16,6 +17,7 @@ class UserUpdate(BaseModel):
     organization_id: str | None = None
     is_active: bool | None = None
     assigned_tournament_ids: list[str] | None = None
+    assigned_age_group_ids: list[str] | None = None
 
 
 class UserResponse(BaseModel):
@@ -26,6 +28,7 @@ class UserResponse(BaseModel):
     is_active: bool
     security_questions_configured: bool = False
     assigned_tournament_ids: list[str] = []
+    assigned_age_group_ids: list[str] = []
 
     model_config = {"from_attributes": True}
 
