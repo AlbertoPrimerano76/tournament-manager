@@ -65,7 +65,7 @@ async def update_team(
     team = result.scalar_one_or_none()
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
-    for k, v in body.model_dump(exclude_none=True).items():
+    for k, v in body.model_dump(exclude_unset=True).items():
         setattr(team, k, v)
     await db.commit()
     await db.refresh(team)

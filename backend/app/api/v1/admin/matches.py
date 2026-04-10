@@ -185,7 +185,7 @@ async def update_match(
     match = result.scalar_one_or_none()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
-    for k, v in body.model_dump(exclude_none=True).items():
+    for k, v in body.model_dump(exclude_unset=True).items():
         setattr(match, k, v)
     await db.commit()
     await db.refresh(match)

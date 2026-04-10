@@ -11,7 +11,7 @@ import {
 import { useAdminOrganizations } from '@/api/organizations'
 import { useAdminTournaments } from '@/api/tournaments'
 import { useAuth } from '@/context/AuthContext'
-import { Plus, Pencil, Trash2, X, KeyRound, ShieldCheck, ToggleLeft, ToggleRight, ShieldQuestion } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, KeyRound, ShieldCheck, ToggleLeft, ToggleRight, ShieldQuestion, AlertTriangle } from 'lucide-react'
 import PasswordStrengthField from '@/components/PasswordStrengthField'
 import { isStrongPassword } from '@/lib/passwordStrength'
 
@@ -95,15 +95,16 @@ function UserRow({ user: u, isMe, onEdit, onReset, onSecurity }: {
 }) {
   const deleteMutation = useDeleteUser()
   const updateMutation = useUpdateUser()
+  const [confirmAction, setConfirmAction] = useState<'delete' | 'toggle' | null>(null)
 
-  function toggleActive() {
-    const action = u.is_active ? 'disattivare' : 'riattivare'
-    if (!confirm(`Vuoi ${action} ${u.email}?`)) return
+  function handleToggleActive() {
     updateMutation.mutate({ id: u.id, data: { is_active: !u.is_active } })
+    setConfirmAction(null)
   }
 
   function handleDelete() {
-    if (confirm(`Eliminare ${u.email}?`)) deleteMutation.mutate(u.id)
+    deleteMutation.mutate(u.id)
+    setConfirmAction(null)
   }
 
   return (
@@ -142,7 +143,7 @@ function UserRow({ user: u, isMe, onEdit, onReset, onSecurity }: {
 
       {/* Actions */}
       <div className="flex items-center gap-1 shrink-0">
-        <button onClick={toggleActive} title={u.is_active ? 'Disabilita' : 'Abilita'}
+        <button onClick={() => setConfirmAction('toggle')} title={u.is_active ? 'Disabilita' : 'Abilita'}
           className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors">
           {u.is_active
             ? <ToggleRight className="h-4 w-4 text-green-500" />
@@ -161,12 +162,30 @@ function UserRow({ user: u, isMe, onEdit, onReset, onSecurity }: {
           <Pencil className="h-4 w-4" />
         </button>
         {!isMe && (
-          <button onClick={handleDelete} title="Elimina"
+          <button onClick={() => setConfirmAction('delete')} title="Elimina"
             className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors">
             <Trash2 className="h-4 w-4" />
           </button>
         )}
       </div>
+      {confirmAction && (
+        <div className="mt-3 flex w-full items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
+          <p className="flex-1 text-sm font-semibold text-red-800">
+            {confirmAction === 'delete'
+              ? `Eliminare ${u.email}?`
+              : `${u.is_active ? 'Disattivare' : 'Riattivare'} ${u.email}?`}
+          </p>
+          <button
+            onClick={confirmAction === 'delete' ? handleDelete : handleToggleActive}
+            disabled={deleteMutation.isPending || updateMutation.isPending}
+            className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {confirmAction === 'delete' ? 'Elimina' : (u.is_active ? 'Disattiva' : 'Riattiva')}
+          </button>
+          <button onClick={() => setConfirmAction(null)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100">Annulla</button>
+        </div>
+      )}
     </div>
   )
 }

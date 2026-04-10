@@ -178,7 +178,7 @@ async def update_tournament(
     if not t:
         raise HTTPException(status_code=404, detail="Tournament not found")
 
-    payload = body.model_dump(exclude_none=True)
+    payload = body.model_dump(exclude_unset=True)
     merged_organization_id = payload.get("organization_id", t.organization_id)
     merged_name = payload.get("name", t.name)
     merged_event_type = payload.get("event_type", t.event_type)
@@ -260,7 +260,7 @@ async def update_age_group(
     ag = result.scalar_one_or_none()
     if not ag:
         raise HTTPException(status_code=404, detail="Age group not found")
-    for k, v in body.model_dump(exclude_none=True).items():
+    for k, v in body.model_dump(exclude_unset=True).items():
         setattr(ag, k, v)
     await db.commit()
     await db.refresh(ag)

@@ -118,10 +118,11 @@ export default function OrganizationsAdminPage() {
 function OrgRow({ org: o, onEdit, onFacilities }: { org: Organization; onEdit: () => void; onFacilities: () => void }) {
   const deleteMutation = useDeleteOrganization()
   const [deleteError, setDeleteError] = useState('')
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const publicUrl = `${window.location.origin}/${o.slug}`
 
   async function handleDelete() {
-    if (!confirm(`Eliminare "${o.name}"?`)) return
+    setConfirmingDelete(false)
     setDeleteError('')
     try {
       await deleteMutation.mutateAsync(o.id)
@@ -194,7 +195,7 @@ function OrgRow({ org: o, onEdit, onFacilities }: { org: Organization; onEdit: (
             <Pencil className="h-4 w-4" />
           </button>
           <button
-            onClick={handleDelete}
+            onClick={() => setConfirmingDelete(true)}
             disabled={deleteMutation.isPending}
             className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
           >
@@ -202,6 +203,14 @@ function OrgRow({ org: o, onEdit, onFacilities }: { org: Organization; onEdit: (
           </button>
         </div>
       </div>
+      {confirmingDelete && (
+        <div className="mt-3 flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
+          <p className="flex-1 text-sm font-semibold text-red-800">Eliminare «{o.name}»? L&apos;operazione non è reversibile.</p>
+          <button onClick={handleDelete} disabled={deleteMutation.isPending} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50">Elimina</button>
+          <button onClick={() => setConfirmingDelete(false)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100">Annulla</button>
+        </div>
+      )}
       {deleteError && (
         <p className="mt-2 text-xs text-red-500 pl-14">{deleteError}</p>
       )}

@@ -44,7 +44,7 @@ async def update_organization(
     org = result.scalar_one_or_none()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    for k, v in body.model_dump(exclude_none=True).items():
+    for k, v in body.model_dump(exclude_unset=True).items():
         setattr(org, k, v)
     await db.commit()
     await db.refresh(org)

@@ -314,9 +314,11 @@ function TournamentRow({ tournament: t, onEdit, onOperations, canEdit }: {
 }) {
   const deleteMutation = useDeleteTournament()
   const updateMutation = useUpdateTournament()
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   function handleDelete() {
-    if (confirm(`Eliminare "${t.name}"?`)) deleteMutation.mutate(t.id)
+    deleteMutation.mutate(t.id)
+    setConfirmingDelete(false)
   }
 
   function togglePublish() {
@@ -373,7 +375,7 @@ function TournamentRow({ tournament: t, onEdit, onOperations, canEdit }: {
               <Pencil className="h-4 w-4" />
             </button>
             <button
-              onClick={handleDelete}
+              onClick={() => setConfirmingDelete(true)}
               className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
             >
               <Trash2 className="h-4 w-4" />
@@ -382,6 +384,14 @@ function TournamentRow({ tournament: t, onEdit, onOperations, canEdit }: {
         )}
       </div>
       </div>
+      {confirmingDelete && (
+        <div className="mt-3 flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
+          <p className="flex-1 text-sm font-semibold text-red-800">Eliminare «{t.name}»? L&apos;operazione non è reversibile.</p>
+          <button onClick={handleDelete} disabled={deleteMutation.isPending} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50">Elimina</button>
+          <button onClick={() => setConfirmingDelete(false)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100">Annulla</button>
+        </div>
+      )}
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           onClick={onOperations}
@@ -1720,6 +1730,7 @@ function AgeGroupUnifiedCard({
   const hasProgram = Boolean(program?.generated)
   const completedMatches = countProgramMatches(program, (match) => match.status === 'COMPLETED')
   const totalMatches = countProgramMatches(program)
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
 
   return (
     <div className="rounded-[1.45rem] border border-slate-200 bg-white p-4 shadow-sm">
@@ -1753,11 +1764,7 @@ function AgeGroupUnifiedCard({
           <button
             type="button"
             disabled={isPending}
-            onClick={() => {
-              if (confirm(`Rimuovere la categoria "${group.display_name || group.age_group}"?`)) {
-                onRemove(group)
-              }
-            }}
+            onClick={() => setConfirmingRemove(true)}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
           >
             <Trash2 className="h-4 w-4" />
@@ -1765,6 +1772,14 @@ function AgeGroupUnifiedCard({
           </button>
         </div>
       </div>
+      {confirmingRemove && (
+        <div className="mt-3 flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
+          <p className="flex-1 text-sm font-semibold text-red-800">Rimuovere «{group.display_name || group.age_group}»? I dati della categoria verranno persi.</p>
+          <button onClick={() => { onRemove(group); setConfirmingRemove(false) }} disabled={isPending} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50">Rimuovi</button>
+          <button onClick={() => setConfirmingRemove(false)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100">Annulla</button>
+        </div>
+      )}
     </div>
   )
 }
@@ -2184,6 +2199,7 @@ function AgeGroupConfigurationPanel({
   const [saveMessage, setSaveMessage] = useState('')
   const [teamError, setTeamError] = useState('')
   const [teamMessage, setTeamMessage] = useState('')
+  const [confirmingParticipantId, setConfirmingParticipantId] = useState<string | null>(null)
   const [rankingControlsOpen, setRankingControlsOpen] = useState(false)
   const [activePhaseId, setActivePhaseId] = useState('')
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -2325,14 +2341,9 @@ function AgeGroupConfigurationPanel({
   }
 
   async function handleRemoveParticipant(participant: TournamentParticipant) {
-    const confirmed = window.confirm(
-      `Vuoi davvero cancellare "${participant.team_name}" da questa categoria del torneo?`
-    )
-    if (!confirmed) return
-
+    setConfirmingParticipantId(null)
     setTeamError('')
     setTeamMessage('')
-
     try {
       await unenrollTeam.mutateAsync({ id: participant.id, ageGroupId: ageGroup.id })
       setTeamMessage('Squadra cancellata correttamente dalla categoria')
@@ -3975,15 +3986,35 @@ function AgeGroupConfigurationPanel({
                             </button>
                           </>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => void handleRemoveParticipant(participant)}
-                          disabled={unenrollTeam.isPending}
-                          className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Cancella squadra
-                        </button>
+                        {confirmingParticipantId === participant.id ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void handleRemoveParticipant(participant)}
+                              disabled={unenrollTeam.isPending}
+                              className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+                            >
+                              Conferma rimozione
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmingParticipantId(null)}
+                              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                            >
+                              Annulla
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmingParticipantId(participant.id)}
+                            disabled={unenrollTeam.isPending}
+                            className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Cancella squadra
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
