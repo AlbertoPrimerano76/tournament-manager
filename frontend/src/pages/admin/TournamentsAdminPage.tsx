@@ -58,6 +58,7 @@ export default function TournamentsAdminPage() {
   function openCreate() { navigate('/admin/tornei/nuovo') }
   function openEdit(t: Tournament) { navigate(`/admin/tornei/${t.id}/modifica`) }
   function openOperations(t: Tournament) { navigate(`/admin/tornei/${t.id}/gestione`) }
+  function openCategories(t: Tournament) { navigate(`/admin/tornei/${t.id}/categorie`) }
   const isScoreKeeper = user?.role === 'SCORE_KEEPER'
   const filteredTournaments = (tournaments ?? []).filter((tournament) => {
     const matchesSearch = search.trim().length === 0
@@ -86,6 +87,24 @@ export default function TournamentsAdminPage() {
     }
 
     return <AgeGroupOperationsScreen tournament={tournament} ageGroupId={ageGroupId} />
+  }
+
+  if (tournamentId && !ageGroupId && location.pathname.endsWith('/categorie')) {
+    const tournament = tournaments?.find((item) => item.id === tournamentId) ?? null
+
+    if (isLoading) {
+      return <div className="py-12 text-center text-sm text-slate-500">Caricamento categorie...</div>
+    }
+
+    if (!tournament) {
+      return (
+        <div className="rounded-[1.8rem] border border-slate-200 bg-white p-8 text-center text-slate-500 shadow-sm">
+          Evento non trovato.
+        </div>
+      )
+    }
+
+    return <TournamentCategoriesScreen tournament={tournament} />
   }
 
   if (tournamentId && location.pathname.endsWith('/calendario')) {
@@ -263,6 +282,7 @@ export default function TournamentsAdminPage() {
                         tournament={t}
                         onEdit={() => openEdit(t)}
                         onOperations={() => openOperations(t)}
+                        onCategories={() => openCategories(t)}
                         canEdit={!isScoreKeeper}
                       />
                     ))}
@@ -309,8 +329,8 @@ function TournamentEditorScreen({ tournament }: { tournament: Tournament | null 
   )
 }
 
-function TournamentRow({ tournament: t, onEdit, onOperations, canEdit }: {
-  tournament: Tournament; onEdit: () => void; onOperations: () => void; canEdit: boolean
+function TournamentRow({ tournament: t, onEdit, onOperations, onCategories, canEdit }: {
+  tournament: Tournament; onEdit: () => void; onOperations: () => void; onCategories: () => void; canEdit: boolean
 }) {
   const deleteMutation = useDeleteTournament()
   const updateMutation = useUpdateTournament()
@@ -393,6 +413,15 @@ function TournamentRow({ tournament: t, onEdit, onOperations, canEdit }: {
         </div>
       )}
       <div className="mt-4 flex flex-wrap gap-2">
+        {canEdit && (
+          <button
+            onClick={onCategories}
+            className="inline-flex items-center gap-2 rounded-xl bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700 transition-colors hover:bg-violet-100"
+          >
+            <Sparkles className="h-4 w-4" />
+            Categorie
+          </button>
+        )}
         <button
           onClick={onOperations}
           className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
@@ -434,6 +463,14 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
+              onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie`)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-semibold text-violet-700 transition-colors hover:bg-violet-100"
+            >
+              <Sparkles className="h-4 w-4" />
+              Categorie
+            </button>
+            <button
+              type="button"
               onClick={() => navigate(`/admin/tornei/${tournament.id}/calendario`)}
               className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
             >
@@ -459,16 +496,145 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
 
       <section className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
         <div className="border-b border-slate-200 px-6 py-5">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Categorie dell&apos;evento</p>
-          <h2 className="mt-1 text-2xl font-black text-slate-950">Categorie, formula e gestione</h2>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Operatività</p>
+          <h2 className="mt-1 text-2xl font-black text-slate-950">Gestione per categoria</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Aggiungi o rimuovi le categorie dell&apos;evento e accedi direttamente alla configurazione o alla gestione operativa.
+            Apri una categoria per inserire risultati, applicare ritardi e correggere manualmente gironi e partite.
+          </p>
+        </div>
+        <div className="p-6">
+          <AgeGroupsOperationsPanel tournament={tournament} />
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function TournamentCategoriesScreen({ tournament }: { tournament: Tournament }) {
+  const navigate = useNavigate()
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-5">
+      <div className="rounded-[2rem] border border-white/80 bg-white/85 p-6 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <Link to="/admin/tornei" className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 transition-colors hover:text-slate-600">
+              Tornei
+            </Link>
+            <h1 className="mt-2 text-3xl font-black text-slate-950">Categorie</h1>
+            <p className="mt-1 text-sm text-slate-500">{tournament.name}</p>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+              Aggiungi o rimuovi le categorie dell&apos;evento e accedi alla configurazione (formula, squadre, orari, programma) di ognuna.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => navigate(`/admin/tornei/${tournament.id}/gestione`)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+            >
+              <Calendar className="h-4 w-4" />
+              Risultati e ritardi
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/admin/tornei')}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Torna ai tornei
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <section className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
+        <div className="border-b border-slate-200 px-6 py-5">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Configurazione</p>
+          <h2 className="mt-1 text-2xl font-black text-slate-950">Categorie dell&apos;evento</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            Aggiungi o rimuovi le categorie e configura formula, squadre, orari e programma per ognuna.
           </p>
         </div>
         <div className="p-6">
           <AgeGroupsUnifiedPanel tournament={tournament} />
         </div>
       </section>
+    </div>
+  )
+}
+
+function AgeGroupsOperationsPanel({ tournament }: { tournament: Tournament }) {
+  const navigate = useNavigate()
+  const { data: ageGroups, error: ageGroupsError } = useAdminTournamentAgeGroups(tournament.id)
+
+  if (ageGroupsError) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        Errore nel caricamento delle categorie.
+      </div>
+    )
+  }
+
+  const activeGroups = (ageGroups ?? [])
+
+  if (activeGroups.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-8 text-center text-sm text-slate-500">
+        Nessuna categoria configurata per questo evento.{' '}
+        <button
+          type="button"
+          onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie`)}
+          className="font-semibold text-violet-600 hover:underline"
+        >
+          Vai a Categorie
+        </button>{' '}
+        per aggiungerne.
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid gap-3">
+      {AGE_GROUP_OPTIONS.map((option) => {
+        const group = activeGroups.find((item) => item.age_group === option.value)
+        if (!group) return null
+        return (
+          <AgeGroupOperationsCard key={option.value} tournament={tournament} group={group} />
+        )
+      })}
+    </div>
+  )
+}
+
+function AgeGroupOperationsCard({ tournament, group }: { tournament: Tournament; group: AgeGroup }) {
+  const navigate = useNavigate()
+  const { data: program } = useAdminAgeGroupProgram(group.id)
+  const completedMatches = countProgramMatches(program, (match) => match.status === 'COMPLETED')
+  const totalMatches = countProgramMatches(program)
+  const hasProgram = Boolean(program?.generated)
+
+  return (
+    <div className="rounded-[1.45rem] border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-base font-black text-slate-900">{group.display_name || group.age_group}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {hasProgram ? (
+              <StatusPill label={`${completedMatches}/${totalMatches} partite completate`} tone={completedMatches === totalMatches ? 'emerald' : 'fuchsia'} />
+            ) : (
+              <StatusPill label="Programma non generato" tone="slate" />
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${group.id}/gestione`)}
+          className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+        >
+          <Calendar className="h-4 w-4" />
+          Gestione
+        </button>
+      </div>
     </div>
   )
 }
@@ -500,6 +666,135 @@ function TournamentFieldScheduleScreen({ tournament }: { tournament: Tournament 
       </div>
 
       <TournamentFieldSchedulePanel tournament={tournament} />
+    </div>
+  )
+}
+
+function GroupSeedingControl({
+  sourceEntries,
+  targetNumGroups,
+  targetSlots,
+  onChange,
+}: {
+  sourceEntries: string[]
+  targetNumGroups: number
+  targetSlots: string[]
+  onChange: (slots: string[]) => void
+}) {
+  const totalTeams = sourceEntries.length
+  const numGroups = Math.max(targetNumGroups, 1)
+
+  function computeSerpentina(): string[] {
+    const slots: string[] = []
+    let groupIndex = 0
+    let direction = 1
+    const teamsPerGroup = Array.from({ length: numGroups }, () => 0)
+    for (let i = 0; i < totalTeams; i++) {
+      const groupLetter = String.fromCharCode(65 + groupIndex)
+      teamsPerGroup[groupIndex] += 1
+      slots.push(`${groupLetter}${teamsPerGroup[groupIndex]}`)
+      if (direction === 1 && groupIndex === numGroups - 1) {
+        direction = -1
+      } else if (direction === -1 && groupIndex === 0) {
+        direction = 1
+      } else {
+        groupIndex += direction
+      }
+    }
+    return slots
+  }
+
+  function computeBlocchi(): string[] {
+    const slots: string[] = []
+    const teamsPerGroup = Math.ceil(totalTeams / numGroups)
+    for (let i = 0; i < totalTeams; i++) {
+      const groupIndex = Math.min(Math.floor(i / teamsPerGroup), numGroups - 1)
+      const posInGroup = (i % teamsPerGroup) + 1
+      const groupLetter = String.fromCharCode(65 + groupIndex)
+      slots.push(`${groupLetter}${posInGroup}`)
+    }
+    return slots
+  }
+
+  const currentSlots = targetSlots.length === totalTeams ? targetSlots : []
+  const isAuto = currentSlots.length === 0
+  const isSerpentina = !isAuto && currentSlots.join(',') === computeSerpentina().join(',')
+  const isBlocchi = !isAuto && currentSlots.join(',') === computeBlocchi().join(',')
+  const isCustom = !isAuto && !isSerpentina && !isBlocchi
+
+  const groupLabels = Array.from({ length: numGroups }, (_, i) => String.fromCharCode(65 + i))
+
+  return (
+    <div className="mt-3 rounded-[1.1rem] border border-indigo-200 bg-indigo-50 p-3">
+      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-indigo-600">Distribuzione nei gironi di destinazione</p>
+      <p className="mt-1 text-xs text-indigo-700">
+        Scegli come distribuire le {totalTeams} squadre nei {numGroups} gironi della fase successiva.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${isAuto ? 'bg-indigo-700 text-white' : 'border border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-100'}`}
+        >
+          Auto
+        </button>
+        {numGroups > 1 && (
+          <button
+            type="button"
+            onClick={() => onChange(computeSerpentina())}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${isSerpentina ? 'bg-indigo-700 text-white' : 'border border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-100'}`}
+          >
+            Serpentina
+          </button>
+        )}
+        {numGroups > 1 && (
+          <button
+            type="button"
+            onClick={() => onChange(computeBlocchi())}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${isBlocchi ? 'bg-indigo-700 text-white' : 'border border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-100'}`}
+          >
+            Per blocco
+          </button>
+        )}
+      </div>
+      {!isAuto && (
+        <div className="mt-3 space-y-1.5">
+          {sourceEntries.map((entry, i) => {
+            const slot = currentSlots[i] ?? ''
+            return (
+              <div key={`${entry}-${i}`} className="flex items-center gap-2">
+                <span className="w-16 shrink-0 text-xs font-semibold text-slate-700">{entry}</span>
+                <ArrowRight className="h-3 w-3 shrink-0 text-slate-400" />
+                <select
+                  value={slot}
+                  onChange={(e) => {
+                    const next = [...currentSlots]
+                    next[i] = e.target.value
+                    onChange(next)
+                  }}
+                  className="flex-1 rounded-lg border border-indigo-200 bg-white px-2 py-1 text-xs text-slate-900"
+                >
+                  <option value="">-- scegli --</option>
+                  {groupLabels.flatMap((letter) =>
+                    Array.from({ length: Math.ceil(totalTeams / numGroups) + 1 }, (_, pos) => {
+                      const slotName = `${letter}${pos + 1}`
+                      return <option key={slotName} value={slotName}>{`Girone ${letter} · posto ${pos + 1}`}</option>
+                    })
+                  )}
+                </select>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {isAuto && (
+        <p className="mt-2 text-xs text-indigo-600">
+          Il sistema distribuirà automaticamente le squadre in ordine progressivo.
+        </p>
+      )}
+      {isCustom && (
+        <p className="mt-2 text-xs text-indigo-500">Distribuzione personalizzata.</p>
+      )}
     </div>
   )
 }
@@ -3444,40 +3739,46 @@ function AgeGroupConfigurationPanel({
                         <div className="mt-4 rounded-[1.3rem] border border-slate-200 bg-slate-50 p-4">
                           <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Arbitraggio per girone</p>
                           <p className="mt-1 text-sm text-slate-600">
-                            Scegli da quali altri gironi arrivano gli arbitri. Se c&apos;è un solo girone, il sistema userà squadre a riposo o staff torneo.
+                            Scegli da quali gironi arrivano gli arbitri. &ldquo;Stesso girone&rdquo; usa le squadre a riposo del girone stesso come arbitri principali.
                           </p>
                           <div className="mt-4 space-y-3">
                             {buildGroupNames(phase).map((groupName) => {
                               const selectedSources = phase.referee_group_assignments[groupName] ?? []
-                              const sourceOptions = buildGroupNames(phase).filter((item) => item !== groupName)
+                              const otherGroupOptions = buildGroupNames(phase).filter((item) => item !== groupName)
+                              const sameGroupSelected = selectedSources.includes(groupName)
                               return (
                                 <div key={`${phase.id}-ref-${groupName}`} className="rounded-[1.15rem] border border-white bg-white p-3">
                                   <p className="text-sm font-bold text-slate-900">{groupName}</p>
-                                  {sourceOptions.length > 0 ? (
-                                    <div className="mt-3 flex flex-wrap gap-2">
-                                      {sourceOptions.map((sourceGroupName) => {
-                                        const selected = selectedSources.includes(sourceGroupName)
-                                        return (
-                                          <button
-                                            key={`${groupName}-${sourceGroupName}`}
-                                            type="button"
-                                            onClick={() => toggleRefereeSourceGroup(index, groupName, sourceGroupName)}
-                                            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                                              selected
-                                                ? 'bg-emerald-700 text-white'
-                                                : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                                            }`}
-                                          >
-                                            {sourceGroupName}
-                                          </button>
-                                        )
-                                      })}
-                                    </div>
-                                  ) : (
-                                    <p className="mt-2 text-sm text-slate-500">
-                                      Girone unico: arbitri automatici da squadre a riposo o staff torneo.
-                                    </p>
-                                  )}
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleRefereeSourceGroup(index, groupName, groupName)}
+                                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                        sameGroupSelected
+                                          ? 'bg-amber-600 text-white'
+                                          : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                                      }`}
+                                    >
+                                      Stesso girone
+                                    </button>
+                                    {otherGroupOptions.map((sourceGroupName) => {
+                                      const selected = selectedSources.includes(sourceGroupName)
+                                      return (
+                                        <button
+                                          key={`${groupName}-${sourceGroupName}`}
+                                          type="button"
+                                          onClick={() => toggleRefereeSourceGroup(index, groupName, sourceGroupName)}
+                                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                            selected
+                                              ? 'bg-emerald-700 text-white'
+                                              : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                                          }`}
+                                        >
+                                          {sourceGroupName}
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
                                 </div>
                               )
                             })}
@@ -3592,8 +3893,16 @@ function AgeGroupConfigurationPanel({
                                           </div>
                                         </div>
                                         <div className="mt-3 rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-                                          Ordine posizionamenti generato: {sourceOrderPreview.length > 0 ? sourceOrderPreview.join(' -> ') : 'da definire'}
+                                          Ordine posizionamenti generato: {sourceOrderPreview.length > 0 ? sourceOrderPreview.join(' → ') : 'da definire'}
                                         </div>
+                                        {targetPhase?.phase_type === 'GROUP_STAGE' && sourceOrderPreview.length > 0 && (
+                                          <GroupSeedingControl
+                                            sourceEntries={sourceOrderPreview}
+                                            targetNumGroups={targetPhase.num_groups ?? 1}
+                                            targetSlots={route.target_slots}
+                                            onChange={(slots) => setAdvancementRoute(index, route.id, { target_slots: slots })}
+                                          />
+                                        )}
                                       </>
                                     ) : (
                                       <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -4472,6 +4781,8 @@ function validateStructureConfig(structure: StructureConfig): string[] {
       const totalTeamsInGroups = groupSizes.reduce((sum, size) => sum + size, 0)
       const expectedIncomingTeams = estimateIncomingTeamsForPhase(structure, index)
       const laterPhases = structure.phases.slice(index + 1)
+      const hasExplicitGroupSizes = phase.group_sizes.trim().length > 0
+      const hasValidGroupSizesCount = !hasExplicitGroupSizes || !phase.num_groups || groupSizes.length === phase.num_groups
 
       if (!phase.num_groups || phase.num_groups <= 0) {
         errors.push(`${phaseLabel}: il numero gironi deve essere maggiore di zero.`)
@@ -4481,11 +4792,16 @@ function validateStructureConfig(structure: StructureConfig): string[] {
         errors.push(`${phaseLabel}: scegli se giocare solo andata o andata e ritorno.`)
       }
 
-      if (phase.group_sizes.trim() && phase.num_groups && groupSizes.length !== phase.num_groups) {
+      if (hasExplicitGroupSizes && phase.num_groups && groupSizes.length !== phase.num_groups) {
         errors.push(`${phaseLabel}: il numero di valori in "squadre per girone" deve coincidere con i gironi.`)
       }
 
-      if (expectedIncomingTeams !== null && totalTeamsInGroups > 0 && totalTeamsInGroups !== expectedIncomingTeams) {
+      if (
+        hasValidGroupSizesCount
+        && expectedIncomingTeams !== null
+        && totalTeamsInGroups > 0
+        && totalTeamsInGroups !== expectedIncomingTeams
+      ) {
         errors.push(`${phaseLabel}: la somma delle squadre per girone deve essere ${expectedIncomingTeams}.`)
       }
 
@@ -4496,8 +4812,9 @@ function validateStructureConfig(structure: StructureConfig): string[] {
           errors.push(`${phaseLabel}: assegna almeno un campo a ${groupName}.`)
         }
         const refereeAssignments = phase.referee_group_assignments[groupName] ?? []
-        if ((phase.num_groups ?? 0) > 1 && refereeAssignments.length === 0) {
-          errors.push(`${phaseLabel}: assegna almeno un girone arbitro a ${groupName}.`)
+        const hasAnyRefereeSource = refereeAssignments.length > 0
+        if ((phase.num_groups ?? 0) > 1 && !hasAnyRefereeSource) {
+          errors.push(`${phaseLabel}: assegna almeno una fonte arbitri a ${groupName} (stesso girone o un altro girone).`)
         }
       }
 

@@ -431,10 +431,12 @@ def _assign_cross_group_referees(
     group_team_ids: dict[str, list[str]],
     participants: list[TournamentTeam],
     referee_source_group_ids: dict[str, list[str]] | None = None,
+    allow_same_group_primary_ids: set[str] | None = None,
 ) -> None:
     participant_name_map = {team.id: team.team.name for team in participants}
     referee_load: dict[str, int] = defaultdict(int)
     referee_source_group_ids = referee_source_group_ids or {}
+    allow_same_group_primary_ids = allow_same_group_primary_ids or set()
 
     matches_by_slot: dict[datetime | None, list[Match]] = defaultdict(list)
     for match in matches:
@@ -467,7 +469,10 @@ def _assign_cross_group_referees(
                 if team_id not in busy_team_ids and team_id not in assigned_referee_ids
             ]
 
-            candidate_ids = cross_group_candidate_ids or fallback_same_group_ids
+            if match.group_id and match.group_id in allow_same_group_primary_ids:
+                candidate_ids = cross_group_candidate_ids + fallback_same_group_ids
+            else:
+                candidate_ids = cross_group_candidate_ids or fallback_same_group_ids
             if not candidate_ids:
                 remaining_global_ids = [
                     team_id
@@ -1130,11 +1135,14 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             await db.flush()
             raw_referee_assignments = phase_config.get("referee_group_assignments", {})
             referee_source_group_ids = {}
+            allow_same_group_primary_ids: set[str] = set()
             if isinstance(raw_referee_assignments, dict):
                 for group_name, raw_source_group_names in raw_referee_assignments.items():
                     group_id = phase_group_name_to_id.get(group_name)
                     if not group_id or not isinstance(raw_source_group_names, list):
                         continue
+                    if group_name in raw_source_group_names:
+                        allow_same_group_primary_ids.add(group_id)
                     source_group_ids = [
                         phase_group_name_to_id[source_group_name]
                         for source_group_name in raw_source_group_names
@@ -1147,6 +1155,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                 phase_group_team_ids,
                 participants,
                 referee_source_group_ids,
+                allow_same_group_primary_ids,
             )
 
             phase.advancement_config = {
