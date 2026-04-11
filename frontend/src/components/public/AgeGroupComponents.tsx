@@ -194,11 +194,13 @@ export function PodiumGrid({
   teamNameMap,
   teamLogoMap,
   highlightedTeamId,
+  highlightTeam = true,
 }: {
   rows: Array<{ position?: number | null; team_id?: string | null; team_name?: string | null }>
   teamNameMap: Map<string, string>
   teamLogoMap: Map<string, string>
   highlightedTeamId?: string
+  highlightTeam?: boolean
 }) {
   const topRows = rows.filter((row) => typeof row.position === 'number').slice(0, 3)
   if (topRows.length === 0) return null
@@ -209,7 +211,7 @@ export function PodiumGrid({
         <div
           key={`podium-${row.position ?? index}-${row.team_id ?? row.team_name ?? 'na'}`}
           className={`rounded-card border p-4 shadow-sm ${
-            row.team_id && row.team_id === highlightedTeamId
+            highlightTeam && row.team_id && row.team_id === highlightedTeamId
               ? 'border-amber-300 bg-amber-100'
               : index === 0
                 ? 'border-amber-200 bg-amber-50'

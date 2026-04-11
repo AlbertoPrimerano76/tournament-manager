@@ -653,7 +653,7 @@ export default function AgeGroupPage() {
                     {!hasSingleGroup && <p className="mb-4 text-sm font-black text-slate-950">{activeStandingsGroup.name}</p>}
                     {activeStandingsMeta?.is_final_phase && activeGroupCompleted && tournamentCompleted && finalGroupPodium.length > 0 && (
                       <div className="mb-5">
-                        <PodiumGrid rows={finalGroupPodium} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} />
+                        <PodiumGrid rows={finalGroupPodium} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} highlightTeam={false} />
                       </div>
                     )}
                     <StandingsTable
@@ -985,7 +985,7 @@ export default function AgeGroupPage() {
                 <>
                   {tournamentCompleted && (
                     <div className="mb-4">
-                      <PodiumGrid rows={finalRankingRows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} />
+                      <PodiumGrid rows={finalRankingRows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} highlightTeam={false} />
                     </div>
                   )}
 
@@ -1041,7 +1041,7 @@ export default function AgeGroupPage() {
           </div>
           {tournamentCompleted && (
             <div className="mb-4">
-              <PodiumGrid rows={publicFinalRanking.rows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} />
+              <PodiumGrid rows={publicFinalRanking.rows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} highlightTeam={false} />
             </div>
           )}
           <div className="overflow-hidden rounded-[1.3rem] border border-emerald-100 bg-white">

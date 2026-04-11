@@ -312,7 +312,7 @@ def _build_knockout_section(phase: ProgramPhaseResponse):
 
 def _format_phase_meta(phase: ProgramPhaseResponse) -> str:
     configured = phase.configured_start_at.strftime("%H:%M") if phase.configured_start_at else "--:--"
-    actual = phase.phase_start_at.strftime("%H:%M") if phase.phase_start_at else "--:--"
+    actual = phase.phase_start_at.strftime("%H:%M") if phase.phase_start_at else configured
     estimated = phase.estimated_end_at.strftime("%H:%M") if phase.estimated_end_at else "--:--"
     if phase.configured_start_at and phase.phase_start_at and phase.phase_start_at != phase.configured_start_at:
         return f"Inizio previsto {configured} · Inizio aggiornato {actual} · Fine stimata {estimated}"
