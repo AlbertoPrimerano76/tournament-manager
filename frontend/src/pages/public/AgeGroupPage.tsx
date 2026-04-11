@@ -17,6 +17,7 @@ import {
   PublicMatchRow,
   StandingsTable,
   PodiumGrid,
+  FinalPlacementsTable,
   flattenPhases,
   filterVisiblePhases,
   isPhaseComplete,
@@ -938,6 +939,12 @@ export default function AgeGroupPage() {
           <div className="mb-4">
             <PodiumGrid rows={publicFinalRanking.rows.slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} highlightTeam={false} variant="steps" />
           </div>
+          {publicFinalRanking.rows.length > 3 ? (
+            <div>
+              <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.primaryMuted }}>Piazzamenti finali</p>
+              <FinalPlacementsTable rows={publicFinalRanking.rows} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} />
+            </div>
+          ) : null}
         </section>
       )}
     </div>

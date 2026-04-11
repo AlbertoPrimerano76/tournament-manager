@@ -309,6 +309,54 @@ export function PodiumGrid({
   )
 }
 
+export function FinalPlacementsTable({
+  rows,
+  teamNameMap,
+  teamLogoMap,
+  highlightedTeamId,
+}: {
+  rows: Array<{ position?: number | null; team_id?: string | null; team_name?: string | null; team_logo_url?: string | null }>
+  teamNameMap: Map<string, string>
+  teamLogoMap: Map<string, string>
+  highlightedTeamId?: string
+}) {
+  const placementRows = rows.filter((row) => typeof row.position === 'number')
+  if (placementRows.length === 0) return null
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-sm">
+        <thead>
+          <tr className="border-b border-slate-200 text-left text-xs font-bold uppercase tracking-widest2 text-slate-400">
+            <th className="px-3 py-3">Pos.</th>
+            <th className="px-3 py-3">Squadra</th>
+          </tr>
+        </thead>
+        <tbody>
+          {placementRows.map((row) => {
+            const name = row.team_name || teamNameMap.get(row.team_id ?? '') || 'Da definire'
+            const logo = row.team_logo_url || teamLogoMap.get(row.team_id ?? '')
+            return (
+              <tr key={`placement-${row.position ?? 'na'}-${row.team_id ?? row.team_name ?? 'na'}`} className="border-b border-slate-100 last:border-b-0">
+                <td className="px-3 py-3 font-black text-slate-950">{row.position}°</td>
+                <td className="px-3 py-3 font-semibold text-slate-900">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <TeamLogo src={logo} alt={name} />
+                    <span className="truncate">{name}</span>
+                    {row.team_id && row.team_id === highlightedTeamId
+                      ? <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" aria-label="La tua squadra" />
+                      : null}
+                  </div>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Pure phase helpers
 // ---------------------------------------------------------------------------
