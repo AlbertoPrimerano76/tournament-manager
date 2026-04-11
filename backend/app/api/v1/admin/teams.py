@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 from app.core.database import get_db
 from app.core.deps import require_editor
 from app.models.organization import Organization
@@ -12,6 +12,41 @@ from app.models.user import User
 from app.schemas.team import TeamCreate, TeamUpdate, TeamResponse, TournamentTeamCreate, TournamentTeamResponse
 
 router = APIRouter()
+
+
+def _normalize_team_name(value: str) -> str:
+    return " ".join(value.split()).strip().lower()
+
+
+async def _ensure_unique_team_name_in_age_group(
+    db: AsyncSession,
+    *,
+    tournament_age_group_id: str,
+    team_name: str,
+    exclude_team_id: str | None = None,
+) -> None:
+    normalized_name = _normalize_team_name(team_name)
+    if not normalized_name:
+        return
+
+    query = (
+        select(Team.id)
+        .join(TournamentTeam, TournamentTeam.team_id == Team.id)
+        .where(
+            TournamentTeam.tournament_age_group_id == tournament_age_group_id,
+            func.lower(func.trim(Team.name)) == normalized_name,
+        )
+        .limit(1)
+    )
+    if exclude_team_id:
+        query = query.where(Team.id != exclude_team_id)
+
+    existing = (await db.execute(query)).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Esiste già una squadra con questo nome nella stessa categoria del torneo",
+        )
 
 
 @router.get("/teams", response_model=list[TeamResponse])
@@ -65,6 +100,21 @@ async def update_team(
     team = result.scalar_one_or_none()
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
+
+    next_name = body.name.strip() if isinstance(body.name, str) else team.name
+    if next_name != team.name:
+        age_group_ids = (
+            await db.execute(
+                select(TournamentTeam.tournament_age_group_id).where(TournamentTeam.team_id == team.id)
+            )
+        ).scalars().all()
+        for tournament_age_group_id in set(age_group_ids):
+            await _ensure_unique_team_name_in_age_group(
+                db,
+                tournament_age_group_id=tournament_age_group_id,
+                team_name=next_name,
+                exclude_team_id=team.id,
+            )
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(team, k, v)
     await db.commit()
@@ -100,6 +150,13 @@ async def enroll_team(
     existing = existing_result.scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=409, detail="Squadra già presente nella categoria")
+
+    await _ensure_unique_team_name_in_age_group(
+        db,
+        tournament_age_group_id=body.tournament_age_group_id,
+        team_name=team.name,
+        exclude_team_id=team.id,
+    )
 
     tt = TournamentTeam(**body.model_dump())
     db.add(tt)

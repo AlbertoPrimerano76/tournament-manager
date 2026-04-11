@@ -105,6 +105,7 @@ export interface Match {
   home_team_id: string | null
   away_team_id: string | null
   scheduled_at: string | null
+  original_scheduled_at: string | null
   actual_end_at: string | null
   field_name: string | null
   field_number: number | null
@@ -139,6 +140,7 @@ export interface ProgramMatch {
   bracket_round: string | null
   bracket_position: number | null
   scheduled_at: string | null
+  original_scheduled_at: string | null
   actual_end_at: string | null
   status: string
   field_name: string | null
@@ -495,6 +497,30 @@ export function useDeleteTournament() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-tournaments'] })
+    },
+  })
+}
+
+export function useResetTournamentResults() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (tournamentId: string) => {
+      const res = await apiClient.post<{ reset_age_groups: number; age_group_ids: string[] }>(`/api/v1/admin/tournaments/${tournamentId}/reset-results`)
+      return { ...res.data, tournamentId }
+    },
+    onSuccess: ({ tournamentId, age_group_ids }) => {
+      qc.invalidateQueries({ queryKey: ['admin-tournament-age-groups', tournamentId] })
+      qc.invalidateQueries({ queryKey: ['tournament-program'] })
+      qc.invalidateQueries({ queryKey: ['age-group-standings'] })
+      qc.invalidateQueries({ queryKey: ['age-group-program'] })
+      qc.invalidateQueries({ queryKey: ['admin-age-group-program'] })
+      qc.invalidateQueries({ queryKey: ['age-group-matches'] })
+      for (const ageGroupId of age_group_ids) {
+        qc.invalidateQueries({ queryKey: ['admin-age-group-program', ageGroupId] })
+        qc.invalidateQueries({ queryKey: ['age-group-program', ageGroupId] })
+        qc.invalidateQueries({ queryKey: ['age-group-standings', ageGroupId] })
+        qc.invalidateQueries({ queryKey: ['age-group-matches', ageGroupId] })
+      }
     },
   })
 }

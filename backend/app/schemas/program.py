@@ -21,6 +21,7 @@ class ProgramMatchResponse(BaseModel):
     bracket_round: str | None = None
     bracket_position: int | None = None
     scheduled_at: datetime | None = None
+    original_scheduled_at: datetime | None = None
     actual_end_at: datetime | None = None
     status: MatchStatus
     field_name: str | None = None

@@ -29,6 +29,7 @@ class Match(Base):
     away_team_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("tournament_teams.id"), nullable=True)
 
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    original_scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     actual_end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     field_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     field_number: Mapped[int | None] = mapped_column(Integer, nullable=True)

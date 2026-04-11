@@ -226,6 +226,35 @@ async def delete_tournament(
     await db.commit()
 
 
+@router.post("/tournaments/{tournament_id}/reset-results")
+async def reset_tournament_results(
+    tournament_id: str,
+    user: User = Depends(require_editor),
+    db: AsyncSession = Depends(get_db),
+):
+    await ensure_tournament_access(user, tournament_id, db)
+    tournament_result = await db.execute(
+        select(Tournament)
+        .options(selectinload(Tournament.age_groups).selectinload(TournamentAgeGroup.phases))
+        .where(Tournament.id == tournament_id)
+    )
+    tournament = tournament_result.scalar_one_or_none()
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+
+    reset_age_group_ids: list[str] = []
+    for age_group in tournament.age_groups:
+        if not age_group.phases:
+            continue
+        await reset_and_generate_age_group_program(age_group.id, db)
+        reset_age_group_ids.append(age_group.id)
+
+    return {
+        "reset_age_groups": len(reset_age_group_ids),
+        "age_group_ids": reset_age_group_ids,
+    }
+
+
 @router.post("/age-groups", response_model=AgeGroupResponse, status_code=201)
 async def create_age_group(
     body: AgeGroupCreate,

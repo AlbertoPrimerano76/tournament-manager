@@ -19,6 +19,7 @@ import {
   PodiumGrid,
   flattenPhases,
   filterVisiblePhases,
+  isPhaseComplete,
   formatPhaseWindow,
   createTeamQueryValue,
 } from '@/components/public/AgeGroupComponents'
@@ -93,6 +94,7 @@ export default function AgeGroupPage() {
   const activeStandingsRows = activePhase && activeStandingsGroup
     ? activeStandingsMeta?.groups?.[activeStandingsGroup.id] ?? []
     : []
+  const tournamentCompleted = visiblePhases.length > 0 && visiblePhases.every((phase) => isPhaseComplete(phase))
   const activeGroupCompleted = Boolean(
     activeStandingsGroup
     && activeStandingsGroup.matches.length > 0
@@ -127,28 +129,7 @@ export default function AgeGroupPage() {
         rows: standings?.[rankingPhase.id]?.final_ranking ?? [],
       }
     }
-
-    const finalGroupPhase = [...visiblePhases].reverse().find((phase) => (
-      phase.phase_type === 'GROUP_STAGE'
-      && standings?.[phase.id]?.is_final_phase
-      && phase.groups.some((group) => group.matches.some((match) => match.status === 'COMPLETED'))
-    ))
-    if (!finalGroupPhase) return null
-
-    const rows = finalGroupPhase.groups.flatMap((group) => standings?.[finalGroupPhase.id]?.groups?.[group.id] ?? [])
-    if (rows.length === 0) return null
-    const allComplete = finalGroupPhase.groups.every((group) =>
-      group.matches.length > 0 && group.matches.every((match) => match.status === 'COMPLETED'),
-    )
-    return {
-      phaseName: finalGroupPhase.name,
-      isProvisional: !allComplete,
-      rows: rows.map((row, index) => ({
-        position: index + 1,
-        team_id: row.team_id,
-        team_name: row.team_name,
-      })),
-    }
+    return null
   }, [visiblePhases, standings])
   const knockoutMatches = useMemo(() => {
     if (!activePhase || activePhase.phase_type === 'GROUP_STAGE') return []
@@ -304,10 +285,7 @@ export default function AgeGroupPage() {
       setGroupPhaseView('team')
       return
     }
-    if (!activeTeamId && phaseTeamOptions.length > 0 && useTeamTabs) {
-      setActiveTeamId(phaseTeamOptions[0].value)
-    }
-  }, [activeTeamId, isFamilyFriendlyAgeGroup, phaseTeamOptions, rememberedTeamId, searchParams, useTeamTabs])
+  }, [activeTeamId, isFamilyFriendlyAgeGroup, phaseTeamOptions, rememberedTeamId, searchParams])
 
   useEffect(() => {
     if (!favoriteTeamStorageKey || typeof window === 'undefined') return
@@ -673,7 +651,7 @@ export default function AgeGroupPage() {
                 {activeStandingsGroup && (
                   <div className="mt-5">
                     {!hasSingleGroup && <p className="mb-4 text-sm font-black text-slate-950">{activeStandingsGroup.name}</p>}
-                    {activeStandingsMeta?.is_final_phase && activeGroupCompleted && finalGroupPodium.length > 0 && (
+                    {activeStandingsMeta?.is_final_phase && activeGroupCompleted && tournamentCompleted && finalGroupPodium.length > 0 && (
                       <div className="mb-5">
                         <PodiumGrid rows={finalGroupPodium} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} />
                       </div>
@@ -767,6 +745,12 @@ export default function AgeGroupPage() {
                                 window.localStorage.removeItem(favoriteTeamStorageKey)
                               }
                               setRememberedTeamId('')
+                              setActiveTeamId('')
+                              setSearchParams((prev) => {
+                                const next = new URLSearchParams(prev)
+                                next.delete('team')
+                                return next
+                              }, { replace: true })
                             }}
                             className="rounded-full border bg-white px-4 py-2 text-sm font-semibold text-slate-700"
                             style={{ borderColor: theme.softBorder }}
@@ -999,9 +983,11 @@ export default function AgeGroupPage() {
               </div>
               {finalRankingRows.length > 0 ? (
                 <>
-                  <div className="mb-4">
-                    <PodiumGrid rows={finalRankingRows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} />
-                  </div>
+                  {tournamentCompleted && (
+                    <div className="mb-4">
+                      <PodiumGrid rows={finalRankingRows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} />
+                    </div>
+                  )}
 
                   <div className="overflow-hidden rounded-[1.3rem] border border-emerald-100 bg-white">
                     <table className="min-w-full divide-y divide-emerald-100 text-sm">
@@ -1015,7 +1001,6 @@ export default function AgeGroupPage() {
                         {finalRankingRows.map((row) => (
                           <tr
                             key={`${activePhase.id}-${row.position ?? 'na'}-${row.team_id ?? row.team_name}`}
-                            className={row.team_id && row.team_id === activeTeamId ? 'bg-amber-50' : ''}
                           >
                             <td className="px-4 py-3 font-black text-slate-900">{row.position ?? '-'}</td>
                             <td className="px-4 py-3 font-semibold text-slate-900">
@@ -1023,7 +1008,7 @@ export default function AgeGroupPage() {
                                 <TeamLogo src={teamLogoMap.get(row.team_id ?? '')} alt={row.team_name || teamNameMap.get(row.team_id ?? '') || 'Squadra'} />
                                 <span>{row.team_name || teamNameMap.get(row.team_id ?? '') || 'Da definire'}</span>
                                 {row.team_id && row.team_id === activeTeamId ? (
-                                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-800">La tua</span>
+                                  <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" aria-label="La tua squadra" />
                                 ) : null}
                               </div>
                             </td>
@@ -1054,9 +1039,11 @@ export default function AgeGroupPage() {
               <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold uppercase tracking-widest2 text-amber-700">Provvisoria</span>
             )}
           </div>
-          <div className="mb-4">
-            <PodiumGrid rows={publicFinalRanking.rows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} />
-          </div>
+          {tournamentCompleted && (
+            <div className="mb-4">
+              <PodiumGrid rows={publicFinalRanking.rows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} />
+            </div>
+          )}
           <div className="overflow-hidden rounded-[1.3rem] border border-emerald-100 bg-white">
             <table className="min-w-full divide-y divide-emerald-100 text-sm">
               <thead className="bg-emerald-50 text-left text-emerald-900">
@@ -1067,10 +1054,7 @@ export default function AgeGroupPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {publicFinalRanking.rows.map((row) => (
-                  <tr
-                    key={`public-final-${row.position ?? 'na'}-${row.team_id ?? row.team_name}`}
-                    className={row.team_id && row.team_id === activeTeamId ? 'bg-amber-50' : ''}
-                  >
+                  <tr key={`public-final-${row.position ?? 'na'}-${row.team_id ?? row.team_name}`}>
                     <td className="px-4 py-3 font-black text-slate-900">{row.position ?? '-'}</td>
                     <td className="px-4 py-3 font-semibold text-slate-900">
                       <div className="flex items-center gap-2">
@@ -1110,4 +1094,3 @@ function getAgeGroupThemeStyle(primaryColor: string | null, accentColor: string 
     },
   }
 }
-

@@ -5,7 +5,7 @@ import {
   useAdminTournaments, useCreateTournament, useUpdateTournament, useDeleteTournament,
   useAdminTournamentAgeGroups, useCreateAgeGroup, useDeleteAgeGroup,
   useAgeGroupParticipants, useStructureTemplates, useUpdateAgeGroupStructure,
-  useUpdateAgeGroup, useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, useGenerateAgeGroupProgram, useDeleteAgeGroupProgram, downloadAdminAgeGroupProgramPdf, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate, type AgeGroupScoringRules, type TournamentParticipant,
+  useUpdateAgeGroup, useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, useGenerateAgeGroupProgram, useDeleteAgeGroupProgram, useResetTournamentResults, downloadAdminAgeGroupProgramPdf, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate, type AgeGroupScoringRules, type TournamentParticipant,
 } from '@/api/tournaments'
 import { apiClient } from '@/api/client'
 import { useAdminOrganizations, useCreateOrganization } from '@/api/organizations'
@@ -445,6 +445,28 @@ function TournamentRow({ tournament: t, onEdit, onOperations, onCategories, canE
 
 function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) {
   const navigate = useNavigate()
+  const resetTournamentResults = useResetTournamentResults()
+  const [resetMessage, setResetMessage] = useState('')
+  const [resetError, setResetError] = useState('')
+
+  async function handleResetTournamentResults() {
+    setResetMessage('')
+    setResetError('')
+    const confirmed = window.confirm('Resetto tutti i risultati e tutti i ritardi del torneo? Le partite verranno rigenerate da zero usando la configurazione attuale.')
+    if (!confirmed) return
+
+    try {
+      const result = await resetTournamentResults.mutateAsync(tournament.id)
+      setResetMessage(
+        result.reset_age_groups > 0
+          ? `Reset completato: ${result.reset_age_groups} categorie riportate allo stato iniziale.`
+          : 'Nessuna categoria con programma generato da resettare.'
+      )
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setResetError(msg ?? 'Errore durante il reset dei risultati del torneo')
+    }
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -461,6 +483,15 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void handleResetTournamentResults()}
+              disabled={resetTournamentResults.isPending}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50"
+            >
+              <AlertTriangle className="h-4 w-4" />
+              {resetTournamentResults.isPending ? 'Reset in corso...' : 'Reset risultati torneo'}
+            </button>
             <button
               type="button"
               onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie`)}
@@ -493,6 +524,16 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
           </div>
         </div>
       </div>
+
+      {(resetMessage || resetError) && (
+        <div className={`rounded-xl border px-4 py-3 text-sm ${
+          resetError
+            ? 'border-red-200 bg-red-50 text-red-700'
+            : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+        }`}>
+          {resetError || resetMessage}
+        </div>
+      )}
 
       <section className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
         <div className="border-b border-slate-200 px-6 py-5">

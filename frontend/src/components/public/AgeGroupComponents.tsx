@@ -46,6 +46,7 @@ export function PublicMatchRow({
   const awayLogo = match.away_logo_url || teamLogoMap.get(match.away_team_id ?? '') || null
   const highlightsHome = !!highlightedTeamId && match.home_team_id === highlightedTeamId
   const highlightsAway = !!highlightedTeamId && match.away_team_id === highlightedTeamId
+  const scheduleDelayMinutes = getScheduleDelayMinutes(match.original_scheduled_at, match.scheduled_at)
   return (
     <Link
       to={`/partite/${match.id}`}
@@ -100,7 +101,15 @@ export function PublicMatchRow({
       </div>
 
       <div className="mt-3 grid gap-2 rounded-xl bg-white px-3 py-3 text-sm text-slate-600 sm:grid-cols-3">
-        <p><span className="font-semibold text-slate-900">Orario:</span> {match.scheduled_at ? format(new Date(match.scheduled_at), 'HH:mm', { locale: it }) : 'Da definire'}</p>
+        <p>
+          <span className="font-semibold text-slate-900">Orario:</span>{' '}
+          {match.scheduled_at ? format(new Date(match.scheduled_at), 'HH:mm', { locale: it }) : 'Da definire'}
+          {scheduleDelayMinutes > 0 ? (
+            <span className="ml-2 inline-flex rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-700">
+              +{scheduleDelayMinutes} min
+            </span>
+          ) : null}
+        </p>
         <p><span className="font-semibold text-slate-900">Campo:</span> {match.field_name ? `${match.field_name}${match.field_number ? ` #${match.field_number}` : ''}` : 'Da definire'}</p>
         <p><span className="font-semibold text-slate-900">Arbitro:</span> {match.referee || 'Da definire'}</p>
       </div>
@@ -150,7 +159,7 @@ export function StandingsTable({
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={row.team_id} className={`border-b border-slate-100 last:border-b-0 ${row.team_id === highlightedTeamId ? 'bg-amber-50' : ''}`}>
+            <tr key={row.team_id} className={`border-b border-slate-100 last:border-b-0 ${!isFinalPhase && row.team_id === highlightedTeamId ? 'bg-amber-50' : ''}`}>
               <td className="px-3 py-3 font-black text-slate-950">{index + 1}</td>
               <td className="px-3 py-3 font-semibold text-slate-900">
                 <div className="flex items-center justify-between gap-3">
@@ -308,4 +317,12 @@ export function createTeamQueryValue(value: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
+}
+
+export function getScheduleDelayMinutes(originalScheduledAt?: string | null, scheduledAt?: string | null): number {
+  if (!originalScheduledAt || !scheduledAt) return 0
+  const originalTime = new Date(originalScheduledAt).getTime()
+  const scheduledTime = new Date(scheduledAt).getTime()
+  if (!Number.isFinite(originalTime) || !Number.isFinite(scheduledTime)) return 0
+  return Math.max(Math.round((scheduledTime - originalTime) / 60000), 0)
 }

@@ -68,6 +68,7 @@ class MatchResponse(BaseModel):
     home_team_id: str | None
     away_team_id: str | None
     scheduled_at: datetime | None
+    original_scheduled_at: datetime | None
     actual_end_at: datetime | None
     field_name: str | None
     field_number: int | None
@@ -95,6 +96,7 @@ class MatchResponse(BaseModel):
             "home_team_id": getattr(match, "home_team_id"),
             "away_team_id": getattr(match, "away_team_id"),
             "scheduled_at": getattr(match, "scheduled_at"),
+            "original_scheduled_at": getattr(match, "original_scheduled_at", None),
             "actual_end_at": getattr(match, "actual_end_at"),
             "field_name": getattr(match, "field_name"),
             "field_number": getattr(match, "field_number"),
@@ -136,6 +138,7 @@ class TodayMatchItem(BaseModel):
     age_group_id: str
     age_group_name: str
     scheduled_at: datetime | None
+    original_scheduled_at: datetime | None = None
     field_name: str | None
     field_number: int | None
     status: MatchStatus

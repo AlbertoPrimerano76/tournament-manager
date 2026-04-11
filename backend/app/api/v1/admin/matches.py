@@ -169,7 +169,9 @@ async def create_match(
     _: User = Depends(require_editor),
     db: AsyncSession = Depends(get_db),
 ):
-    match = Match(**body.model_dump())
+    payload = body.model_dump()
+    payload["original_scheduled_at"] = payload.get("scheduled_at")
+    match = Match(**payload)
     db.add(match)
     await db.commit()
     await db.refresh(match)
@@ -214,6 +216,9 @@ async def update_match_schedule(
     previous_scheduled_at = match.scheduled_at
     previous_field_name = match.field_name
     previous_field_number = match.field_number
+
+    if match.original_scheduled_at is None:
+        match.original_scheduled_at = previous_scheduled_at
 
     next_scheduled_at = body.scheduled_at
     next_actual_end_at = body.actual_end_at
