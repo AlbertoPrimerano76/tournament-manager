@@ -447,15 +447,22 @@ export default function AgeGroupPage() {
             <div className="mt-2 flex flex-wrap gap-2">
               {activePhaseFieldSummary.map((facility) => (
                 facility.maps_url ? (
-                  <a
+                  <div
                     key={facility.name}
-                    href={facility.maps_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:text-slate-950"
+                    className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm"
                   >
-                    Apri impianto
-                  </a>
+                    <span>{facility.name}</span>
+                    <a
+                      href={facility.maps_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950"
+                      aria-label={`Apri mappa impianto ${facility.name}`}
+                      title={`Apri mappa impianto ${facility.name}`}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
                 ) : (
                   <span key={facility.name} className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm">
                     {facility.name}
