@@ -60,8 +60,9 @@ async def get_knockout_final_ranking(phase_id: str, db: AsyncSession) -> list[di
         return []
 
     team_name_result = await db.execute(
-        select(TournamentTeam.id, Team.name)
+        select(TournamentTeam.id, Team.name, Team.logo_url, Organization.logo_url)
         .join(Team, Team.id == TournamentTeam.team_id)
+        .outerjoin(Organization, Organization.id == Team.organization_id)
         .where(
             TournamentTeam.id.in_([
                 team_id
@@ -71,7 +72,13 @@ async def get_knockout_final_ranking(phase_id: str, db: AsyncSession) -> list[di
             ])
         )
     )
-    team_name_map = {team_id: team_name for team_id, team_name in team_name_result.all()}
+    team_metadata_map = {
+        team_id: {
+            "team_name": team_name,
+            "team_logo_url": team_logo_url or organization_logo_url,
+        }
+        for team_id, team_name, team_logo_url, organization_logo_url in team_name_result.all()
+    }
 
     bucketed_matches: dict[str, list[Match]] = {}
     for match in matches:
@@ -105,7 +112,8 @@ async def get_knockout_final_ranking(phase_id: str, db: AsyncSession) -> list[di
             ranking_rows.append({
                 "position": next_position,
                 "team_id": team_id,
-                "team_name": team_name_map.get(team_id),
+                "team_name": team_metadata_map.get(team_id, {}).get("team_name"),
+                "team_logo_url": team_metadata_map.get(team_id, {}).get("team_logo_url"),
                 "bucket": bucket_name,
             })
             next_position += 1

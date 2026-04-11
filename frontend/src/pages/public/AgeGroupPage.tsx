@@ -100,13 +100,13 @@ export default function AgeGroupPage() {
         position: index + 1,
         team_id: row.team_id,
         team_name: row.team_name,
+        team_logo_url: teamLogoMap.get(row.team_id),
       }))
     : []
   const publicFinalRanking = useMemo(() => {
     const rankingPhase = [...visiblePhases].reverse().find((phase) => (standings?.[phase.id]?.final_ranking?.length ?? 0) > 0)
     if (rankingPhase) {
       return {
-        phaseName: rankingPhase.name,
         isProvisional: false,
         rows: (standings?.[rankingPhase.id]?.final_ranking ?? []).filter((row) => typeof row.position === 'number'),
       }
@@ -933,13 +933,10 @@ export default function AgeGroupPage() {
       {publicFinalRanking && tournamentCompleted && publicFinalRanking.rows.length > 0 && (
         <section className="mt-4 rounded-[1.8rem] border p-5 shadow-sm" style={{ borderColor: theme.softBorder, background: theme.contentSurface }}>
           <div className="mb-4">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.primaryMuted }}>Podio finale</p>
-              <h2 className="mt-1 text-xl font-black text-slate-950">{publicFinalRanking.phaseName}</h2>
-            </div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.primaryMuted }}>Podio finale</p>
           </div>
           <div className="mb-4">
-            <PodiumGrid rows={publicFinalRanking.rows.slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} highlightTeam={false} />
+            <PodiumGrid rows={publicFinalRanking.rows.slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} highlightTeam={false} variant="steps" />
           </div>
         </section>
       )}

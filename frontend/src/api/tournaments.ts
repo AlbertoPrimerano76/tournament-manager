@@ -231,6 +231,7 @@ export interface AgeGroupStandingsPhase {
     position: number
     team_id: string | null
     team_name?: string | null
+    team_logo_url?: string | null
     bucket?: string | null
   }>
 }

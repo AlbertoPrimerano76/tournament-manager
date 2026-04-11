@@ -206,18 +206,17 @@ def _build_group_section(group: ProgramGroupResponse, tournament_timezone: str =
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
 
-    schedule_rows = [["Ora", "Campo", "Partita", "Punteggio"]]
+    schedule_rows = [["Ora", "Campo", "Partita"]]
     for match in matches:
         schedule_rows.append([
             _format_time(match.scheduled_at, tournament_timezone),
             _short_field_label(match),
             f"{_escape_pdf_text(match.home_label)} - {_escape_pdf_text(match.away_label)}",
-            _schedule_score_cell(match),
         ])
     if len(schedule_rows) == 1:
-        schedule_rows.append(["Da definire", "-", "Partite non ancora programmate", ""])
+        schedule_rows.append(["Da definire", "-", "Partite non ancora programmate"])
 
-    schedule_table = Table(schedule_rows, repeatRows=1, colWidths=[20 * mm, 48 * mm, 86 * mm, 32 * mm])
+    schedule_table = Table(schedule_rows, repeatRows=1, colWidths=[20 * mm, 44 * mm, 122 * mm])
     schedule_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#dbeafe")),
         ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0f172a")),
@@ -284,10 +283,32 @@ def _build_knockout_section(phase: ProgramPhaseResponse, tournament_timezone: st
         "ProgramKnockoutTurn",
         parent=styles["BodyText"],
         fontName="Helvetica-Bold",
-        fontSize=10,
-        leading=12,
+        fontSize=10.5,
+        leading=13,
         textColor=colors.HexColor("#92400e"),
-        spaceAfter=3,
+        spaceAfter=4,
+        leftIndent=2,
+    )
+    cell_style = ParagraphStyle(
+        "ProgramKnockoutCell",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=9,
+        leading=11,
+        textColor=colors.HexColor("#0f172a"),
+    )
+    match_style = ParagraphStyle(
+        "ProgramKnockoutMatchCell",
+        parent=cell_style,
+        fontName="Helvetica-Bold",
+        fontSize=9.2,
+        leading=11.5,
+    )
+    empty_style = ParagraphStyle(
+        "ProgramKnockoutEmptyCell",
+        parent=cell_style,
+        textColor=colors.HexColor("#64748b"),
+        alignment=1,
     )
 
     round_blocks = [
@@ -306,18 +327,21 @@ def _build_knockout_section(phase: ProgramPhaseResponse, tournament_timezone: st
 
     for round_name, round_matches in matches_by_round.items():
         round_blocks.append(Paragraph(round_name, turn_style))
-        rows = [["Ora", "Campo", "Partita", "Punteggio"]]
+        rows = [["Ora", "Campo", "Partita"]]
         for match in round_matches:
             rows.append([
-                _format_time(match.scheduled_at, tournament_timezone),
-                _short_field_label(match),
-                f"{_escape_pdf_text(match.home_label)} - {_escape_pdf_text(match.away_label)}",
-                _schedule_score_cell(match),
+                Paragraph(_escape_pdf_text(_format_time(match.scheduled_at, tournament_timezone)), cell_style),
+                Paragraph(_escape_pdf_text(_short_field_label(match)), cell_style),
+                Paragraph(f"{_escape_pdf_text(match.home_label)}<br/>{_escape_pdf_text(match.away_label)}", match_style),
             ])
         if len(rows) == 1:
-            rows.append(["Da definire", "-", "Partite non ancora programmate", ""])
+            rows.append([
+                Paragraph("Da definire", empty_style),
+                Paragraph("-", empty_style),
+                Paragraph("Partite non ancora programmate", empty_style),
+            ])
 
-        table = Table(rows, repeatRows=1, colWidths=[20 * mm, 42 * mm, 96 * mm, 28 * mm])
+        table = Table(rows, repeatRows=1, colWidths=[22 * mm, 44 * mm, 120 * mm])
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#fef3c7")),
             ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0f172a")),
@@ -325,11 +349,14 @@ def _build_knockout_section(phase: ProgramPhaseResponse, tournament_timezone: st
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fffaf0")]),
             ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d6d3d1")),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ("LEFTPADDING", (0, 0), (-1, -1), 7),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+            ("ALIGN", (0, 0), (1, -1), "CENTER"),
         ]))
         round_blocks.append(table)
-        round_blocks.append(Spacer(1, 5))
+        round_blocks.append(Spacer(1, 8))
 
     return round_blocks
 
@@ -376,10 +403,6 @@ def _short_field_label(match: ProgramMatchResponse) -> str:
     if match.field_number is None:
         return compact_name
     return f"{compact_name} #{match.field_number}"
-
-
-def _schedule_score_cell(match: ProgramMatchResponse) -> str:
-    return "____ - ____"
 
 
 def _format_time(value, tournament_timezone: str, fallback: str = "Da definire") -> str:

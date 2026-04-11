@@ -936,6 +936,8 @@ async def test_knockout_final_ranking_is_returned_in_standings(client: AsyncClie
     assert final_ranking[1]["position"] == 2
     assert final_ranking[0]["team_id"] == tournament_team_ids[0]
     assert final_ranking[1]["team_id"] == tournament_team_ids[2]
+    assert "team_logo_url" in final_ranking[0]
+    assert "team_logo_url" in final_ranking[1]
 
 
 @pytest.mark.asyncio

@@ -195,15 +195,77 @@ export function PodiumGrid({
   teamLogoMap,
   highlightedTeamId,
   highlightTeam = true,
+  variant = 'cards',
 }: {
-  rows: Array<{ position?: number | null; team_id?: string | null; team_name?: string | null }>
+  rows: Array<{ position?: number | null; team_id?: string | null; team_name?: string | null; team_logo_url?: string | null }>
   teamNameMap: Map<string, string>
   teamLogoMap: Map<string, string>
   highlightedTeamId?: string
   highlightTeam?: boolean
+  variant?: 'cards' | 'steps'
 }) {
   const topRows = rows.filter((row) => typeof row.position === 'number').slice(0, 3)
   if (topRows.length === 0) return null
+
+  if (variant === 'steps') {
+    const getRow = (position: number) => topRows.find((row) => row.position === position) ?? null
+    const second = getRow(2)
+    const first = getRow(1)
+    const third = getRow(3)
+    const items = [
+      { row: second, tone: 'silver', height: 'h-28 md:h-36', order: 'md:order-1' },
+      { row: first, tone: 'gold', height: 'h-36 md:h-48', order: 'md:order-2' },
+      { row: third, tone: 'bronze', height: 'h-24 md:h-32', order: 'md:order-3' },
+    ] as const
+
+    return (
+      <div className="grid gap-3 md:grid-cols-3 md:items-end">
+        {items.map(({ row, tone, height, order }, index) => {
+          if (!row) return <div key={`podium-empty-${index}`} className={`hidden md:block ${order}`} />
+          const name = row.team_name || teamNameMap.get(row.team_id ?? '') || 'Da definire'
+          const logo = row.team_logo_url || teamLogoMap.get(row.team_id ?? '')
+          const isHighlighted = Boolean(highlightTeam && row.team_id && row.team_id === highlightedTeamId)
+          const tones = tone === 'gold'
+            ? {
+                shell: isHighlighted ? 'border-amber-300 bg-amber-100' : 'border-amber-200 bg-gradient-to-b from-amber-50 to-amber-100',
+                step: 'border-amber-300 bg-amber-200 text-amber-900',
+                medal: 'bg-amber-100 text-amber-700',
+              }
+            : tone === 'silver'
+              ? {
+                  shell: isHighlighted ? 'border-amber-300 bg-amber-100' : 'border-slate-200 bg-gradient-to-b from-slate-50 to-slate-100',
+                  step: 'border-slate-300 bg-slate-200 text-slate-800',
+                  medal: 'bg-slate-200 text-slate-700',
+                }
+              : {
+                  shell: isHighlighted ? 'border-amber-300 bg-amber-100' : 'border-orange-200 bg-gradient-to-b from-orange-50 to-orange-100',
+                  step: 'border-orange-300 bg-orange-200 text-orange-900',
+                  medal: 'bg-orange-100 text-orange-700',
+                }
+
+          return (
+            <div key={`podium-step-${row.position ?? index}-${row.team_id ?? row.team_name ?? 'na'}`} className={`flex flex-col justify-end ${order}`}>
+              <div className={`rounded-[1.5rem] border px-4 py-4 shadow-sm ${tones.shell}`}>
+                <div className={`mb-3 inline-flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-black ${tones.medal}`}>
+                  {row.position}°
+                </div>
+                <div className="flex items-center gap-2">
+                  <TeamLogo src={logo} alt={name} />
+                  <p className="min-w-0 truncate text-sm font-black text-slate-950">{name}</p>
+                  {row.team_id && row.team_id === highlightedTeamId
+                    ? <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" aria-label="La tua squadra" />
+                    : null}
+                </div>
+              </div>
+              <div className={`mt-2 rounded-t-[1.4rem] border-x border-t px-3 py-3 text-center text-xs font-black uppercase tracking-[0.18em] ${height} ${tones.step}`}>
+                {row.position === 1 ? 'Campione' : `${row.position} posto`}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
 
   return (
     <div className="grid gap-3 md:grid-cols-3">
@@ -233,7 +295,7 @@ export function PodiumGrid({
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase tracking-widest2 text-slate-500">{row.position}° posto</p>
               <div className="mt-1 flex items-center gap-2">
-                <TeamLogo src={teamLogoMap.get(row.team_id ?? '')} alt={row.team_name || teamNameMap.get(row.team_id ?? '') || 'Squadra'} />
+                <TeamLogo src={row.team_logo_url || teamLogoMap.get(row.team_id ?? '')} alt={row.team_name || teamNameMap.get(row.team_id ?? '') || 'Squadra'} />
                 <p className="truncate text-sm font-black text-slate-950">{row.team_name || teamNameMap.get(row.team_id ?? '') || 'Da definire'}</p>
                 {row.team_id && row.team_id === highlightedTeamId
                   ? <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" aria-label="La tua squadra" />
