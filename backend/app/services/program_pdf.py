@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 from urllib.parse import urlparse
 from urllib.request import urlopen
+from zoneinfo import ZoneInfo
 
 from app.schemas.program import (
     AgeGroupProgramResponse,
@@ -24,6 +25,7 @@ def _safe_filename(value: str) -> str:
 def build_age_group_program_pdf(
     tournament_name: str,
     program: AgeGroupProgramResponse,
+    tournament_timezone: str = "Europe/Rome",
 ) -> tuple[bytes, str]:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
@@ -67,7 +69,7 @@ def build_age_group_program_pdf(
     ]
 
     for day in program.days:
-        story.extend(_build_day_section(day.label, day.phases))
+        story.extend(_build_day_section(day.label, day.phases, tournament_timezone))
         story.append(Spacer(1, 4))
 
     document.build(story)
@@ -75,7 +77,7 @@ def build_age_group_program_pdf(
     return buffer.getvalue(), filename
 
 
-def _build_day_section(day_label: str, phases: list[ProgramPhaseResponse]):
+def _build_day_section(day_label: str, phases: list[ProgramPhaseResponse], tournament_timezone: str = "Europe/Rome"):
     from reportlab.lib import colors
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.platypus import Paragraph, Spacer
@@ -93,12 +95,12 @@ def _build_day_section(day_label: str, phases: list[ProgramPhaseResponse]):
 
     blocks = [Paragraph(day_label, day_style)]
     for phase in phases:
-        blocks.extend(_build_phase_section(phase))
+        blocks.extend(_build_phase_section(phase, tournament_timezone))
         blocks.append(Spacer(1, 8))
     return blocks
 
 
-def _build_phase_section(phase: ProgramPhaseResponse):
+def _build_phase_section(phase: ProgramPhaseResponse, tournament_timezone: str = "Europe/Rome"):
     from reportlab.lib import colors
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.platypus import Paragraph, Spacer
@@ -124,19 +126,19 @@ def _build_phase_section(phase: ProgramPhaseResponse):
     )
 
     blocks = [Paragraph(f"FASE {phase.phase_order} · {phase.name}", phase_style)]
-    blocks.append(Paragraph(_format_phase_meta(phase), meta_style))
+    blocks.append(Paragraph(_format_phase_meta(phase, tournament_timezone), meta_style))
 
     if phase.groups:
         for group in phase.groups:
-            blocks.extend(_build_group_section(group))
+            blocks.extend(_build_group_section(group, tournament_timezone))
             blocks.append(Spacer(1, 8))
     if phase.knockout_matches:
-        blocks.extend(_build_knockout_section(phase))
+        blocks.extend(_build_knockout_section(phase, tournament_timezone))
 
     return blocks
 
 
-def _build_group_section(group: ProgramGroupResponse):
+def _build_group_section(group: ProgramGroupResponse, tournament_timezone: str = "Europe/Rome"):
     from reportlab.lib import colors
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import mm
@@ -207,7 +209,7 @@ def _build_group_section(group: ProgramGroupResponse):
     schedule_rows = [["Ora", "Campo", "Partita", "Punteggio"]]
     for match in matches:
         schedule_rows.append([
-            match.scheduled_at.strftime("%H:%M") if match.scheduled_at else "Da definire",
+            _format_time(match.scheduled_at, tournament_timezone),
             _short_field_label(match),
             f"{_escape_pdf_text(match.home_label)} - {_escape_pdf_text(match.away_label)}",
             _schedule_score_cell(match),
@@ -237,7 +239,7 @@ def _build_group_section(group: ProgramGroupResponse):
     ]
 
 
-def _build_knockout_section(phase: ProgramPhaseResponse):
+def _build_knockout_section(phase: ProgramPhaseResponse, tournament_timezone: str = "Europe/Rome"):
     from reportlab.lib import colors
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import mm
@@ -278,42 +280,64 @@ def _build_knockout_section(phase: ProgramPhaseResponse):
         ("RIGHTPADDING", (0, 0), (-1, -1), 10),
     ]))
 
-    rows = [["Ora", "Campo", "Turno", "Partita", "Punteggio"]]
-    for match in matches:
-        rows.append([
-            match.scheduled_at.strftime("%H:%M") if match.scheduled_at else "Da definire",
-            _short_field_label(match),
-            match.bracket_round or phase.name,
-            f"{_escape_pdf_text(match.home_label)} - {_escape_pdf_text(match.away_label)}",
-            _schedule_score_cell(match),
-        ])
-    if len(rows) == 1:
-        rows.append(["Da definire", "-", phase.name, "Partite non ancora programmate", ""])
+    turn_style = ParagraphStyle(
+        "ProgramKnockoutTurn",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=10,
+        leading=12,
+        textColor=colors.HexColor("#92400e"),
+        spaceAfter=3,
+    )
 
-    table = Table(rows, repeatRows=1, colWidths=[18 * mm, 38 * mm, 44 * mm, 58 * mm, 28 * mm])
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#fef3c7")),
-        ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0f172a")),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fffaf0")]),
-        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d6d3d1")),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-    ]))
-
-    return [
+    round_blocks = [
         Paragraph("Tabellone", block_style),
         field_card,
         Spacer(1, 5),
-        table,
     ]
 
+    matches_by_round: dict[str, list[ProgramMatchResponse]] = {}
+    for match in matches:
+        round_name = match.bracket_round or phase.name
+        matches_by_round.setdefault(round_name, []).append(match)
 
-def _format_phase_meta(phase: ProgramPhaseResponse) -> str:
-    configured = phase.configured_start_at.strftime("%H:%M") if phase.configured_start_at else "--:--"
-    actual = phase.phase_start_at.strftime("%H:%M") if phase.phase_start_at else configured
-    estimated = phase.estimated_end_at.strftime("%H:%M") if phase.estimated_end_at else "--:--"
+    if not matches_by_round:
+        matches_by_round[phase.name] = []
+
+    for round_name, round_matches in matches_by_round.items():
+        round_blocks.append(Paragraph(round_name, turn_style))
+        rows = [["Ora", "Campo", "Partita", "Punteggio"]]
+        for match in round_matches:
+            rows.append([
+                _format_time(match.scheduled_at, tournament_timezone),
+                _short_field_label(match),
+                f"{_escape_pdf_text(match.home_label)} - {_escape_pdf_text(match.away_label)}",
+                _schedule_score_cell(match),
+            ])
+        if len(rows) == 1:
+            rows.append(["Da definire", "-", "Partite non ancora programmate", ""])
+
+        table = Table(rows, repeatRows=1, colWidths=[20 * mm, 42 * mm, 96 * mm, 28 * mm])
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#fef3c7")),
+            ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0f172a")),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fffaf0")]),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d6d3d1")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        round_blocks.append(table)
+        round_blocks.append(Spacer(1, 5))
+
+    return round_blocks
+
+
+def _format_phase_meta(phase: ProgramPhaseResponse, tournament_timezone: str = "Europe/Rome") -> str:
+    configured = _format_time(phase.configured_start_at, tournament_timezone, "--:--")
+    actual = _format_time(phase.phase_start_at, tournament_timezone, configured)
+    estimated = _format_time(phase.estimated_end_at, tournament_timezone, "--:--")
     if phase.configured_start_at and phase.phase_start_at and phase.phase_start_at != phase.configured_start_at:
         return f"Inizio previsto {configured} · Inizio aggiornato {actual} · Fine stimata {estimated}"
     return f"Inizio {actual} · Fine stimata {estimated}"
@@ -355,9 +379,19 @@ def _short_field_label(match: ProgramMatchResponse) -> str:
 
 
 def _schedule_score_cell(match: ProgramMatchResponse) -> str:
-    if match.home_score is not None and match.away_score is not None:
-        return f"{match.home_score} - {match.away_score}"
     return "____ - ____"
+
+
+def _format_time(value, tournament_timezone: str, fallback: str = "Da definire") -> str:
+    if value is None:
+        return fallback
+    try:
+        timezone = ZoneInfo(tournament_timezone)
+    except Exception:
+        timezone = ZoneInfo("Europe/Rome")
+    if getattr(value, "tzinfo", None) is None:
+        return value.strftime("%H:%M")
+    return value.astimezone(timezone).strftime("%H:%M")
 
 
 def _escape_pdf_text(value: str) -> str:

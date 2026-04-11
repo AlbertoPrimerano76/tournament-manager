@@ -939,6 +939,94 @@ async def test_knockout_final_ranking_is_returned_in_standings(client: AsyncClie
 
 
 @pytest.mark.asyncio
+async def test_knockout_results_propagate_winners_to_next_round(client: AsyncClient, db: AsyncSession):
+    headers = await ensure_admin_headers(client)
+
+    _, age_group = await create_tournament_with_teams(
+        db,
+        slug_suffix=f"propagation-{uuid.uuid4().hex[:6]}",
+        structure_config={
+            "expected_teams": 4,
+            "notes": "",
+            "schedule": {
+                "start_time": "10:00",
+                "match_duration_minutes": 12,
+                "interval_minutes": 8,
+                "playing_fields": [
+                    {"field_name": "Impianto Finale", "field_number": 1},
+                ],
+            },
+            "phases": [
+                {
+                    "id": "phase-1",
+                    "name": "Finali",
+                    "phase_type": "KNOCKOUT",
+                    "num_groups": None,
+                    "group_sizes": "",
+                    "qualifiers_per_group": None,
+                    "best_extra_teams": None,
+                    "next_phase_type": "",
+                    "bracket_mode": "standard",
+                    "notes": "",
+                    "knockout_field_assignments": [
+                        {"field_name": "Impianto Finale", "field_number": 1},
+                    ],
+                },
+            ],
+        },
+    )
+    await generate_age_group_program(age_group.id, db)
+
+    phase_result = await db.execute(
+        select(Phase)
+        .options(
+            selectinload(Phase.matches),
+            selectinload(Phase.tournament_age_group).selectinload(TournamentAgeGroup.tournament_teams).selectinload(TournamentTeam.team),
+        )
+        .where(Phase.tournament_age_group_id == age_group.id, Phase.phase_type == PhaseType.KNOCKOUT)
+    )
+    knockout_phase = phase_result.scalar_one()
+    knockout_matches = sorted(knockout_phase.matches, key=lambda item: ((item.bracket_round_order or 0), (item.bracket_position or 0)))
+    first_round_matches = [match for match in knockout_matches if match.bracket_round_order == 1]
+    semifinal_candidates = [match for match in knockout_matches if match.bracket_round_order == 2]
+    assert len(first_round_matches) >= 2
+    assert len(semifinal_candidates) >= 1
+    semifinal_one = next(match for match in first_round_matches if match.home_team_id and match.away_team_id)
+
+    semifinal_one_resp = await client.post(
+        f"/api/v1/admin/matches/{semifinal_one.id}/score",
+        headers=headers,
+        json={
+            "home_score": 12,
+            "away_score": 5,
+            "status": "COMPLETED",
+        },
+    )
+    assert semifinal_one_resp.status_code == 200
+
+    for match in semifinal_candidates:
+        await db.refresh(match)
+    propagated_match = next(
+        match for match in semifinal_candidates
+        if semifinal_one.home_team_id in {match.home_team_id, match.away_team_id}
+    )
+
+    program_resp = await client.get(f"/api/v1/age-groups/{age_group.id}/program")
+    assert program_resp.status_code == 200
+    data = program_resp.json()
+    final_phase = data["days"][0]["phases"][0]
+    final_program_match = next(match for match in final_phase["knockout_matches"] if match["id"] == propagated_match.id)
+
+    winning_team_name = next(
+        team.team.name
+        for team in knockout_phase.tournament_age_group.tournament_teams
+        if team.id == semifinal_one.home_team_id
+    )
+    assert final_program_match["home_label"] == winning_team_name
+    assert "Vincente" not in final_program_match["home_label"]
+
+
+@pytest.mark.asyncio
 async def test_admin_can_regenerate_from_specific_phase(client: AsyncClient, db: AsyncSession):
     headers = await ensure_admin_headers(client)
 

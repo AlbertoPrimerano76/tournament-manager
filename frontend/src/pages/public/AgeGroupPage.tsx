@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ChevronLeft, ExternalLink, Star } from 'lucide-react'
+import { ChevronLeft, ExternalLink } from 'lucide-react'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
 import {
@@ -25,7 +25,6 @@ import {
 } from '@/components/public/AgeGroupComponents'
 
 type GroupPhaseView = 'matches' | 'standings' | 'team'
-type KnockoutPhaseView = 'matches' | 'ranking'
 type MatchStatusView = 'pending' | 'completed'
 
 export default function AgeGroupPage() {
@@ -80,10 +79,6 @@ export default function AgeGroupPage() {
   const [activeTeamId, setActiveTeamId] = useState<string>('')
   const [rememberedTeamId, setRememberedTeamId] = useState<string>('')
   const [teamSearch, setTeamSearch] = useState('')
-  const knockoutPhaseView = (searchParams.get('ktab') as KnockoutPhaseView | null) ?? 'matches'
-  function setKnockoutPhaseView(tab: KnockoutPhaseView) {
-    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.set('ktab', tab); return next }, { replace: true })
-  }
   const [groupStatusView, setGroupStatusView] = useState<MatchStatusView>('pending')
   const [knockoutStatusView, setKnockoutStatusView] = useState<MatchStatusView>('pending')
 
@@ -107,26 +102,13 @@ export default function AgeGroupPage() {
         team_name: row.team_name,
       }))
     : []
-  const finalRankingRows = useMemo(() => {
-    if (!activePhase || activePhase.phase_type === 'GROUP_STAGE') return []
-    const ranked = standings?.[activePhase.id]?.final_ranking ?? []
-    const rankedIds = new Set(ranked.map((row) => row.team_id).filter(Boolean))
-    const missing = Array.from(teamNameMap.entries())
-      .filter(([teamId]) => !rankedIds.has(teamId))
-      .map(([teamId, teamName]) => ({
-        position: null,
-        team_id: teamId,
-        team_name: teamName,
-      }))
-    return [...ranked, ...missing]
-  }, [activePhase, standings, teamNameMap])
   const publicFinalRanking = useMemo(() => {
     const rankingPhase = [...visiblePhases].reverse().find((phase) => (standings?.[phase.id]?.final_ranking?.length ?? 0) > 0)
     if (rankingPhase) {
       return {
         phaseName: rankingPhase.name,
         isProvisional: false,
-        rows: standings?.[rankingPhase.id]?.final_ranking ?? [],
+        rows: (standings?.[rankingPhase.id]?.final_ranking ?? []).filter((row) => typeof row.position === 'number'),
       }
     }
     return null
@@ -256,7 +238,6 @@ export default function AgeGroupPage() {
     setActiveStandingsGroupId(activePhase?.groups[0]?.id ?? null)
     setActiveTeamId('')
     setGroupStatusView('pending')
-    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete('ktab'); return next }, { replace: true })
     setKnockoutStatusView('pending')
   }, [activePhase?.id])
 
@@ -898,37 +879,6 @@ export default function AgeGroupPage() {
         </>
       ) : activePhase ? (
         <div className="mt-4 space-y-4">
-          <section className="rounded-[1.8rem] border p-4 shadow-sm" style={{ borderColor: theme.softBorder, background: theme.tabSurface }}>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setKnockoutPhaseView('matches')}
-                className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                  knockoutPhaseView === 'matches'
-                    ? 'text-white'
-                    : 'border bg-white text-slate-700'
-                }`}
-                style={knockoutPhaseView === 'matches' ? { backgroundColor: theme.accent } : { borderColor: theme.softBorder }}
-              >
-                Partite
-              </button>
-              <button
-                type="button"
-                onClick={() => setKnockoutPhaseView('ranking')}
-                className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                  knockoutPhaseView === 'ranking'
-                      ? 'text-white'
-                      : 'border bg-white text-slate-700'
-                }`}
-                style={knockoutPhaseView === 'ranking' ? { backgroundColor: theme.accent } : { borderColor: theme.softBorder }}
-              >
-                Classifica
-              </button>
-              
-            </div>
-          </section>
-
-          {knockoutPhaseView === 'matches' ? (
           <section className="rounded-[1.8rem] border p-5 shadow-sm" style={{ borderColor: theme.softBorder, background: theme.contentSurface }}>
             <div className="mb-4">
               <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.accent }}>
@@ -977,105 +927,19 @@ export default function AgeGroupPage() {
               )}
             </div>
           </section>
-          ) : null}
-
-          {knockoutPhaseView === 'ranking' && (
-            <section className="rounded-[1.8rem] border p-5 shadow-sm" style={{ borderColor: theme.softBorder, background: theme.contentSurface }}>
-              <div className="mb-4">
-                <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.primaryMuted }}>Classifica</p>
-                <h2 className="mt-1 text-xl font-black text-slate-950">{activePhase.name}</h2>
-                {activePhaseWindowLabel ? (
-                  <p className="mt-1 text-sm text-slate-500">{activePhaseWindowLabel}</p>
-                ) : null}
-              </div>
-              {finalRankingRows.length > 0 ? (
-                <>
-                  {tournamentCompleted && (
-                    <div className="mb-4">
-                      <PodiumGrid rows={finalRankingRows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} highlightTeam={false} />
-                    </div>
-                  )}
-
-                  <div className="overflow-hidden rounded-[1.3rem] border border-emerald-100 bg-white">
-                    <table className="min-w-full divide-y divide-emerald-100 text-sm">
-                      <thead className="bg-emerald-50 text-left text-emerald-900">
-                        <tr>
-                          <th className="px-4 py-3 font-bold">Pos.</th>
-                          <th className="px-4 py-3 font-bold">Squadra</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {finalRankingRows.map((row) => (
-                          <tr
-                            key={`${activePhase.id}-${row.position ?? 'na'}-${row.team_id ?? row.team_name}`}
-                          >
-                            <td className="px-4 py-3 font-black text-slate-900">{row.position ?? '-'}</td>
-                            <td className="px-4 py-3 font-semibold text-slate-900">
-                              <div className="flex items-center gap-2">
-                                <TeamLogo src={teamLogoMap.get(row.team_id ?? '')} alt={row.team_name || teamNameMap.get(row.team_id ?? '') || 'Squadra'} />
-                                <span>{row.team_name || teamNameMap.get(row.team_id ?? '') || 'Da definire'}</span>
-                                {row.team_id && row.team_id === activeTeamId ? (
-                                  <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" aria-label="La tua squadra" />
-                                ) : null}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              ) : (
-                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                  Classifica non ancora disponibile.
-                </div>
-              )}
-            </section>
-          )}
         </div>
       ) : null}
 
-      {publicFinalRanking && (
+      {publicFinalRanking && tournamentCompleted && publicFinalRanking.rows.length > 0 && (
         <section className="mt-4 rounded-[1.8rem] border p-5 shadow-sm" style={{ borderColor: theme.softBorder, background: theme.contentSurface }}>
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div className="mb-4">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.primaryMuted }}>Classifica finale</p>
+              <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: theme.primaryMuted }}>Podio finale</p>
               <h2 className="mt-1 text-xl font-black text-slate-950">{publicFinalRanking.phaseName}</h2>
             </div>
-            {publicFinalRanking.isProvisional && (
-              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold uppercase tracking-widest2 text-amber-700">Provvisoria</span>
-            )}
           </div>
-          {tournamentCompleted && (
-            <div className="mb-4">
-              <PodiumGrid rows={publicFinalRanking.rows.filter((row) => typeof row.position === 'number').slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} highlightTeam={false} />
-            </div>
-          )}
-          <div className="overflow-hidden rounded-[1.3rem] border border-emerald-100 bg-white">
-            <table className="min-w-full divide-y divide-emerald-100 text-sm">
-              <thead className="bg-emerald-50 text-left text-emerald-900">
-                <tr>
-                  <th className="px-4 py-3 font-bold">Pos.</th>
-                  <th className="px-4 py-3 font-bold">Squadra</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {publicFinalRanking.rows.map((row) => (
-                  <tr key={`public-final-${row.position ?? 'na'}-${row.team_id ?? row.team_name}`}>
-                    <td className="px-4 py-3 font-black text-slate-900">{row.position ?? '-'}</td>
-                    <td className="px-4 py-3 font-semibold text-slate-900">
-                      <div className="flex items-center gap-2">
-                        <TeamLogo src={teamLogoMap.get(row.team_id ?? '')} alt={row.team_name || teamNameMap.get(row.team_id ?? '') || 'Squadra'} />
-                        <span>{row.team_name || teamNameMap.get(row.team_id ?? '') || 'Da definire'}</span>
-                        {row.team_id && row.team_id === activeTeamId ? (
-                          <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" aria-label="La tua squadra" />
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mb-4">
+            <PodiumGrid rows={publicFinalRanking.rows.slice(0, 3)} teamNameMap={teamNameMap} teamLogoMap={teamLogoMap} highlightedTeamId={activeTeamId} highlightTeam={false} />
           </div>
         </section>
       )}

@@ -477,7 +477,7 @@ async def download_admin_age_group_program_pdf(
         raise HTTPException(status_code=404, detail="Age group not found")
 
     try:
-        payload, filename = build_age_group_program_pdf(age_group.tournament.name, program)
+        payload, filename = build_age_group_program_pdf(age_group.tournament.name, program, age_group.tournament.timezone)
     except ModuleNotFoundError as exc:
         if exc.name == "reportlab":
             raise HTTPException(status_code=503, detail="Export PDF non disponibile sul server")

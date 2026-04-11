@@ -16,6 +16,90 @@ from app.schemas.match import MatchCreate, MatchUpdate, MatchResponse, MatchSche
 router = APIRouter()
 
 
+def _clear_match_result_data(match: Match) -> None:
+    match.home_score = None
+    match.away_score = None
+    match.home_tries = None
+    match.away_tries = None
+    match.status = MatchStatus.SCHEDULED
+    match.result_entered_by = None
+    match.result_entered_at = None
+
+
+def _round_matches(phase_matches: list[Match], round_order: int) -> list[Match]:
+    return sorted(
+        [match for match in phase_matches if match.bracket_round_order == round_order],
+        key=lambda item: ((item.bracket_position or 0), item.id),
+    )
+
+
+def _round_index(phase_matches: list[Match], match: Match) -> int | None:
+    if match.bracket_round_order is None:
+        return None
+    current_round_matches = _round_matches(phase_matches, match.bracket_round_order)
+    for index, item in enumerate(current_round_matches):
+        if item.id == match.id:
+            return index
+    return None
+
+
+def _find_next_knockout_match(phase_matches: list[Match], match: Match) -> Match | None:
+    if match.bracket_round_order is None:
+        return None
+    round_index = _round_index(phase_matches, match)
+    if round_index is None:
+        return None
+    next_round_matches = _round_matches(phase_matches, match.bracket_round_order + 1)
+    if not next_round_matches:
+        return None
+    target_index = round_index // 2
+    if target_index >= len(next_round_matches):
+        return None
+    return next_round_matches[target_index]
+
+
+def _set_next_knockout_slot(phase_matches: list[Match], next_match: Match, source_match: Match, team_id: str | None) -> bool:
+    round_index = _round_index(phase_matches, source_match)
+    if round_index is None:
+        return False
+    if round_index % 2 == 0:
+        if next_match.home_team_id == team_id:
+            return False
+        next_match.home_team_id = team_id
+        return True
+    if next_match.away_team_id == team_id:
+        return False
+    next_match.away_team_id = team_id
+    return True
+
+
+def _clear_knockout_descendants(phase_matches: list[Match], source_match: Match) -> None:
+    next_match = _find_next_knockout_match(phase_matches, source_match)
+    if not next_match:
+        return
+    changed = _set_next_knockout_slot(phase_matches, next_match, source_match, None)
+    if not changed:
+        return
+    _clear_match_result_data(next_match)
+    _clear_knockout_descendants(phase_matches, next_match)
+
+
+def _propagate_knockout_winner(phase_matches: list[Match], source_match: Match, winner_team_id: str | None) -> None:
+    next_match = _find_next_knockout_match(phase_matches, source_match)
+    if not next_match:
+        return
+    changed = _set_next_knockout_slot(phase_matches, next_match, source_match, winner_team_id)
+    if not changed:
+        return
+    if winner_team_id is None:
+        _clear_match_result_data(next_match)
+        _clear_knockout_descendants(phase_matches, next_match)
+        return
+    if _match_has_locked_result(next_match):
+        _clear_match_result_data(next_match)
+        _clear_knockout_descendants(phase_matches, next_match)
+
+
 def _match_has_locked_result(match: Match) -> bool:
     return (
         match.home_score is not None
@@ -287,19 +371,21 @@ async def enter_score(
     db: AsyncSession = Depends(get_db),
 ):
     await ensure_match_access(user, match_id, db)
-    result = await db.execute(select(Match).where(Match.id == match_id))
+    result = await db.execute(
+        select(Match)
+        .options(selectinload(Match.phase).selectinload(Phase.matches))
+        .where(Match.id == match_id)
+    )
     match = result.scalar_one_or_none()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
+    phase_matches = list(match.phase.matches) if match.phase else []
 
     if body.clear_result:
-        match.home_score = None
-        match.away_score = None
-        match.home_tries = None
-        match.away_tries = None
+        _clear_match_result_data(match)
         match.status = body.status or MatchStatus.SCHEDULED
-        match.result_entered_by = None
-        match.result_entered_at = None
+        if match.group_id is None:
+            _clear_knockout_descendants(phase_matches, match)
     else:
         if match.home_team_id is None or match.away_team_id is None:
             raise HTTPException(status_code=422, detail="Non è possibile registrare un risultato per una partita senza squadre assegnate")
@@ -321,6 +407,14 @@ async def enter_score(
         match.status = body.status or MatchStatus.COMPLETED
         match.result_entered_by = user.id
         match.result_entered_at = datetime.now(timezone.utc)
+
+        if match.group_id is None:
+            winner_team_id: str | None = None
+            if body.home_score > body.away_score:
+                winner_team_id = match.home_team_id
+            elif body.away_score > body.home_score:
+                winner_team_id = match.away_team_id
+            _propagate_knockout_winner(phase_matches, match, winner_team_id)
 
     await db.commit()
     await db.refresh(match)
