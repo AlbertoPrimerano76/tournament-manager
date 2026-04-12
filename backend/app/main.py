@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import settings
 from app.core.local_bootstrap import bootstrap_local_environment
 from app.api.v1.public import tournaments as public_tournaments
@@ -19,6 +20,7 @@ from app.api.v1.admin import upload as admin_upload
 from app.api.v1.admin import dashboard as admin_dashboard
 from app.api.v1.admin import maintenance as admin_maintenance
 from app.api.v1.admin import security_questions as admin_security_questions
+from app.services.public_api_cache import public_api_cache
 
 settings.validate_production_settings()
 
@@ -45,6 +47,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class PublicApiCacheInvalidationMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        if request.method != "GET" and request.url.path.startswith("/api/v1/admin") and response.status_code < 400:
+            await public_api_cache.clear()
+        return response
+
+
+app.add_middleware(PublicApiCacheInvalidationMiddleware)
 
 # Public routes (no auth)
 app.include_router(public_tournaments.router, prefix="/api/v1", tags=["public-tournaments"])

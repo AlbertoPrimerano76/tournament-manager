@@ -243,6 +243,72 @@ cd frontend
 npm run build
 ```
 
+## Public Load Testing
+
+To estimate how many public users the site can handle, you can run the built-in navigation load tester.
+
+It simulates real public flows:
+
+- homepage
+- organization page
+- tournament page
+- age-group page
+- match page
+- the public API calls those pages rely on
+
+It auto-discovers published tournaments and generates:
+
+- `summary.json`
+- `report.html`
+
+Basic local run:
+
+```bash
+node scripts/public-load-test.mjs --frontend-url http://localhost:5180 --api-url http://localhost:8002 --users 100 --duration 60 --ramp-up 15
+```
+
+Progressive capacity check:
+
+```bash
+node scripts/public-load-test.mjs --frontend-url http://localhost:5180 --api-url http://localhost:8002 --users 100 --duration 60 --ramp-up 15
+node scripts/public-load-test.mjs --frontend-url http://localhost:5180 --api-url http://localhost:8002 --users 250 --duration 90 --ramp-up 30
+node scripts/public-load-test.mjs --frontend-url http://localhost:5180 --api-url http://localhost:8002 --users 500 --duration 180 --ramp-up 60
+```
+
+Against production:
+
+```bash
+node scripts/public-load-test.mjs --frontend-url https://minrugby-gestione-tornei.vercel.app --api-url https://rugby-tournament-api.onrender.com --users 500 --duration 180 --ramp-up 60
+```
+
+Local graphical console:
+
+```bash
+node scripts/load-test-ui.mjs
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8787
+```
+
+The UI runs on your PC and launches the stress test locally, while the target remains the remote Vercel frontend and Render backend. This keeps the control console separate from the system under test.
+
+Heuristic interpretation:
+
+- if `failure rate` stays near `0%`
+- if `p95` remains acceptable for your audience
+- if the worst routes are the same ones you expect
+
+then that user level is probably sustainable.
+
+Important limits:
+
+- this is a network and endpoint stress test, not a browser rendering benchmark
+- you should run it from a machine outside the server if you want realistic internet latency
+- for a serious 500-user validation, test the deployed frontend and backend, not only localhost
+
 ## Deployment
 
 ### Frontend

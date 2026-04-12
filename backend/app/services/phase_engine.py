@@ -126,7 +126,13 @@ async def get_phase_standings(phase_id: str, db: AsyncSession) -> dict[str, list
     phase_result = await db.execute(
         select(Phase)
         .options(
-            selectinload(Phase.tournament_age_group).selectinload(TournamentAgeGroup.tournament)
+            selectinload(Phase.tournament_age_group).selectinload(TournamentAgeGroup.tournament),
+            selectinload(Phase.groups)
+            .selectinload(Group.group_teams)
+            .selectinload(GroupTeam.tournament_team)
+            .selectinload(TournamentTeam.team)
+            .selectinload(Team.organization),
+            selectinload(Phase.matches),
         )
         .where(Phase.id == phase_id)
     )
@@ -138,43 +144,33 @@ async def get_phase_standings(phase_id: str, db: AsyncSession) -> dict[str, list
         (phase.advancement_config or {}).get("criteria") if phase else scoring_rules.get("ranking_criteria")
     )
 
-    result = await db.execute(
-        select(Group).where(Group.phase_id == phase_id)
-    )
-    groups = result.scalars().all()
+    groups = sorted(phase.groups, key=lambda item: item.group_order) if phase else []
+    matches_by_group: dict[str, list[Match]] = {}
+    if phase:
+        for match in phase.matches:
+            if match.group_id:
+                matches_by_group.setdefault(match.group_id, []).append(match)
 
     standings = {}
     for group in groups:
-        gt_result = await db.execute(
-            select(GroupTeam)
-            .join(TournamentTeam, TournamentTeam.id == GroupTeam.tournament_team_id)
-            .join(Team, Team.id == TournamentTeam.team_id)
-            .join(Organization, Organization.id == Team.organization_id)
-            .where(GroupTeam.group_id == group.id)
-        )
-        group_teams = gt_result.scalars().all()
-        team_ids = [gt.tournament_team_id for gt in group_teams]
-        team_metadata_result = await db.execute(
-            select(TournamentTeam.id, Team.name, Team.city, Organization.city)
-            .join(Team, Team.id == TournamentTeam.team_id)
-            .join(Organization, Organization.id == Team.organization_id)
-            .where(TournamentTeam.id.in_(team_ids))
-        )
-        team_metadata = {
-            team_id: {
-                "team_name": team_name,
-                "city": team_city or organization_city,
-            }
-            for team_id, team_name, team_city, organization_city in team_metadata_result.all()
-        }
+        group_teams = group.group_teams
+        team_ids = [group_team.tournament_team_id for group_team in group_teams]
+        team_metadata = {}
+        for group_team in group_teams:
+            tournament_team = group_team.tournament_team
+            team = tournament_team.team if tournament_team else None
+            organization = team.organization if team else None
+            if tournament_team:
+                team_metadata[tournament_team.id] = {
+                    "team_name": team.name if team else None,
+                    "city": (team.city if team and team.city else None) or (organization.city if organization else None),
+                }
 
-        match_result = await db.execute(
-            select(Match).where(
-                Match.group_id == group.id,
-                Match.status == MatchStatus.COMPLETED,
-            )
-        )
-        matches = match_result.scalars().all()
+        matches = [
+            match
+            for match in matches_by_group.get(group.id, [])
+            if match.status == MatchStatus.COMPLETED
+        ]
 
         results = [
             MatchResult(

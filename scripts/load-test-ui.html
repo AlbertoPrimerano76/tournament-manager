@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Remote Load Test Console</title>
+  <style>
+    :root {
+      --bg: #eef3ef;
+      --panel: rgba(255,255,255,0.92);
+      --line: #d5ded6;
+      --ink: #112018;
+      --muted: #5d6c61;
+      --accent: #155e3b;
+      --accent-soft: #e7f7ec;
+      --warn: #b45309;
+      --warn-soft: #fff4e5;
+      --bad: #b91c1c;
+      --bad-soft: #fdecec;
+      --shadow: 0 26px 70px -46px rgba(15, 23, 42, 0.34);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top, #f5fff8 0%, #eef3ef 38%, #e8eeea 100%);
+    }
+    .shell {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 28px 20px 40px;
+      display: grid;
+      gap: 18px;
+    }
+    .hero, .panel {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+    .hero {
+      padding: 26px;
+      background:
+        radial-gradient(circle at top right, rgba(57, 181, 74, 0.12), transparent 34%),
+        linear-gradient(180deg, rgba(255,255,255,0.98), rgba(250,252,250,0.95));
+    }
+    .hero-grid, .stats {
+      display: grid;
+      gap: 14px;
+    }
+    .hero-grid {
+      grid-template-columns: 1.2fr 0.8fr;
+      align-items: start;
+    }
+    .stats {
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      margin-top: 18px;
+    }
+    .card, .stat {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255,255,255,0.9);
+    }
+    .stat {
+      padding: 14px 16px;
+    }
+    .eyebrow {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: var(--muted);
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 {
+      margin-top: 8px;
+      font-size: 34px;
+      line-height: 1.05;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+    }
+    .lede {
+      margin-top: 12px;
+      max-width: 62ch;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 15px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .pill.idle, .pill.completed {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .pill.running {
+      background: #edf5ff;
+      color: #1d4ed8;
+    }
+    .pill.failed {
+      background: var(--bad-soft);
+      color: var(--bad);
+    }
+    .stat-label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-weight: 700;
+    }
+    .stat-value {
+      margin-top: 8px;
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
+      gap: 18px;
+    }
+    .panel {
+      padding: 22px;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 16px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+    }
+    input {
+      width: 100%;
+      margin-top: 8px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px 13px;
+      font-size: 14px;
+      color: var(--ink);
+      background: #fff;
+    }
+    .full { grid-column: 1 / -1; }
+    .actions {
+      margin-top: 16px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+      min-height: 44px;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #0f5132 0%, #196241 100%);
+      color: white;
+    }
+    .btn-secondary {
+      background: #edf2ed;
+      color: var(--ink);
+    }
+    .muted {
+      color: var(--muted);
+    }
+    .report-list {
+      margin-top: 14px;
+      display: grid;
+      gap: 10px;
+      max-height: 460px;
+      overflow: auto;
+    }
+    .report-item {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: white;
+      padding: 14px;
+      cursor: pointer;
+    }
+    .report-item.active {
+      border-color: #9bc2ab;
+      box-shadow: inset 0 0 0 1px #9bc2ab;
+      background: #f8fffa;
+    }
+    .report-meta {
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .report-tag {
+      display: inline-flex;
+      padding: 5px 9px;
+      border-radius: 999px;
+      background: #f1f4f1;
+      color: var(--ink);
+      font-weight: 700;
+    }
+    .report-tag.warn {
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
+    .report-tag.bad {
+      background: var(--bad-soft);
+      color: var(--bad);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 14px;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+    }
+    pre {
+      margin: 12px 0 0;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #101915;
+      color: #dff9e4;
+      padding: 14px;
+      overflow: auto;
+      max-height: 220px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .empty {
+      margin-top: 16px;
+      padding: 22px;
+      border: 1px dashed var(--line);
+      border-radius: 18px;
+      color: var(--muted);
+      background: rgba(255,255,255,0.72);
+    }
+    @media (max-width: 1024px) {
+      .hero-grid, .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="hero-grid">
+        <div>
+          <div class="eyebrow">Remote Stress Console</div>
+          <h1>Carico dal tuo PC, target su Vercel e Render</h1>
+          <p class="lede">Questa console gira solo in locale. Lancia il test dal tuo computer e colpisce direttamente il frontend Vercel e il backend Render, così l'app in esecuzione sul PC resta separata dal sistema sotto test.</p>
+        </div>
+        <div class="card" style="padding:18px;">
+          <div class="eyebrow">Run State</div>
+          <div id="statusPill" class="pill idle" style="margin-top:10px;">Idle</div>
+          <div class="report-meta" style="margin-top:12px;">
+            <span class="report-tag">Local console</span>
+            <span class="report-tag">Remote target</span>
+            <span class="report-tag">JSON + UI</span>
+          </div>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="stat-label">Run attiva</div><div id="statRun" class="stat-value">No</div></div>
+        <div class="stat"><div class="stat-label">Utenti</div><div id="statUsers" class="stat-value">-</div></div>
+        <div class="stat"><div class="stat-label">Durata</div><div id="statDuration" class="stat-value">-</div></div>
+        <div class="stat"><div class="stat-label">Ultimo report</div><div id="statReport" class="stat-value">-</div></div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <div class="eyebrow">Launcher</div>
+        <h2 style="margin-top:8px;font-size:24px;font-weight:900;letter-spacing:-0.03em;">Nuovo test</h2>
+        <p class="lede" style="max-width:none;">Configura il target remoto e la concorrenza. Parti da 100, poi 250, poi 500 utenti. Non sparare 500 subito se non hai già una baseline.</p>
+
+        <form id="runForm">
+          <div class="form-grid">
+            <label class="full">Frontend URL
+              <input name="frontendUrl" value="https://minrugby-gestione-tornei.vercel.app" />
+            </label>
+            <label class="full">API URL
+              <input name="apiUrl" value="https://rugby-tournament-api.onrender.com" />
+            </label>
+            <label>Utenti concorrenti
+              <input name="users" type="number" value="100" min="1" />
+            </label>
+            <label>Durata secondi
+              <input name="durationSec" type="number" value="60" min="1" />
+            </label>
+            <label>Ramp-up secondi
+              <input name="rampUpSec" type="number" value="15" min="0" />
+            </label>
+            <label>Timeout ms
+              <input name="timeoutMs" type="number" value="10000" min="100" />
+            </label>
+            <label>Think min ms
+              <input name="thinkMinMs" type="number" value="150" min="0" />
+            </label>
+            <label>Think max ms
+              <input name="thinkMaxMs" type="number" value="900" min="0" />
+            </label>
+            <label>Max tornei
+              <input name="maxTournaments" type="number" value="3" min="1" />
+            </label>
+            <label>Max categorie per torneo
+              <input name="maxAgeGroups" type="number" value="2" min="1" />
+            </label>
+            <label>Soglia error rate
+              <input name="maxFailureRate" type="number" value="0.02" step="0.01" min="0" />
+            </label>
+            <label>Soglia p95 ms
+              <input name="maxP95Ms" type="number" value="1500" min="1" />
+            </label>
+          </div>
+          <div class="actions">
+            <button type="submit" class="btn-primary">Avvia test</button>
+            <button type="button" class="btn-secondary" id="preset100">Preset 100</button>
+            <button type="button" class="btn-secondary" id="preset250">Preset 250</button>
+            <button type="button" class="btn-secondary" id="preset500">Preset 500</button>
+          </div>
+        </form>
+
+        <div id="messageBox" class="empty" style="display:none;"></div>
+
+        <h3 style="margin-top:22px;font-size:16px;font-weight:900;">Output run</h3>
+        <pre id="runLog">Nessuna esecuzione in corso.</pre>
+      </div>
+
+      <div class="panel">
+        <div class="eyebrow">Reports</div>
+        <h2 style="margin-top:8px;font-size:24px;font-weight:900;letter-spacing:-0.03em;">Storico e dettaglio</h2>
+        <div class="grid" style="grid-template-columns: 320px minmax(0,1fr); gap:16px; margin-top:16px;">
+          <div>
+            <div id="reportList" class="report-list"></div>
+          </div>
+          <div>
+            <div id="reportSummary" class="empty">Seleziona un report per vedere i dettagli.</div>
+            <div id="reportRoutes"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      status: null,
+      reports: [],
+      selectedRunId: null,
+      selectedReport: null,
+      pollId: null,
+    }
+
+    const els = {
+      runForm: document.getElementById('runForm'),
+      messageBox: document.getElementById('messageBox'),
+      statusPill: document.getElementById('statusPill'),
+      statRun: document.getElementById('statRun'),
+      statUsers: document.getElementById('statUsers'),
+      statDuration: document.getElementById('statDuration'),
+      statReport: document.getElementById('statReport'),
+      reportList: document.getElementById('reportList'),
+      reportSummary: document.getElementById('reportSummary'),
+      reportRoutes: document.getElementById('reportRoutes'),
+      runLog: document.getElementById('runLog'),
+      preset100: document.getElementById('preset100'),
+      preset250: document.getElementById('preset250'),
+      preset500: document.getElementById('preset500'),
+    }
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options,
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.detail || 'Request failed')
+      return data
+    }
+
+    function showMessage(text, kind = 'info') {
+      els.messageBox.style.display = 'block'
+      els.messageBox.textContent = text
+      els.messageBox.style.borderStyle = 'solid'
+      els.messageBox.style.background = kind === 'error' ? '#fdecec' : '#eef8f1'
+      els.messageBox.style.color = kind === 'error' ? '#b91c1c' : '#155e3b'
+    }
+
+    function clearMessage() {
+      els.messageBox.style.display = 'none'
+    }
+
+    function fillPreset(users, durationSec, rampUpSec) {
+      els.runForm.users.value = users
+      els.runForm.durationSec.value = durationSec
+      els.runForm.rampUpSec.value = rampUpSec
+    }
+
+    function renderStatus() {
+      const status = state.status
+      if (!status) return
+      const label = status.status === 'running'
+        ? 'Running'
+        : status.status === 'completed'
+          ? 'Completed'
+          : status.status === 'failed'
+            ? 'Failed'
+            : 'Idle'
+
+      els.statusPill.className = `pill ${status.status}`
+      els.statusPill.textContent = label
+      els.statRun.textContent = status.status === 'running' ? 'Si' : 'No'
+      els.statUsers.textContent = status.config?.users ?? '-'
+      els.statDuration.textContent = status.config?.durationSec ? `${status.config.durationSec}s` : '-'
+      els.statReport.textContent = status.runId ?? '-'
+
+      const stdout = status.stdoutTail || []
+      const stderr = status.stderrTail || []
+      const error = status.error ? [`ERROR: ${status.error}`] : []
+      const lines = [...stdout, ...stderr, ...error]
+      els.runLog.textContent = lines.length > 0 ? lines.join('\n') : 'Nessuna esecuzione in corso.'
+    }
+
+    function verdictClass(report) {
+      const verdict = report?.summary?.verdict
+      if (verdict === 'PASS') return ''
+      if (verdict === 'WARN') return 'warn'
+      return 'bad'
+    }
+
+    function renderReports() {
+      if (state.reports.length === 0) {
+        els.reportList.innerHTML = '<div class="empty">Nessun report disponibile.</div>'
+        return
+      }
+
+      els.reportList.innerHTML = state.reports.map((report) => `
+        <div class="report-item ${state.selectedRunId === report.runId ? 'active' : ''}" data-run-id="${report.runId}">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+            <strong>${report.runId}</strong>
+            <span class="report-tag ${report.verdict === 'WARN' ? 'warn' : report.verdict === 'PASS' ? '' : 'bad'}">${report.verdict}</span>
+          </div>
+          <div class="report-meta">
+            <span>${report.users ?? '-'} utenti</span>
+            <span>${report.durationSec ?? '-'} s</span>
+            <span>p95 ${report.p95Ms ?? '-'} ms</span>
+          </div>
+        </div>
+      `).join('')
+
+      document.querySelectorAll('.report-item').forEach((node) => {
+        node.addEventListener('click', () => {
+          const runId = node.getAttribute('data-run-id')
+          if (!runId) return
+          state.selectedRunId = runId
+          renderReports()
+          loadReport(runId)
+        })
+      })
+    }
+
+    function renderSelectedReport() {
+      const report = state.selectedReport
+      if (!report) {
+        els.reportSummary.innerHTML = 'Seleziona un report per vedere i dettagli.'
+        els.reportRoutes.innerHTML = ''
+        return
+      }
+
+      const summary = report.summary
+      const discovery = (report.discovery || []).map((item) => `<li><strong>${item.tournamentName}</strong> (${item.tournamentSlug})</li>`).join('')
+
+      els.reportSummary.innerHTML = `
+        <div class="stats" style="margin-top:0;">
+          <div class="stat"><div class="stat-label">Verdetto</div><div class="stat-value" style="font-size:22px;">${summary.verdict}</div></div>
+          <div class="stat"><div class="stat-label">Req/sec</div><div class="stat-value" style="font-size:22px;">${summary.requestsPerSecond}</div></div>
+          <div class="stat"><div class="stat-label">Error rate</div><div class="stat-value" style="font-size:22px;">${summary.failureRate}%</div></div>
+          <div class="stat"><div class="stat-label">P95</div><div class="stat-value" style="font-size:22px;">${summary.p95Ms} ms</div></div>
+        </div>
+        <div class="report-meta" style="margin-top:14px;">
+          <span class="report-tag ${verdictClass(report)}">${summary.totalRequests} request</span>
+          <span class="report-tag">${summary.sessionsCompleted} sessioni complete</span>
+          <span class="report-tag">${report.config.frontendUrl}</span>
+        </div>
+        <div style="margin-top:16px;">
+          <div class="eyebrow">Discovery</div>
+          <ul style="margin:10px 0 0; padding-left:18px;">${discovery}</ul>
+        </div>
+      `
+
+      const routeRows = (report.routes || []).slice(0, 16).map((route) => `
+        <tr>
+          <td>${route.label}</td>
+          <td>${route.count}</td>
+          <td>${route.fail}</td>
+          <td>${route.avgMs}</td>
+          <td>${route.p95Ms}</td>
+          <td>${route.p99Ms}</td>
+        </tr>
+      `).join('')
+
+      const errors = (report.sampleErrors || []).map((item) => `
+        <tr>
+          <td>${item.routeKey}</td>
+          <td>${item.status}</td>
+          <td>${item.error}</td>
+        </tr>
+      `).join('')
+
+      els.reportRoutes.innerHTML = `
+        <h3 style="margin-top:18px;font-size:16px;font-weight:900;">Route principali</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Route</th>
+              <th>Req</th>
+              <th>Fail</th>
+              <th>Avg</th>
+              <th>P95</th>
+              <th>P99</th>
+            </tr>
+          </thead>
+          <tbody>${routeRows}</tbody>
+        </table>
+        <h3 style="margin-top:18px;font-size:16px;font-weight:900;">Error samples</h3>
+        ${errors ? `<table><thead><tr><th>Route</th><th>Status</th><th>Error</th></tr></thead><tbody>${errors}</tbody></table>` : '<div class="empty">Nessun errore campionato.</div>'}
+      `
+    }
+
+    async function loadStatus() {
+      state.status = await api('/api/status')
+      renderStatus()
+    }
+
+    async function loadReports() {
+      const data = await api('/api/reports')
+      state.reports = data.items || []
+      if (!state.selectedRunId && state.reports.length > 0) {
+        state.selectedRunId = state.reports[0].runId
+      }
+      renderReports()
+      if (state.selectedRunId) {
+        await loadReport(state.selectedRunId)
+      } else {
+        renderSelectedReport()
+      }
+    }
+
+    async function loadReport(runId) {
+      try {
+        state.selectedReport = await api(`/api/reports/${encodeURIComponent(runId)}`)
+        renderSelectedReport()
+      } catch (error) {
+        showMessage(error.message, 'error')
+      }
+    }
+
+    async function refreshAll() {
+      await Promise.all([loadStatus(), loadReports()])
+    }
+
+    els.runForm.addEventListener('submit', async (event) => {
+      event.preventDefault()
+      clearMessage()
+      const formData = new FormData(els.runForm)
+      const payload = Object.fromEntries(formData.entries())
+      try {
+        const result = await api('/api/start', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        })
+        showMessage(`Test avviato: ${result.runId}`)
+        await refreshAll()
+      } catch (error) {
+        showMessage(error.message, 'error')
+      }
+    })
+
+    els.preset100.addEventListener('click', () => fillPreset(100, 60, 15))
+    els.preset250.addEventListener('click', () => fillPreset(250, 90, 30))
+    els.preset500.addEventListener('click', () => fillPreset(500, 180, 60))
+
+    refreshAll().catch((error) => showMessage(error.message, 'error'))
+    state.pollId = window.setInterval(() => {
+      refreshAll().catch(() => {})
+    }, 3000)
+  </script>
+</body>
+</html>

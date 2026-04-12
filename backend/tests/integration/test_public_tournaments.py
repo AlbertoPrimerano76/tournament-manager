@@ -141,6 +141,34 @@ async def test_admin_can_update_tournament_branding_and_sponsors(client: AsyncCl
 
 
 @pytest.mark.asyncio
+async def test_public_cache_is_invalidated_after_admin_update(client: AsyncClient, db: AsyncSession):
+    headers = await login_first_admin(client, email="cache-admin@test.com")
+    _, tournament = await create_organization_and_tournament(db, slug_suffix="cache-check")
+
+    first_public_resp = await client.get(f"/api/v1/tournaments/{tournament.slug}")
+    assert first_public_resp.status_code == 200
+    assert first_public_resp.json()["theme_primary_color"] == "#14532d"
+
+    update_resp = await client.put(
+        f"/api/v1/admin/tournaments/{tournament.id}",
+        headers=headers,
+        json={
+            "theme_primary_color": "#7c3aed",
+            "theme_accent_color": "#f97316",
+            "sponsor_images": ["https://example.com/cache-refresh.png"],
+        },
+    )
+    assert update_resp.status_code == 200
+
+    second_public_resp = await client.get(f"/api/v1/tournaments/{tournament.slug}")
+    assert second_public_resp.status_code == 200
+    second_payload = second_public_resp.json()
+    assert second_payload["theme_primary_color"] == "#7c3aed"
+    assert second_payload["theme_accent_color"] == "#f97316"
+    assert second_payload["sponsor_images"] == ["https://example.com/cache-refresh.png"]
+
+
+@pytest.mark.asyncio
 async def test_admin_create_gathering_generates_slug_with_org_and_date(client: AsyncClient, db: AsyncSession):
     headers = await login_first_admin(client)
     org = Organization(

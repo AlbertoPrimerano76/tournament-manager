@@ -5,6 +5,7 @@ from httpx import AsyncClient, ASGITransport
 from app.core.database import Base, get_db
 from app.main import app
 from app.core.config import settings
+from app.services.public_api_cache import public_api_cache
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
 
@@ -14,10 +15,12 @@ TestAsyncSession = async_sessionmaker(test_engine, expire_on_commit=False)
 
 @pytest_asyncio.fixture(autouse=True)
 async def create_tables():
+    await public_api_cache.clear()
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield
+    await public_api_cache.clear()
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 

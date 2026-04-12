@@ -35,3 +35,6 @@ dist/
 
 # Backups
 *.bak
+
+# Load testing artifacts
+load-test-reports/
