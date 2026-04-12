@@ -213,57 +213,127 @@ export function PodiumGrid({
     const first = getRow(1)
     const third = getRow(3)
     const items = [
-      { row: second, tone: 'silver', height: 'h-28 md:h-36', order: 'md:order-1' },
-      { row: first, tone: 'gold', height: 'h-36 md:h-48', order: 'md:order-2' },
-      { row: third, tone: 'bronze', height: 'h-24 md:h-32', order: 'md:order-3' },
+      { row: second, tone: 'silver', height: 'h-20 md:h-36', order: 'order-2 md:order-1' },
+      { row: first, tone: 'gold', height: 'h-24 md:h-48', order: 'order-1 md:order-2' },
+      { row: third, tone: 'bronze', height: 'h-16 md:h-32', order: 'order-3 md:order-3' },
     ] as const
 
-    return (
-      <div className="grid gap-3 md:grid-cols-3 md:items-end">
-        {items.map(({ row, tone, height, order }, index) => {
-          if (!row) return <div key={`podium-empty-${index}`} className={`hidden md:block ${order}`} />
-          const name = row.team_name || teamNameMap.get(row.team_id ?? '') || 'Da definire'
-          const logo = row.team_logo_url || teamLogoMap.get(row.team_id ?? '')
-          const isHighlighted = Boolean(highlightTeam && row.team_id && row.team_id === highlightedTeamId)
-          const tones = tone === 'gold'
-            ? {
-                shell: isHighlighted ? 'border-amber-300 bg-amber-100' : 'border-amber-200 bg-gradient-to-b from-amber-50 to-amber-100',
-                step: 'border-amber-300 bg-amber-200 text-amber-900',
-                medal: 'bg-amber-100 text-amber-700',
-              }
-            : tone === 'silver'
-              ? {
-                  shell: isHighlighted ? 'border-amber-300 bg-amber-100' : 'border-slate-200 bg-gradient-to-b from-slate-50 to-slate-100',
-                  step: 'border-slate-300 bg-slate-200 text-slate-800',
-                  medal: 'bg-slate-200 text-slate-700',
-                }
-              : {
-                  shell: isHighlighted ? 'border-amber-300 bg-amber-100' : 'border-orange-200 bg-gradient-to-b from-orange-50 to-orange-100',
-                  step: 'border-orange-300 bg-orange-200 text-orange-900',
-                  medal: 'bg-orange-100 text-orange-700',
-                }
+    const renderPodiumItem = (
+      row: { position?: number | null; team_id?: string | null; team_name?: string | null; team_logo_url?: string | null },
+      tone: 'gold' | 'silver' | 'bronze',
+      height: string,
+      order: string,
+      index: number,
+    ) => {
+      const name = row.team_name || teamNameMap.get(row.team_id ?? '') || 'Da definire'
+      const logo = row.team_logo_url || teamLogoMap.get(row.team_id ?? '')
+      const isHighlighted = Boolean(highlightTeam && row.team_id && row.team_id === highlightedTeamId)
+      const tones = tone === 'gold'
+        ? {
+            shell: isHighlighted ? 'border-amber-300 bg-amber-100' : 'border-amber-200 bg-gradient-to-b from-amber-50 to-amber-100',
+            step: 'border-amber-300 bg-amber-200 text-amber-900',
+            medal: 'bg-amber-100 text-amber-700',
+            chip: isHighlighted ? 'border-amber-300 bg-amber-100' : 'border-amber-200 bg-white/90',
+          }
+        : tone === 'silver'
+          ? {
+              shell: isHighlighted ? 'border-amber-300 bg-amber-100' : 'border-slate-200 bg-gradient-to-b from-slate-50 to-slate-100',
+              step: 'border-slate-300 bg-slate-200 text-slate-800',
+              medal: 'bg-slate-200 text-slate-700',
+              chip: isHighlighted ? 'border-amber-300 bg-amber-100' : 'border-slate-200 bg-white/90',
+            }
+          : {
+              shell: isHighlighted ? 'border-amber-300 bg-amber-100' : 'border-orange-200 bg-gradient-to-b from-orange-50 to-orange-100',
+              step: 'border-orange-300 bg-orange-200 text-orange-900',
+              medal: 'bg-orange-100 text-orange-700',
+              chip: isHighlighted ? 'border-amber-300 bg-amber-100' : 'border-orange-200 bg-white/90',
+            }
 
-          return (
-            <div key={`podium-step-${row.position ?? index}-${row.team_id ?? row.team_name ?? 'na'}`} className={`flex flex-col justify-end ${order}`}>
-              <div className={`rounded-[1.5rem] border px-4 py-4 shadow-sm ${tones.shell}`}>
-                <div className={`mb-3 inline-flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-black ${tones.medal}`}>
-                  {row.position}°
-                </div>
-                <div className="flex items-center gap-2">
-                  <TeamLogo src={logo} alt={name} />
-                  <p className="min-w-0 truncate text-sm font-black text-slate-950">{name}</p>
-                  {row.team_id && row.team_id === highlightedTeamId
-                    ? <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" aria-label="La tua squadra" />
-                    : null}
-                </div>
+      return {
+        name,
+        logo,
+        isHighlighted,
+        tones,
+        desktop: (
+          <div key={`podium-step-${row.position ?? index}-${row.team_id ?? row.team_name ?? 'na'}`} className={`flex flex-col justify-end ${order}`}>
+            <div className={`rounded-[1.5rem] border px-3 py-3 shadow-sm md:px-4 md:py-4 ${tones.shell}`}>
+              <div className={`mb-2 inline-flex h-9 w-9 items-center justify-center rounded-2xl text-sm font-black md:mb-3 md:h-10 md:w-10 ${tones.medal}`}>
+                {row.position}°
               </div>
-              <div className={`mt-2 rounded-t-[1.4rem] border-x border-t px-3 py-3 text-center text-xs font-black uppercase tracking-[0.18em] ${height} ${tones.step}`}>
-                {row.position === 1 ? 'Campione' : `${row.position} posto`}
+              <div className="flex items-center gap-2">
+                <TeamLogo src={logo} alt={name} />
+                <p className="min-w-0 text-[13px] font-black leading-tight text-slate-950 sm:text-sm">{name}</p>
+                {row.team_id && row.team_id === highlightedTeamId
+                  ? <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" aria-label="La tua squadra" />
+                  : null}
               </div>
             </div>
-          )
-        })}
-      </div>
+            <div className={`mt-2 rounded-t-[1.4rem] border-x border-t px-3 py-2 text-center text-[11px] font-black uppercase tracking-[0.14em] md:py-3 md:text-xs md:tracking-[0.18em] ${height} ${tones.step}`}>
+              {row.position === 1 ? 'Campione' : `${row.position} posto`}
+            </div>
+          </div>
+        ),
+        mobile: (
+          <div
+            key={`podium-mobile-${row.position ?? index}-${row.team_id ?? row.team_name ?? 'na'}`}
+            className={`rounded-2xl border px-3 py-3 shadow-sm ${tones.chip}`}
+          >
+            <div className="flex items-center gap-2.5">
+              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-xs font-black ${tones.medal}`}>
+                {row.position}°
+              </div>
+              <TeamLogo src={logo} alt={name} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-black text-slate-950">{name}</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                  {row.position === 1 ? 'Campione' : `${row.position} posto`}
+                </p>
+              </div>
+              {row.team_id && row.team_id === highlightedTeamId
+                ? <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" aria-label="La tua squadra" />
+                : null}
+            </div>
+          </div>
+        ),
+      }
+    }
+
+    const renderedItems = items.map(({ row, tone, height, order }, index) =>
+      row ? renderPodiumItem(row, tone, height, order, index) : null
+    )
+
+    return (
+      <>
+        <div className="md:hidden">
+          <div className="relative overflow-hidden rounded-[1.75rem] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-emerald-50/60 px-4 pb-4 pt-5">
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-center gap-2 px-4">
+              <div className="h-14 w-[28%] rounded-t-[1.25rem] border border-slate-200 bg-slate-100/90" />
+              <div className="h-20 w-[32%] rounded-t-[1.4rem] border border-amber-200 bg-amber-100/90" />
+              <div className="h-10 w-[28%] rounded-t-[1.15rem] border border-orange-200 bg-orange-100/90" />
+            </div>
+            <div className="relative mb-24 flex items-end justify-center gap-2">
+              {renderedItems.map((item, index) => {
+                if (!item) return <div key={`podium-mobile-empty-${index}`} className="w-[30%]" />
+                const alignment = index === 1 ? 'mb-16' : index === 0 ? 'mb-10' : 'mb-6'
+                return (
+                  <div key={`podium-mobile-badge-${index}`} className={`flex w-[30%] justify-center ${alignment}`}>
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-2xl border text-sm font-black shadow-sm ${item.tones.medal} ${item.tones.chip}`}>
+                      {items[index]?.row?.position}°
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="space-y-2.5">
+              {renderedItems.map((item) => item?.mobile ?? null)}
+            </div>
+          </div>
+        </div>
+
+        <div className="hidden gap-3 md:grid md:grid-cols-3 md:items-end">
+          {renderedItems.map((item, index) => item?.desktop ?? <div key={`podium-empty-${index}`} className={`hidden md:block ${items[index]?.order ?? ''}`} />)}
+        </div>
+      </>
     )
   }
 
