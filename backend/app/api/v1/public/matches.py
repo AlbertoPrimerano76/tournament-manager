@@ -12,6 +12,7 @@ from app.services.public_api_cache import public_api_cache
 
 router = APIRouter()
 PUBLIC_CACHE_TTL_SECONDS = 15
+PUBLIC_CACHE_STALE_SECONDS = 45
 
 _team_loads = [
     selectinload(Match.home_team).selectinload(TournamentTeam.team),
@@ -44,7 +45,7 @@ async def get_age_group_matches(
 
         return [MatchResponse.from_match(match).model_dump(mode="json") for match in matches]
 
-    return await public_api_cache.get_or_set(cache_key, PUBLIC_CACHE_TTL_SECONDS, load)
+    return await public_api_cache.get_or_set(cache_key, PUBLIC_CACHE_TTL_SECONDS, load, PUBLIC_CACHE_STALE_SECONDS)
 
 
 @router.get("/matches/{match_id}", response_model=MatchResponse)
@@ -58,4 +59,4 @@ async def get_match(match_id: str, db: AsyncSession = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Match not found")
         return MatchResponse.from_match(m).model_dump(mode="json")
 
-    return await public_api_cache.get_or_set(f"public:matches:{match_id}", PUBLIC_CACHE_TTL_SECONDS, load)
+    return await public_api_cache.get_or_set(f"public:matches:{match_id}", PUBLIC_CACHE_TTL_SECONDS, load, PUBLIC_CACHE_STALE_SECONDS)

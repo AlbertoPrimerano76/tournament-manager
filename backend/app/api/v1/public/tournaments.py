@@ -17,6 +17,7 @@ from app.services.public_api_cache import public_api_cache
 
 router = APIRouter()
 PUBLIC_CACHE_TTL_SECONDS = 15
+PUBLIC_CACHE_STALE_SECONDS = 45
 
 
 def _serialize_standings_row(row):
@@ -111,7 +112,7 @@ async def list_tournaments(
         tournaments = result.scalars().all()
         return [_serialize_tournament(tournament).model_dump(mode="json") for tournament in tournaments]
 
-    return await public_api_cache.get_or_set(cache_key, PUBLIC_CACHE_TTL_SECONDS, load)
+    return await public_api_cache.get_or_set(cache_key, PUBLIC_CACHE_TTL_SECONDS, load, PUBLIC_CACHE_STALE_SECONDS)
 
 
 @router.get("/tournaments/{slug}", response_model=TournamentResponse)
@@ -122,7 +123,7 @@ async def get_tournament(slug: str, db: AsyncSession = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Tournament not found")
         return _serialize_tournament(t).model_dump(mode="json")
 
-    return await public_api_cache.get_or_set(f"public:tournaments:detail:{slug}", PUBLIC_CACHE_TTL_SECONDS, load)
+    return await public_api_cache.get_or_set(f"public:tournaments:detail:{slug}", PUBLIC_CACHE_TTL_SECONDS, load, PUBLIC_CACHE_STALE_SECONDS)
 
 
 @router.get("/tournaments/{slug}/organization", response_model=OrganizationResponse)
@@ -134,7 +135,7 @@ async def get_tournament_organization(slug: str, db: AsyncSession = Depends(get_
             raise HTTPException(status_code=404, detail="Organization not found")
         return OrganizationResponse.model_validate(org).model_dump(mode="json")
 
-    return await public_api_cache.get_or_set(f"public:tournaments:organization:{slug}", PUBLIC_CACHE_TTL_SECONDS, load)
+    return await public_api_cache.get_or_set(f"public:tournaments:organization:{slug}", PUBLIC_CACHE_TTL_SECONDS, load, PUBLIC_CACHE_STALE_SECONDS)
 
 
 @router.get("/tournaments/{slug}/age-groups", response_model=list[AgeGroupResponse])
@@ -149,7 +150,7 @@ async def get_tournament_age_groups(slug: str, db: AsyncSession = Depends(get_db
         )
         return [AgeGroupResponse.model_validate(age_group).model_dump(mode="json") for age_group in ag_result.scalars().all()]
 
-    return await public_api_cache.get_or_set(f"public:tournaments:age-groups:{slug}", PUBLIC_CACHE_TTL_SECONDS, load)
+    return await public_api_cache.get_or_set(f"public:tournaments:age-groups:{slug}", PUBLIC_CACHE_TTL_SECONDS, load, PUBLIC_CACHE_STALE_SECONDS)
 
 
 @router.get("/age-groups/{age_group_id}/standings")
@@ -194,7 +195,7 @@ async def get_standings(age_group_id: str, db: AsyncSession = Depends(get_db)):
 
         return response
 
-    return await public_api_cache.get_or_set(f"public:age-groups:standings:{age_group_id}", PUBLIC_CACHE_TTL_SECONDS, load)
+    return await public_api_cache.get_or_set(f"public:age-groups:standings:{age_group_id}", PUBLIC_CACHE_TTL_SECONDS, load, PUBLIC_CACHE_STALE_SECONDS)
 
 
 @router.get("/tournaments/{slug}/fields")
@@ -215,7 +216,7 @@ async def get_tournament_fields(slug: str, db: AsyncSession = Depends(get_db)):
             for field in fields_result.scalars().all()
         ]
 
-    return await public_api_cache.get_or_set(f"public:tournaments:fields:{slug}", PUBLIC_CACHE_TTL_SECONDS, load)
+    return await public_api_cache.get_or_set(f"public:tournaments:fields:{slug}", PUBLIC_CACHE_TTL_SECONDS, load, PUBLIC_CACHE_STALE_SECONDS)
 
 
 @router.get("/tournaments/{slug}/program", response_model=TournamentProgramResponse)
@@ -227,7 +228,7 @@ async def get_public_tournament_program(slug: str, db: AsyncSession = Depends(ge
             raise HTTPException(status_code=404, detail="Tournament not found")
         return program.model_dump(mode="json")
 
-    return await public_api_cache.get_or_set(f"public:tournaments:program:{slug}", PUBLIC_CACHE_TTL_SECONDS, load)
+    return await public_api_cache.get_or_set(f"public:tournaments:program:{slug}", PUBLIC_CACHE_TTL_SECONDS, load, PUBLIC_CACHE_STALE_SECONDS)
 
 
 @router.get("/age-groups/{age_group_id}/program", response_model=AgeGroupProgramResponse)
@@ -238,7 +239,7 @@ async def get_public_age_group_program(age_group_id: str, db: AsyncSession = Dep
             raise HTTPException(status_code=404, detail="Age group not found")
         return program.model_dump(mode="json")
 
-    return await public_api_cache.get_or_set(f"public:age-groups:program:{age_group_id}", PUBLIC_CACHE_TTL_SECONDS, load)
+    return await public_api_cache.get_or_set(f"public:age-groups:program:{age_group_id}", PUBLIC_CACHE_TTL_SECONDS, load, PUBLIC_CACHE_STALE_SECONDS)
 
 
 @router.get("/age-groups/{age_group_id}/program.pdf")
@@ -280,4 +281,4 @@ async def get_organization(slug: str, db: AsyncSession = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Organization not found")
         return OrganizationResponse.model_validate(org).model_dump(mode="json")
 
-    return await public_api_cache.get_or_set(f"public:organizations:{slug}", PUBLIC_CACHE_TTL_SECONDS, load)
+    return await public_api_cache.get_or_set(f"public:organizations:{slug}", PUBLIC_CACHE_TTL_SECONDS, load, PUBLIC_CACHE_STALE_SECONDS)
