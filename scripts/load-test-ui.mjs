@@ -165,15 +165,24 @@ async function listReports() {
       const payload = JSON.parse(await readFile(reportPath, 'utf8'))
       const info = await stat(reportPath)
       const ts = payload.timeSeries || []
+      const generatedAt = payload.generatedAt ?? info.mtime.toISOString()
+      const d = new Date(generatedAt)
+      const dateStr = d.toISOString().slice(0, 10)                          // "2026-04-13"
+      const timeStr = d.toTimeString().slice(0, 5)                          // "14:30"
       reports.push({
         runId: entry.name,
-        generatedAt: payload.generatedAt ?? info.mtime.toISOString(),
+        generatedAt,
+        date: dateStr,
+        time: timeStr,
         verdict: payload.summary?.verdict ?? 'UNKNOWN',
         users: payload.config?.users ?? null,
         durationSec: payload.config?.durationSec ?? null,
+        rampUpSec: payload.config?.rampUpSec ?? null,
+        tournamentDay: payload.config?.tournamentDay ?? false,
         requestsPerSecond: payload.summary?.requestsPerSecond ?? null,
         failureRate: payload.summary?.failureRate ?? null,
         p95Ms: payload.summary?.p95Ms ?? null,
+        sessionsCompleted: payload.summary?.sessionsCompleted ?? null,
         p95Series: ts.length >= 2 ? ts.map(t => t.p95) : null,
       })
     } catch {

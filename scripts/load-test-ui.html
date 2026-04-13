@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Remote Load Test Console</title>
+  <title>Load Test Console</title>
   <style>
     :root {
       --bg: #eef3ef;
-      --panel: rgba(255,255,255,0.92);
+      --panel: #ffffff;
       --line: #d5ded6;
       --ink: #112018;
       --muted: #5d6c61;
@@ -17,720 +17,1007 @@
       --warn-soft: #fff4e5;
       --bad: #b91c1c;
       --bad-soft: #fdecec;
-      --shadow: 0 26px 70px -46px rgba(15,23,42,0.34);
       --green: #16a34a;
       --yellow: #ca8a04;
       --red: #dc2626;
+      --shadow: 0 4px 24px -6px rgba(15,23,42,0.12);
+      --radius: 20px;
     }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: var(--bg);
       color: var(--ink);
-      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: radial-gradient(circle at top, #f5fff8 0%, #eef3ef 38%, #e8eeea 100%);
+      min-height: 100vh;
     }
-    .shell {
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 28px 20px 60px;
-      display: grid;
-      gap: 18px;
+
+    /* ── Topbar ──────────────────────────────────────── */
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(238,243,239,0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line);
+      padding: 0 24px;
+      display: flex; align-items: center; gap: 16px;
+      height: 56px;
     }
-    .hero, .panel { border: 1px solid var(--line); background: var(--panel); border-radius: 28px; box-shadow: var(--shadow); backdrop-filter: blur(10px); }
-    .hero {
-      padding: 26px;
-      background: radial-gradient(circle at top right, rgba(57,181,74,0.12), transparent 34%),
-                  linear-gradient(180deg, rgba(255,255,255,0.98), rgba(250,252,250,0.95));
+    .topbar-brand { font-size: 15px; font-weight: 900; letter-spacing: -0.02em; }
+    .topbar-brand span { color: var(--accent); }
+    .topbar-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border-radius: 999px;
+      font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em;
     }
-    .hero-top { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 18px; align-items: start; }
-    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px; margin-top: 18px; }
-    .stat { border: 1px solid var(--line); border-radius: 20px; background: rgba(255,255,255,0.9); padding: 14px 16px; }
-    .stat-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 700; }
-    .stat-help { color: var(--muted); font-size: 11px; margin-top: 4px; line-height: 1.4; }
-    .stat-value { margin-top: 8px; font-size: 28px; font-weight: 900; letter-spacing: -0.03em; }
-    .stat-value.good { color: var(--green); }
-    .stat-value.warn { color: var(--yellow); }
-    .stat-value.bad { color: var(--red); }
-    .eyebrow { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.18em; color: var(--muted); }
-    h1, h2, h3, p { margin: 0; }
-    h1 { margin-top: 8px; font-size: 34px; line-height: 1.05; font-weight: 900; letter-spacing: -0.03em; }
-    .lede { margin-top: 12px; max-width: 62ch; color: var(--muted); line-height: 1.6; font-size: 15px; }
-    .pill { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; }
-    .pill.idle, .pill.completed { background: var(--accent-soft); color: var(--accent); }
-    .pill.running { background: #edf5ff; color: #1d4ed8; }
-    .pill.failed { background: var(--bad-soft); color: var(--bad); }
-    .grid-2 { display: grid; grid-template-columns: minmax(340px, 420px) minmax(0, 1fr); gap: 18px; }
-    .panel { padding: 22px; }
-    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
-    label { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; }
-    .field-help { font-size: 11px; color: var(--muted); margin-top: 3px; font-weight: 400; text-transform: none; letter-spacing: 0; }
-    input { width: 100%; margin-top: 6px; border: 1px solid var(--line); border-radius: 14px; padding: 11px 13px; font-size: 14px; color: var(--ink); background: #fff; }
+    .topbar-pill.idle     { background: #e8eeea; color: var(--muted); }
+    .topbar-pill.running  { background: #dbeafe; color: #1d4ed8; }
+    .topbar-pill.completed{ background: var(--accent-soft); color: var(--accent); }
+    .topbar-pill.failed   { background: var(--bad-soft); color: var(--bad); }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .dot.pulse { animation: pulse 1.2s ease infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .topbar-spacer { flex: 1; }
+    .topbar-target { font-size: 12px; color: var(--muted); }
+
+    /* ── Tab nav ─────────────────────────────────────── */
+    .tab-nav {
+      display: flex; gap: 0;
+      padding: 0 24px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--line);
+    }
+    .tab-btn {
+      padding: 14px 20px;
+      font-size: 13px; font-weight: 700;
+      color: var(--muted);
+      background: none; border: none; border-bottom: 2px solid transparent;
+      cursor: pointer; position: relative; margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn:hover { color: var(--ink); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--accent); color: white;
+      font-size: 10px; font-weight: 800;
+      border-radius: 999px; padding: 1px 6px; margin-left: 6px;
+      min-width: 18px;
+    }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* ── Layout ──────────────────────────────────────── */
+    .page { max-width: 1360px; margin: 0 auto; padding: 24px 24px 60px; }
+
+    /* ── Cards / Panels ──────────────────────────────── */
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .card-header {
+      padding: 16px 20px 0;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .card-title { font-size: 14px; font-weight: 900; }
+    .card-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .card-body { padding: 16px 20px 20px; }
+
+    /* ── Form ────────────────────────────────────────── */
+    .form-section {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+    .form-section:last-of-type { border-bottom: none; }
+    .form-section-title {
+      font-size: 11px; font-weight: 800; text-transform: uppercase;
+      letter-spacing: 0.14em; color: var(--muted); margin-bottom: 12px;
+    }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-grid.cols-1 { grid-template-columns: 1fr; }
     .full { grid-column: 1 / -1; }
-    .actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
-    button { border: 0; border-radius: 999px; padding: 12px 18px; font-size: 14px; font-weight: 800; cursor: pointer; min-height: 44px; }
-    .btn-primary { background: linear-gradient(135deg, #0f5132 0%, #196241 100%); color: white; }
-    .btn-secondary { background: #edf2ed; color: var(--ink); }
-    .muted { color: var(--muted); }
-    .report-list { margin-top: 14px; display: grid; gap: 8px; max-height: 480px; overflow: auto; }
-    .report-item { border: 1px solid var(--line); border-radius: 18px; background: white; padding: 12px 14px; cursor: pointer; }
-    .report-item.active { border-color: #9bc2ab; box-shadow: inset 0 0 0 1px #9bc2ab; background: #f8fffa; }
-    .report-meta { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--muted); align-items: center; }
-    .report-tag { display: inline-flex; padding: 4px 8px; border-radius: 999px; background: #f1f4f1; color: var(--ink); font-weight: 700; font-size: 11px; }
-    .report-tag.warn { background: var(--warn-soft); color: var(--warn); }
-    .report-tag.bad { background: var(--bad-soft); color: var(--bad); }
-    .report-tag.good { background: var(--accent-soft); color: var(--accent); }
-    table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
-    th, td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
-    th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+    .field label {
+      display: block; font-size: 12px; font-weight: 700;
+      color: var(--ink); margin-bottom: 4px;
+    }
+    .field-hint { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+    input[type=text], input[type=number], input[type=url] {
+      width: 100%; padding: 10px 13px;
+      border: 1px solid var(--line); border-radius: 12px;
+      font-size: 14px; color: var(--ink); background: #fafcfa;
+      transition: border-color 0.15s;
+    }
+    input:focus { outline: none; border-color: var(--accent); background: white; }
+
+    /* ── Preset cards ────────────────────────────────── */
+    .presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 16px 20px; }
+    .preset-card {
+      border: 1px solid var(--line); border-radius: 16px;
+      padding: 14px; cursor: pointer; background: #fafcfa;
+      transition: border-color 0.15s, background 0.15s;
+      text-align: left;
+    }
+    .preset-card:hover { border-color: #9bc2ab; background: #f4faf6; }
+    .preset-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+    .preset-name { font-size: 13px; font-weight: 900; }
+    .preset-desc { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+    .preset-meta { margin-top: 8px; font-size: 11px; font-weight: 700; color: var(--accent); }
+    .preset-card.tday .preset-name { color: var(--warn); }
+    .preset-card.tday { border-color: #fde68a; background: #fffbeb; }
+    .preset-card.tday:hover { border-color: var(--warn); }
+
+    /* ── Launch button ───────────────────────────────── */
+    .launch-bar {
+      padding: 16px 20px;
+      display: flex; align-items: center; gap: 12px;
+      border-top: 1px solid var(--line); background: #fafcfa;
+      border-radius: 0 0 var(--radius) var(--radius);
+    }
+    .btn-launch {
+      padding: 13px 28px; border-radius: 999px; border: none;
+      background: linear-gradient(135deg, #0f5132, #196241);
+      color: white; font-size: 14px; font-weight: 800;
+      cursor: pointer; letter-spacing: 0.01em;
+      transition: opacity 0.15s;
+    }
+    .btn-launch:disabled { opacity: 0.5; cursor: not-allowed; }
+    .msg-box {
+      flex: 1; padding: 10px 14px; border-radius: 12px;
+      font-size: 13px; display: none;
+    }
+    .msg-box.ok  { background: var(--accent-soft); color: var(--accent); }
+    .msg-box.err { background: var(--bad-soft); color: var(--bad); }
+
+    /* ── Live tab ────────────────────────────────────── */
+    .live-header {
+      padding: 20px 24px;
+      background: var(--panel); border: 1px solid var(--line);
+      border-radius: var(--radius); margin-bottom: 16px;
+    }
+    .live-title { font-size: 18px; font-weight: 900; }
+    .live-subtitle { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .progress-bar-wrap {
+      margin-top: 14px; background: #e8eeea;
+      border-radius: 999px; height: 8px; overflow: hidden;
+    }
+    .progress-bar {
+      height: 8px; border-radius: 999px;
+      background: linear-gradient(90deg, #0f5132, #38a169);
+      transition: width 0.5s ease; width: 0%;
+    }
+    .progress-label { margin-top: 6px; font-size: 11px; color: var(--muted); }
+
+    /* ── Stats grid ──────────────────────────────────── */
+    .stats-grid { display: grid; grid-template-columns: repeat(6,1fr); gap: 12px; margin-top: 16px; }
+    .stat-card {
+      background: var(--panel); border: 1px solid var(--line);
+      border-radius: 16px; padding: 14px;
+    }
+    .stat-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+    .stat-value { font-size: 26px; font-weight: 900; letter-spacing: -0.03em; margin-top: 6px; }
+    .stat-hint  { font-size: 10px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+    .good { color: var(--green); }
+    .warn { color: var(--yellow); }
+    .bad  { color: var(--red); }
+
+    /* ── Charts ──────────────────────────────────────── */
+    .charts-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 16px; }
+    .chart-card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
+    .chart-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+    .chart-sublabel { font-size: 10px; color: var(--muted); margin-top: 2px; font-weight: 400; }
+    svg.chart { width: 100%; height: 80px; display: block; margin-top: 8px; }
+    .chart-legend { display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+    .chart-legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); }
+    .cldot { width: 7px; height: 7px; border-radius: 50%; }
+
+    /* ── Log ─────────────────────────────────────────── */
+    .log-box {
+      margin-top: 14px; font-family: ui-monospace, monospace;
+      background: #0d1a11; color: #8eeaaa;
+      border-radius: 16px; padding: 14px;
+      font-size: 11px; line-height: 1.6;
+      max-height: 160px; overflow: auto;
+    }
+
+    /* ── History tab ─────────────────────────────────── */
+    .history-layout { display: grid; grid-template-columns: 300px minmax(0,1fr); gap: 18px; align-items: start; }
+    .date-group { margin-bottom: 20px; }
+    .date-label {
+      font-size: 11px; font-weight: 800; text-transform: uppercase;
+      letter-spacing: 0.14em; color: var(--muted);
+      padding: 6px 4px; margin-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+    }
+    .run-card {
+      background: var(--panel); border: 1px solid var(--line);
+      border-radius: 14px; padding: 12px 14px; cursor: pointer; margin-bottom: 8px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .run-card:hover { border-color: #9bc2ab; }
+    .run-card.active { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+    .run-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .run-time { font-size: 13px; font-weight: 900; }
+    .run-badge {
+      font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 3px 8px; border-radius: 999px;
+    }
+    .run-badge.PASS { background: var(--accent-soft); color: var(--accent); }
+    .run-badge.WARN { background: var(--warn-soft); color: var(--warn); }
+    .run-badge.FAIL { background: var(--bad-soft); color: var(--bad); }
+    .run-badge.UNKNOWN { background: #e8eeea; color: var(--muted); }
+    .run-meta { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .run-chip {
+      font-size: 10px; font-weight: 700; color: var(--muted);
+      background: #f0f4f1; border-radius: 999px; padding: 2px 8px;
+    }
+    .run-chip.tday { background: #fff4e5; color: var(--warn); }
+    .sparkline { display: inline-block; vertical-align: middle; }
+
+    /* ── Detail panel ────────────────────────────────── */
+    .detail-empty {
+      background: var(--panel); border: 1px dashed var(--line);
+      border-radius: var(--radius); padding: 40px;
+      text-align: center; color: var(--muted); font-size: 14px;
+    }
+    .detail-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+    .detail-stat {
+      background: #fafcfa; border: 1px solid var(--line);
+      border-radius: 14px; padding: 12px;
+    }
+    .detail-stat-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+    .detail-stat-value { font-size: 20px; font-weight: 900; margin-top: 4px; }
+    .detail-stat-hint { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 12px; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+    th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
     tr.row-good td:first-child { border-left: 3px solid var(--green); }
     tr.row-warn td:first-child { border-left: 3px solid var(--yellow); }
-    tr.row-bad td:first-child { border-left: 3px solid var(--red); }
-    pre { margin: 12px 0 0; border: 1px solid var(--line); border-radius: 18px; background: #101915; color: #dff9e4; padding: 14px; overflow: auto; max-height: 180px; font-size: 12px; line-height: 1.5; }
-    .empty { margin-top: 16px; padding: 22px; border: 1px dashed var(--line); border-radius: 18px; color: var(--muted); background: rgba(255,255,255,0.72); font-size: 14px; }
-    .progress-wrap { margin-top: 16px; background: #e8eeea; border-radius: 999px; height: 10px; overflow: hidden; }
-    .progress-bar { height: 10px; border-radius: 999px; background: linear-gradient(90deg, #0f5132, #38a169); transition: width 0.5s ease; }
-    .chart-wrap { margin-top: 18px; }
-    .chart-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
-    .chart-title span { font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0; }
-    svg.chart { width: 100%; height: 90px; display: block; }
-    .charts-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 14px; }
-    .chart-card { border: 1px solid var(--line); border-radius: 18px; background: white; padding: 14px; }
-    .legend { margin-top: 10px; display: flex; gap: 14px; flex-wrap: wrap; }
-    .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
-    .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
-    .sparkline { display: inline-block; vertical-align: middle; margin-left: 6px; }
-    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
-    @media (max-width: 1100px) { .hero-top, .grid-2 { grid-template-columns: 1fr; } .charts-grid { grid-template-columns: 1fr; } }
-    @media (max-width: 700px) { .form-grid { grid-template-columns: 1fr; } .detail-grid { grid-template-columns: 1fr; } }
+    tr.row-bad  td:first-child { border-left: 3px solid var(--red); }
+    .section-label {
+      font-size: 11px; font-weight: 800; text-transform: uppercase;
+      letter-spacing: 0.14em; color: var(--muted); margin: 18px 0 8px;
+    }
+    .empty-inline { font-size: 12px; color: var(--muted); padding: 12px 0; }
+
+    /* ── Spike toggle ────────────────────────────────── */
+    .spike-section {
+      padding: 14px 20px;
+      border-top: 1px solid var(--line);
+      background: #fffbeb;
+    }
+    .spike-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+    .spike-toggle input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+    .spike-toggle-label { font-size: 13px; font-weight: 700; }
+    .spike-hint { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+    .spike-fields { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    @media (max-width: 1100px) {
+      .stats-grid  { grid-template-columns: repeat(3,1fr); }
+      .charts-row  { grid-template-columns: 1fr; }
+      .history-layout { grid-template-columns: 1fr; }
+      .presets     { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 700px) {
+      .stats-grid  { grid-template-columns: repeat(2,1fr); }
+      .form-grid   { grid-template-columns: 1fr; }
+      .detail-stats{ grid-template-columns: 1fr 1fr; }
+      .presets     { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
-<main class="shell">
 
-  <!-- HERO -->
-  <section class="hero">
-    <div class="hero-top">
+<!-- ── Topbar ──────────────────────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="topbar-brand">Load Test <span>Console</span></div>
+  <div id="topPill" class="topbar-pill idle">
+    <div class="dot" id="topDot"></div>
+    <span id="topPillText">Idle</span>
+  </div>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-target" id="topTarget"></div>
+</header>
+
+<!-- ── Tab nav ─────────────────────────────────────────────────────────── -->
+<nav class="tab-nav">
+  <button class="tab-btn active" data-tab="configure">① Configura</button>
+  <button class="tab-btn" data-tab="live">② Live</button>
+  <button class="tab-btn" data-tab="history">③ Storico <span id="historyBadge" class="tab-badge" style="display:none"></span></button>
+</nav>
+
+<!-- ═══════════════════════ TAB 1 — CONFIGURA ══════════════════════════ -->
+<div class="tab-pane active" id="tab-configure">
+<div class="page">
+
+  <!-- Preset cards -->
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header">
       <div>
-        <div class="eyebrow">Remote Stress Console</div>
-        <h1>Carico dal tuo PC, target su Vercel e Render</h1>
-        <p class="lede">La console gira in locale. Lancia il test dal tuo PC e colpisce direttamente il frontend Vercel e il backend Render, così l'app locale resta separata dal sistema sotto test.</p>
+        <div class="card-title">Scegli un preset</div>
+        <div class="card-sub">Puoi modificare qualsiasi parametro dopo aver selezionato un preset</div>
       </div>
-      <div style="border:1px solid var(--line);border-radius:20px;padding:18px;background:white;">
-        <div class="eyebrow">Run State</div>
-        <div id="statusPill" class="pill idle" style="margin-top:10px;">Idle</div>
-        <div id="progressWrap" class="progress-wrap" style="display:none;margin-top:12px;">
-          <div id="progressBar" class="progress-bar" style="width:0%"></div>
+    </div>
+    <div class="presets">
+      <div class="preset-card" id="preset-smoke" data-preset="smoke">
+        <div class="preset-name">Smoke</div>
+        <div class="preset-desc">Verifica che l'app risponda correttamente senza carico.</div>
+        <div class="preset-meta">10 utenti · 30s · ramp 5s</div>
+      </div>
+      <div class="preset-card" id="preset-load" data-preset="load">
+        <div class="preset-name">Load</div>
+        <div class="preset-desc">Carico normale. Trova la latenza di base del sistema.</div>
+        <div class="preset-meta">100 utenti · 60s · ramp 15s</div>
+      </div>
+      <div class="preset-card" id="preset-stress" data-preset="stress">
+        <div class="preset-name">Stress</div>
+        <div class="preset-desc">Carico elevato. Trova il punto di rottura.</div>
+        <div class="preset-meta">500 utenti · 180s · ramp 60s</div>
+      </div>
+      <div class="preset-card tday" id="preset-tday" data-preset="tday">
+        <div class="preset-name">⚡ Giorno Torneo</div>
+        <div class="preset-desc">Simula onde di controllo risultati dopo ogni aggiornamento score.</div>
+        <div class="preset-meta">250 base + 80 spike / 30s · 5 min</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Form -->
+  <form id="runForm">
+  <div class="card">
+
+    <!-- Sezione: Target -->
+    <div class="form-section">
+      <div class="form-section-title">Target</div>
+      <div class="form-grid cols-1">
+        <div class="field full">
+          <label>Frontend URL</label>
+          <div class="field-hint">URL pubblico del frontend (Vercel)</div>
+          <input name="frontendUrl" type="url" value="https://minrugby-gestione-tornei.vercel.app" />
         </div>
-        <div id="progressLabel" style="font-size:11px;color:var(--muted);margin-top:6px;"></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-          <span class="report-tag">Local console</span>
-          <span class="report-tag">Remote target</span>
+        <div class="field full">
+          <label>API URL</label>
+          <div class="field-hint">URL del backend FastAPI (Render)</div>
+          <input name="apiUrl" type="url" value="https://rugby-tournament-api.onrender.com" />
         </div>
       </div>
     </div>
-    <div class="stats">
-      <div class="stat">
-        <div class="stat-label">Req/sec</div>
-        <div id="statRps" class="stat-value">—</div>
-        <div class="stat-help">Richieste HTTP al secondo. Buono: &gt;100. Sotto test da 500 utenti, 150+ è ok.</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">Error rate</div>
-        <div id="statErr" class="stat-value">—</div>
-        <div class="stat-help">% richieste fallite (5xx, timeout). Accettabile: &lt;2%. Oltre il 5% il sistema è in crisi.</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">P95 latenza</div>
-        <div id="statP95" class="stat-value">—</div>
-        <div class="stat-help">Il 95% delle richieste risponde entro questo tempo. Buono: &lt;1.5s. Oltre 3s gli utenti abbandonano.</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">P50 latenza</div>
-        <div id="statP50" class="stat-value">—</div>
-        <div class="stat-help">Latenza mediana (metà richieste). Riflette l'esperienza dell'utente medio.</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">Sessioni ok</div>
-        <div id="statSessions" class="stat-value">—</div>
-        <div class="stat-help">Sessioni utente completate (homepage → torneo → categoria). Indica quanti "utenti reali" hanno finito il percorso.</div>
-      </div>
-      <div class="stat">
-        <div class="stat-label">Utenti attivi</div>
-        <div id="statActive" class="stat-value">—</div>
-        <div class="stat-help">Utenti virtuali in ramp-up o in esecuzione in questo momento.</div>
-      </div>
-    </div>
-  </section>
 
-  <!-- CHARTS LIVE -->
-  <section class="panel" id="chartsSection" style="display:none;">
-    <div class="eyebrow">Andamento in tempo reale</div>
-    <h2 style="margin-top:8px;font-size:20px;font-weight:900;letter-spacing:-0.02em;">Metriche live — aggiornate ogni 10 s</h2>
-    <div class="charts-grid" id="chartsGrid">
-      <div class="chart-card">
-        <div class="chart-title">Req/sec <span>richieste al secondo nell'intervallo</span></div>
-        <svg class="chart" id="chartRps" viewBox="0 0 300 90" preserveAspectRatio="none"></svg>
-      </div>
-      <div class="chart-card">
-        <div class="chart-title">Error rate % <span>% errori nell'intervallo (rosso = critico)</span></div>
-        <svg class="chart" id="chartErr" viewBox="0 0 300 90" preserveAspectRatio="none"></svg>
-      </div>
-      <div class="chart-card">
-        <div class="chart-title">P95 ms <span>latenza del 95° percentile</span></div>
-        <svg class="chart" id="chartP95" viewBox="0 0 300 90" preserveAspectRatio="none"></svg>
-      </div>
-    </div>
-    <div class="legend">
-      <div class="legend-item"><div class="legend-dot" style="background:#16a34a"></div>Buono</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#ca8a04"></div>Attenzione</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#dc2626"></div>Critico</div>
-    </div>
-  </section>
-
-  <!-- LAUNCHER + REPORTS -->
-  <section class="grid-2">
-    <div class="panel">
-      <div class="eyebrow">Launcher</div>
-      <h2 style="margin-top:8px;font-size:22px;font-weight:900;letter-spacing:-0.03em;">Nuovo test</h2>
-      <p class="lede" style="max-width:none;font-size:13px;margin-top:8px;">Parti da 100 utenti per avere una baseline, poi 250, poi 500. Il ramp-up distribuisce l'arrivo degli utenti per simulare traffico reale.</p>
-
-      <form id="runForm">
-        <div class="form-grid">
-          <label class="full">Frontend URL
-            <input name="frontendUrl" value="https://minrugby-gestione-tornei.vercel.app" />
-          </label>
-          <label class="full">API URL
-            <input name="apiUrl" value="https://rugby-tournament-api.onrender.com" />
-          </label>
-          <label>Utenti concorrenti
-            <div class="field-help">Utenti virtuali simultanei</div>
-            <input name="users" type="number" value="100" min="1" />
-          </label>
-          <label>Durata (secondi)
-            <div class="field-help">Quanto dura il test dopo il ramp-up</div>
-            <input name="durationSec" type="number" value="60" min="1" />
-          </label>
-          <label>Ramp-up (secondi)
-            <div class="field-help">Tempo per portare tutti gli utenti a regime</div>
-            <input name="rampUpSec" type="number" value="15" min="0" />
-          </label>
-          <label>Timeout per richiesta (ms)
-            <div class="field-help">Oltre questo tempo = errore</div>
-            <input name="timeoutMs" type="number" value="10000" min="100" />
-          </label>
-          <label>Think time min (ms)
-            <div class="field-help">Pausa minima tra step (simula lettura)</div>
-            <input name="thinkMinMs" type="number" value="150" min="0" />
-          </label>
-          <label>Think time max (ms)
-            <div class="field-help">Pausa massima tra step</div>
-            <input name="thinkMaxMs" type="number" value="900" min="0" />
-          </label>
-          <label>Max tornei
-            <div class="field-help">Tornei usati per le sessioni</div>
-            <input name="maxTournaments" type="number" value="3" min="1" />
-          </label>
-          <label>Max categorie per torneo
-            <div class="field-help">Categorie per torneo</div>
-            <input name="maxAgeGroups" type="number" value="2" min="1" />
-          </label>
-          <label>Soglia error rate (es. 0.02)
-            <div class="field-help">Oltre questa % = WARN nel verdetto</div>
-            <input name="maxFailureRate" type="number" value="0.02" step="0.01" min="0" />
-          </label>
-          <label>Soglia P95 (ms)
-            <div class="field-help">Oltre questa latenza = WARN</div>
-            <input name="maxP95Ms" type="number" value="1500" min="1" />
-          </label>
+    <!-- Sezione: Carico -->
+    <div class="form-section">
+      <div class="form-section-title">Carico</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Utenti concorrenti</label>
+          <div class="field-hint">Sessioni parallele attive</div>
+          <input name="users" type="number" value="100" min="1" />
         </div>
-
-        <div style="margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:18px;background:#fafcfa;">
-          <div style="display:flex;align-items:center;gap:10px;">
-            <input type="checkbox" name="tournamentDay" id="tournamentDay" value="true" style="width:auto;margin:0;" />
-            <label for="tournamentDay" style="font-size:13px;text-transform:none;letter-spacing:0;font-weight:700;color:var(--ink);cursor:pointer;">
-              Modalità Giorno Torneo
-            </label>
-          </div>
-          <p style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5;">
-            Simula le <strong>onde di controllo risultati</strong>: ogni N secondi inietta uno spike di utenti che aprono
-            classifiche e programma simultaneamente, come succede quando un arbitro aggiorna un risultato.
-            Testa la resistenza del sistema al picco post-invalidazione cache.
-          </p>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;" id="spikeCfg">
-            <label>Utenti per spike
-              <div class="field-help">Quanti aprono l'app insieme dopo il risultato</div>
-              <input name="spikeUsers" type="number" value="50" min="1" />
-            </label>
-            <label>Spike ogni (ms)
-              <div class="field-help">30000 = ogni 30 secondi</div>
-              <input name="spikeEveryMs" type="number" value="30000" min="5000" />
-            </label>
-          </div>
+        <div class="field">
+          <label>Durata (secondi)</label>
+          <div class="field-hint">Dopo il ramp-up</div>
+          <input name="durationSec" type="number" value="60" min="1" />
         </div>
-
-        <div class="actions">
-          <button type="submit" class="btn-primary">▶ Avvia test</button>
-          <button type="button" class="btn-secondary" id="preset100">100 utenti / 60s</button>
-          <button type="button" class="btn-secondary" id="preset250">250 utenti / 90s</button>
-          <button type="button" class="btn-secondary" id="preset500">500 utenti / 180s</button>
-          <button type="button" class="btn-secondary" id="presetTDay" style="background:#fff4e5;color:#b45309;">⚡ Giorno Torneo</button>
+        <div class="field">
+          <label>Ramp-up (secondi)</label>
+          <div class="field-hint">Tempo per portare tutti gli utenti a regime</div>
+          <input name="rampUpSec" type="number" value="15" min="0" />
         </div>
-      </form>
-
-      <div id="messageBox" class="empty" style="display:none;"></div>
-
-      <h3 style="margin-top:20px;font-size:14px;font-weight:900;">Log output</h3>
-      <pre id="runLog">Nessuna esecuzione in corso.</pre>
-    </div>
-
-    <div class="panel">
-      <div class="eyebrow">Reports</div>
-      <h2 style="margin-top:8px;font-size:22px;font-weight:900;letter-spacing:-0.03em;">Storico e dettaglio</h2>
-      <div style="display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;margin-top:16px;">
-        <div>
-          <div id="reportList" class="report-list"></div>
-        </div>
-        <div>
-          <div id="reportSummary" class="empty">Seleziona un report per vedere i dettagli.</div>
-          <div id="reportRoutes"></div>
+        <div class="field">
+          <label>Timeout per richiesta (ms)</label>
+          <div class="field-hint">Oltre = errore</div>
+          <input name="timeoutMs" type="number" value="10000" min="100" />
         </div>
       </div>
     </div>
-  </section>
 
-</main>
+    <!-- Sezione: Comportamento -->
+    <div class="form-section">
+      <div class="form-section-title">Comportamento utente</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Think time min (ms)</label>
+          <div class="field-hint">Pausa minima tra uno step e l'altro</div>
+          <input name="thinkMinMs" type="number" value="150" min="0" />
+        </div>
+        <div class="field">
+          <label>Think time max (ms)</label>
+          <div class="field-hint">Pausa massima</div>
+          <input name="thinkMaxMs" type="number" value="900" min="0" />
+        </div>
+        <div class="field">
+          <label>Max tornei da testare</label>
+          <div class="field-hint">Tornei usati durante la discovery</div>
+          <input name="maxTournaments" type="number" value="3" min="1" />
+        </div>
+        <div class="field">
+          <label>Max categorie per torneo</label>
+          <div class="field-hint"></div>
+          <input name="maxAgeGroups" type="number" value="2" min="1" />
+        </div>
+      </div>
+    </div>
 
+    <!-- Sezione: Soglie qualità -->
+    <div class="form-section">
+      <div class="form-section-title">Soglie di qualità (verdetto PASS / WARN)</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Max error rate (es. 0.02)</label>
+          <div class="field-hint">Oltre questa % di errori = WARN</div>
+          <input name="maxFailureRate" type="number" value="0.02" step="0.01" min="0" />
+        </div>
+        <div class="field">
+          <label>Max P95 (ms)</label>
+          <div class="field-hint">Oltre questa latenza = WARN. 1500ms = UX accettabile</div>
+          <input name="maxP95Ms" type="number" value="1500" min="1" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Sezione: Spike -->
+    <div class="spike-section" id="spikeSection">
+      <label class="spike-toggle">
+        <input type="checkbox" name="tournamentDay" id="tournamentDay" value="true" />
+        <span class="spike-toggle-label">⚡ Modalità Giorno Torneo</span>
+      </label>
+      <div class="spike-hint">
+        Ogni N secondi inietta uno spike di utenti che aprono <strong>classifiche e programma simultaneamente</strong>,
+        simulando l'onda che arriva dopo ogni risultato aggiornato dall'arbitro.
+      </div>
+      <div class="spike-fields" id="spikeFields">
+        <div class="field">
+          <label>Utenti per spike</label>
+          <div class="field-hint">Quanti aprono l'app insieme</div>
+          <input name="spikeUsers" type="number" value="50" min="1" />
+        </div>
+        <div class="field">
+          <label>Spike ogni (ms)</label>
+          <div class="field-hint">30000 = ogni 30 secondi</div>
+          <input name="spikeEveryMs" type="number" value="30000" min="5000" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Launch bar -->
+    <div class="launch-bar">
+      <button type="submit" class="btn-launch" id="launchBtn">▶ Avvia test</button>
+      <div class="msg-box" id="msgBox"></div>
+    </div>
+
+  </div>
+  </form>
+
+</div>
+</div>
+
+<!-- ═══════════════════════ TAB 2 — LIVE ═══════════════════════════════ -->
+<div class="tab-pane" id="tab-live">
+<div class="page">
+
+  <!-- Intestazione live -->
+  <div class="live-header card">
+    <div style="display:flex;align-items:start;justify-content:space-between;gap:16px;">
+      <div>
+        <div class="live-title" id="liveTitle">Nessun test in corso</div>
+        <div class="live-subtitle" id="liveSubtitle">Vai su Configura per avviare un test.</div>
+      </div>
+      <div id="livePill" class="topbar-pill idle" style="white-space:nowrap;">
+        <div class="dot" id="liveDot"></div><span id="livePillText">Idle</span>
+      </div>
+    </div>
+    <div class="progress-bar-wrap" id="liveProgressWrap" style="display:none;">
+      <div class="progress-bar" id="liveProgressBar"></div>
+    </div>
+    <div class="progress-label" id="liveProgressLabel"></div>
+  </div>
+
+  <!-- Stat cards -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Req / sec</div>
+      <div class="stat-value" id="sRps">—</div>
+      <div class="stat-hint">Richieste al secondo. Buono: &gt;100</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Error rate</div>
+      <div class="stat-value" id="sErr">—</div>
+      <div class="stat-hint">% errori. Accettabile: &lt;2%</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">P95 latenza</div>
+      <div class="stat-value" id="sP95">—</div>
+      <div class="stat-hint">95° percentile. Buono: &lt;1.5s</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">P50 latenza</div>
+      <div class="stat-value" id="sP50">—</div>
+      <div class="stat-hint">Mediana. Esperienza utente medio</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Sessioni ok</div>
+      <div class="stat-value" id="sSessions">—</div>
+      <div class="stat-hint">Percorsi completi: home→torneo→cat</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Utenti attivi</div>
+      <div class="stat-value" id="sActive">—</div>
+      <div class="stat-hint">In ramp-up o in esecuzione ora</div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-row" id="liveChartsRow" style="display:none;">
+    <div class="chart-card">
+      <div class="chart-label">Req / sec</div>
+      <div class="chart-sublabel">Richieste al secondo nell'intervallo (10s)</div>
+      <svg class="chart" id="cRps" viewBox="0 0 300 80" preserveAspectRatio="none"></svg>
+      <div class="chart-legend">
+        <div class="chart-legend-item"><div class="cldot" style="background:var(--green)"></div>&gt;100 buono</div>
+        <div class="chart-legend-item"><div class="cldot" style="background:var(--yellow)"></div>50-100 attenzione</div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-label">Error rate %</div>
+      <div class="chart-sublabel">% errori 5xx/timeout nell'intervallo</div>
+      <svg class="chart" id="cErr" viewBox="0 0 300 80" preserveAspectRatio="none"></svg>
+      <div class="chart-legend">
+        <div class="chart-legend-item"><div class="cldot" style="background:var(--green)"></div>&lt;2% ok</div>
+        <div class="chart-legend-item"><div class="cldot" style="background:var(--red)"></div>&gt;5% critico</div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-label">P95 ms</div>
+      <div class="chart-sublabel">Latenza 95° percentile nell'intervallo</div>
+      <svg class="chart" id="cP95" viewBox="0 0 300 80" preserveAspectRatio="none"></svg>
+      <div class="chart-legend">
+        <div class="chart-legend-item"><div class="cldot" style="background:var(--green)"></div>&lt;1500ms ok</div>
+        <div class="chart-legend-item"><div class="cldot" style="background:var(--red)"></div>&gt;3s utenti abbandonano</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <div style="margin-top:16px;">
+    <div class="section-label">Output processo</div>
+    <pre class="log-box" id="liveLog">In attesa di un test...</pre>
+  </div>
+
+</div>
+</div>
+
+<!-- ════════════════════════ TAB 3 — STORICO ═══════════════════════════ -->
+<div class="tab-pane" id="tab-history">
+<div class="page">
+  <div class="history-layout">
+
+    <!-- Colonna sinistra: lista test raggruppati per data -->
+    <div>
+      <div class="section-label" style="margin-top:0;">Test eseguiti</div>
+      <div id="historyList"><div class="detail-empty" style="padding:24px;">Nessun test disponibile.</div></div>
+    </div>
+
+    <!-- Colonna destra: dettaglio report -->
+    <div id="detailPanel">
+      <div class="detail-empty">← Seleziona un test per vedere il dettaglio.</div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════════ SCRIPTS ═══════════════════════════════════ -->
 <script>
-// ─── State ────────────────────────────────────────────────────────────────────
-const state = {
-  status: null,
-  reports: [],
-  selectedRunId: null,
-  selectedReport: null,
-  timeSeries: [],
+// ─── Tab routing ─────────────────────────────────────────────────────────────
+const tabs = {}
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  tabs[btn.dataset.tab] = btn
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab))
+})
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name))
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === `tab-${name}`))
 }
 
-// ─── DOM refs ─────────────────────────────────────────────────────────────────
-const els = {
-  runForm:       document.getElementById('runForm'),
-  messageBox:    document.getElementById('messageBox'),
-  statusPill:    document.getElementById('statusPill'),
-  statRps:       document.getElementById('statRps'),
-  statErr:       document.getElementById('statErr'),
-  statP95:       document.getElementById('statP95'),
-  statP50:       document.getElementById('statP50'),
-  statSessions:  document.getElementById('statSessions'),
-  statActive:    document.getElementById('statActive'),
-  reportList:    document.getElementById('reportList'),
-  reportSummary: document.getElementById('reportSummary'),
-  reportRoutes:  document.getElementById('reportRoutes'),
-  runLog:        document.getElementById('runLog'),
-  chartsSection: document.getElementById('chartsSection'),
-  progressWrap:  document.getElementById('progressWrap'),
-  progressBar:   document.getElementById('progressBar'),
-  progressLabel: document.getElementById('progressLabel'),
-  chartRps:      document.getElementById('chartRps'),
-  chartErr:      document.getElementById('chartErr'),
-  chartP95:      document.getElementById('chartP95'),
-  tournamentDay: document.getElementById('tournamentDay'),
-}
+// ─── Color helpers ───────────────────────────────────────────────────────────
+const rpsColor  = v => v >= 100 ? 'good' : v >= 50 ? 'warn' : 'bad'
+const errColor  = v => v <= 2   ? 'good' : v <= 5  ? 'warn' : 'bad'
+const p95Color  = v => v <= 1500 ? 'good' : v <= 3000 ? 'warn' : 'bad'
+const colorHex  = c => c === 'good' ? '#16a34a' : c === 'warn' ? '#ca8a04' : '#dc2626'
 
-// ─── API helpers ──────────────────────────────────────────────────────────────
-async function api(path, options = {}) {
-  const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...options })
-  const data = await r.json()
-  if (!r.ok) throw new Error(data.detail || 'Request failed')
-  return data
-}
-
-function showMessage(text, kind = 'info') {
-  els.messageBox.style.display = 'block'
-  els.messageBox.textContent = text
-  els.messageBox.style.background = kind === 'error' ? '#fdecec' : '#eef8f1'
-  els.messageBox.style.color = kind === 'error' ? '#b91c1c' : '#155e3b'
-  els.messageBox.style.borderStyle = 'solid'
-}
-function clearMessage() { els.messageBox.style.display = 'none' }
-
-// ─── Color thresholds ─────────────────────────────────────────────────────────
-function rpsColor(v)  { return v >= 100 ? 'good' : v >= 50 ? 'warn' : 'bad' }
-function errColor(v)  { return v <= 2   ? 'good' : v <= 5  ? 'warn' : 'bad' }
-function p95Color(v)  { return v <= 1500 ? 'good' : v <= 3000 ? 'warn' : 'bad' }
-function p50Color(v)  { return v <= 800  ? 'good' : v <= 2000 ? 'warn' : 'bad' }
-
-// ─── SVG chart ────────────────────────────────────────────────────────────────
-function drawLineChart(svgEl, values, colorFn, thresholdGood, thresholdWarn) {
-  const W = 300, H = 90, pad = { top: 8, bottom: 8, left: 4, right: 4 }
+// ─── SVG chart ───────────────────────────────────────────────────────────────
+function drawChart(svgEl, values, colorFn, tGood, tWarn) {
+  const W=300,H=80,pt=6,pb=6,pl=3,pr=3
   if (values.length < 2) {
-    svgEl.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="#9cac9e" font-size="11">In attesa di dati...</text>`
+    svgEl.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="#9cac9e" font-size="10">In attesa...</text>`
     return
   }
-
-  const max = Math.max(...values) * 1.1 || 1
-  const min = 0
-  const range = max - min || 1
-  const innerW = W - pad.left - pad.right
-  const innerH = H - pad.top - pad.bottom
-
-  const toX = (i) => pad.left + (i / (values.length - 1)) * innerW
-  const toY = (v) => pad.top + innerH - ((v - min) / range) * innerH
-
-  // threshold lines
+  const max = Math.max(...values)*1.15||1, range = max||1
+  const tx = i => pl + (i/(values.length-1))*(W-pl-pr)
+  const ty = v => pt + (H-pt-pb) - (v/range)*(H-pt-pb)
   let lines = ''
-  if (thresholdGood != null) {
-    const y = toY(thresholdGood)
-    lines += `<line x1="${pad.left}" y1="${y}" x2="${W - pad.right}" y2="${y}" stroke="#16a34a" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>`
-  }
-  if (thresholdWarn != null) {
-    const y = toY(thresholdWarn)
-    lines += `<line x1="${pad.left}" y1="${y}" x2="${W - pad.right}" y2="${y}" stroke="#ca8a04" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>`
-  }
-
-  // area fill path
-  const pts = values.map((v, i) => `${toX(i)},${toY(v)}`).join(' ')
-  const areaPath = `M ${toX(0)},${toY(0)} ` +
-    values.map((v, i) => `L ${toX(i)},${toY(v)}`).join(' ') +
-    ` L ${toX(values.length - 1)},${H - pad.bottom} L ${toX(0)},${H - pad.bottom} Z`
-
-  // color last segment
-  const lastColor = colorFn(values[values.length - 1])
-  const strokeColor = lastColor === 'good' ? '#16a34a' : lastColor === 'warn' ? '#ca8a04' : '#dc2626'
-  const fillColor   = lastColor === 'good' ? 'rgba(22,163,74,0.08)' : lastColor === 'warn' ? 'rgba(202,138,4,0.08)' : 'rgba(220,38,38,0.08)'
-
-  // polyline
-  const linePath = `M ` + values.map((v, i) => `${toX(i)},${toY(v)}`).join(' L ')
-
-  // dots for each tick
-  const dots = values.map((v, i) => {
-    const c = colorFn(v)
-    const col = c === 'good' ? '#16a34a' : c === 'warn' ? '#ca8a04' : '#dc2626'
-    const isLast = i === values.length - 1
-    return `<circle cx="${toX(i)}" cy="${toY(v)}" r="${isLast ? 3.5 : 2}" fill="${col}" />`
+  if (tGood!=null) { const y=ty(tGood); lines+=`<line x1="${pl}" y1="${y}" x2="${W-pr}" y2="${y}" stroke="#16a34a" stroke-width="1" stroke-dasharray="3,3" opacity="0.5"/>` }
+  if (tWarn!=null) { const y=ty(tWarn); lines+=`<line x1="${pl}" y1="${y}" x2="${W-pr}" y2="${y}" stroke="#ca8a04" stroke-width="1" stroke-dasharray="3,3" opacity="0.5"/>` }
+  const lastC = colorFn(values[values.length-1])
+  const stroke = colorHex(lastC)
+  const fill   = lastC==='good'?'rgba(22,163,74,0.07)':lastC==='warn'?'rgba(202,138,4,0.07)':'rgba(220,38,38,0.07)'
+  const area = `M${tx(0)},${ty(0)} `+values.map((v,i)=>`L${tx(i)},${ty(v)}`).join(' ')+` L${tx(values.length-1)},${H-pb} L${tx(0)},${H-pb}Z`
+  const line = `M`+values.map((v,i)=>`${tx(i)},${ty(v)}`).join(' L')
+  const dots = values.map((v,i)=>{
+    const c=colorHex(colorFn(v)), r=i===values.length-1?3.5:2
+    return `<circle cx="${tx(i)}" cy="${ty(v)}" r="${r}" fill="${c}"/>`
   }).join('')
-
-  // last value label
-  const lastVal = values[values.length - 1]
-  const lx = toX(values.length - 1)
-  const ly = toY(lastVal)
-  const labelText = lastVal % 1 === 0 ? lastVal : lastVal.toFixed(1)
-
-  svgEl.innerHTML = `
-    ${lines}
-    <path d="${areaPath}" fill="${fillColor}" />
-    <path d="${linePath}" fill="none" stroke="${strokeColor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
-    ${dots}
-    <text x="${Math.min(lx + 5, W - pad.right - 24)}" y="${Math.max(ly - 4, pad.top + 8)}" fill="${strokeColor}" font-size="10" font-weight="700">${labelText}</text>
-  `
+  const lv = values[values.length-1], lx=tx(values.length-1), ly=ty(lv)
+  const label = lv%1===0?lv:lv.toFixed(1)
+  svgEl.innerHTML = `${lines}<path d="${area}" fill="${fill}"/><path d="${line}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${dots}<text x="${Math.min(lx+5,W-pr-22)}" y="${Math.max(ly-4,pt+8)}" fill="${stroke}" font-size="9.5" font-weight="700">${label}</text>`
 }
 
-// ─── Sparkline for report list ─────────────────────────────────────────────────
-function sparkline(values, color) {
-  if (!values || values.length < 2) return ''
-  const W = 48, H = 18
-  const max = Math.max(...values) || 1
-  const toX = (i) => (i / (values.length - 1)) * W
-  const toY = (v) => H - (v / max) * (H - 2) - 1
-  const d = values.map((v, i) => `${i === 0 ? 'M' : 'L'} ${toX(i)},${toY(v)}`).join(' ')
+// ─── Sparkline ───────────────────────────────────────────────────────────────
+function sparkline(vals, color) {
+  if (!vals||vals.length<2) return ''
+  const W=44,H=16,max=Math.max(...vals)||1
+  const d=vals.map((v,i)=>`${i===0?'M':'L'}${(i/(vals.length-1))*W},${H-(v/max)*(H-2)-1}`).join(' ')
   return `<svg class="sparkline" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><path d="${d}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/></svg>`
 }
 
-// ─── Render status / progress ─────────────────────────────────────────────────
-function renderStatus() {
-  const s = state.status
-  if (!s) return
+// ─── API ─────────────────────────────────────────────────────────────────────
+async function api(path, opts={}) {
+  const r = await fetch(path, {headers:{'Content-Type':'application/json'},...opts})
+  const d = await r.json()
+  if (!r.ok) throw new Error(d.detail||'Request failed')
+  return d
+}
 
-  const label = { running: 'Running', completed: 'Completed', failed: 'Failed', idle: 'Idle' }[s.status] ?? 'Idle'
-  els.statusPill.className = `pill ${s.status}`
-  els.statusPill.textContent = label
+// ─── State ───────────────────────────────────────────────────────────────────
+const st = { status: null, reports: [], selectedRunId: null, selectedReport: null, timeSeries: [] }
+
+// ─── Topbar + pill ───────────────────────────────────────────────────────────
+function setStatusPill(status, elPill, elDot, elText) {
+  const map = {idle:'Idle',running:'Running',completed:'Completato',failed:'Fallito'}
+  elPill.className = `topbar-pill ${status}`
+  elText.textContent = map[status]||status
+  elDot.className = `dot${status==='running'?' pulse':''}`
+}
+
+// ─── Live tab rendering ───────────────────────────────────────────────────────
+function renderLive() {
+  const s = st.status
+  if (!s) return
+  setStatusPill(s.status, document.getElementById('topPill'), document.getElementById('topDot'), document.getElementById('topPillText'))
+  setStatusPill(s.status, document.getElementById('livePill'), document.getElementById('liveDot'), document.getElementById('livePillText'))
 
   const isRunning = s.status === 'running'
-
-  // progress bar
+  const pw = document.getElementById('liveProgressWrap')
   if (isRunning && s.config) {
     const total = (s.config.durationSec + s.config.rampUpSec) * 1000
     const elapsed = s.startedAt ? Date.now() - new Date(s.startedAt).getTime() : 0
-    const pct = Math.min(100, (elapsed / total) * 100)
-    const remaining = Math.max(0, Math.ceil((total - elapsed) / 1000))
-    els.progressWrap.style.display = 'block'
-    els.progressBar.style.width = `${pct.toFixed(1)}%`
-    els.progressLabel.textContent = `${pct.toFixed(0)}% — ${remaining}s rimanenti (${s.config.users} utenti, ${s.config.durationSec}s + ${s.config.rampUpSec}s ramp-up)`
+    const pct = Math.min(100, (elapsed/total)*100)
+    const rem = Math.max(0, Math.ceil((total-elapsed)/1000))
+    pw.style.display = 'block'
+    document.getElementById('liveProgressBar').style.width = `${pct.toFixed(1)}%`
+    document.getElementById('liveProgressLabel').textContent =
+      `${pct.toFixed(0)}% completato — ${rem}s rimanenti · ${s.config.users} utenti · ${s.config.durationSec}s + ${s.config.rampUpSec}s ramp-up${s.config.tournamentDay?' · ⚡ Giorno Torneo':''}`
+    document.getElementById('liveTitle').textContent = 'Test in corso…'
+    document.getElementById('liveSubtitle').textContent =
+      `${s.config.frontendUrl}  ·  ${s.config.apiUrl}`
+    document.getElementById('topTarget').textContent = s.config.apiUrl || ''
   } else {
-    els.progressWrap.style.display = 'none'
-    els.progressLabel.textContent = ''
+    pw.style.display = 'none'
+    if (s.status === 'completed') {
+      document.getElementById('liveTitle').textContent = 'Test completato'
+      document.getElementById('liveSubtitle').textContent = `Vai su Storico per vedere il report completo.`
+    } else if (s.status === 'failed') {
+      document.getElementById('liveTitle').textContent = 'Test fallito'
+      document.getElementById('liveSubtitle').textContent = s.error || ''
+    }
+    document.getElementById('liveProgressLabel').textContent = ''
   }
 
-  // live stat cards from timeSeries
-  const ts = state.timeSeries
+  const ts = st.timeSeries
+  const chartsRow = document.getElementById('liveChartsRow')
   if (ts && ts.length > 0) {
-    const last = ts[ts.length - 1]
-    setStatValue(els.statRps,      last.reqSec,      rpsColor(last.reqSec))
-    setStatValue(els.statErr,      `${last.errRate}%`, errColor(last.errRate))
-    setStatValue(els.statP95,      `${last.p95}ms`,  p95Color(last.p95))
-    setStatValue(els.statP50,      `${last.p50}ms`,  p50Color(last.p50))
-    setStatValue(els.statActive,   last.activeSessions ?? '—', 'neutral')
-    els.chartsSection.style.display = 'block'
-    drawCharts(ts)
-  } else if (s.status === 'running') {
-    // show dashes while waiting for first tick
-    ['statRps','statErr','statP95','statP50','statActive'].forEach(k => {
-      els[k].textContent = '…'
-      els[k].className = 'stat-value'
-    })
+    chartsRow.style.display = 'grid'
+    const last = ts[ts.length-1]
+    setStat('sRps',     last.reqSec,      rpsColor(last.reqSec))
+    setStat('sErr',     `${last.errRate}%`,errColor(last.errRate))
+    setStat('sP95',     `${last.p95}ms`,  p95Color(last.p95))
+    setStat('sP50',     `${last.p50}ms`,  v=>v<=800?'good':v<=2000?'warn':'bad')
+    setStat('sActive',  last.activeSessions??'—', ()=>'')
+    drawChart(document.getElementById('cRps'), ts.map(t=>t.reqSec),  rpsColor, 100, 50)
+    drawChart(document.getElementById('cErr'), ts.map(t=>t.errRate), errColor, 2,   5)
+    drawChart(document.getElementById('cP95'), ts.map(t=>t.p95),     p95Color, 1500,3000)
+  } else {
+    chartsRow.style.display = 'none'
   }
+
+  const lines = [...(s.stdoutTail||[]),...(s.stderrTail||[]),...(s.error?[`ERROR: ${s.error}`]:[])]
+    .filter(l=>!l.startsWith('METRIC_TICK:')&&!l.startsWith('SCORE_SPIKE:'))
+  document.getElementById('liveLog').textContent = lines.length ? lines.join('\n') : 'Nessun output ancora.'
 
   // sessions from stdout
-  if (s.status === 'completed' || s.status === 'running') {
-    // parse sessions from stdout tail
-    const tail = (s.stdoutTail || []).join('\n')
-    const m = tail.match(/Sessions completed: (\d+)/)
-    if (m) setStatValue(els.statSessions, m[1], 'good')
-  }
-
-  // log
-  const lines = [...(s.stdoutTail || []), ...(s.stderrTail || []), ...(s.error ? [`ERROR: ${s.error}`] : [])]
-    .filter(l => !l.startsWith('METRIC_TICK:'))
-  els.runLog.textContent = lines.length > 0 ? lines.join('\n') : 'Nessuna esecuzione in corso.'
+  const tail = (s.stdoutTail||[]).join('\n')
+  const m = tail.match(/Sessions completed: (\d+)/)
+  if (m) setStat('sSessions', m[1], ()=>'good')
 }
 
-function setStatValue(el, value, colorClass) {
+function setStat(id, value, colorFn) {
+  const el = document.getElementById(id)
+  if (!el) return
   el.textContent = value
-  el.className = 'stat-value' + (colorClass && colorClass !== 'neutral' ? ` ${colorClass}` : '')
+  const c = typeof colorFn === 'function' ? colorFn(parseFloat(value)||0) : colorFn
+  el.className = `stat-value${c?' '+c:''}`
 }
 
-function drawCharts(ts) {
-  drawLineChart(els.chartRps, ts.map(t => t.reqSec),  rpsColor, 100, 50)
-  drawLineChart(els.chartErr, ts.map(t => t.errRate), errColor, 2,   5)
-  drawLineChart(els.chartP95, ts.map(t => t.p95),     p95Color, 1500, 3000)
-}
+// ─── History rendering ────────────────────────────────────────────────────────
+function renderHistory() {
+  const badge = document.getElementById('historyBadge')
+  badge.textContent = st.reports.length
+  badge.style.display = st.reports.length ? 'inline-flex' : 'none'
 
-// ─── Report list ──────────────────────────────────────────────────────────────
-function renderReports() {
-  if (state.reports.length === 0) {
-    els.reportList.innerHTML = '<div class="empty">Nessun report disponibile.</div>'
+  if (!st.reports.length) {
+    document.getElementById('historyList').innerHTML = '<div class="detail-empty" style="padding:24px;">Nessun test disponibile.</div>'
     return
   }
 
-  els.reportList.innerHTML = state.reports.map(r => {
-    const vc = r.verdict === 'PASS' ? 'good' : r.verdict === 'WARN' ? 'warn' : 'bad'
-    const p95color = r.p95Ms ? (r.p95Ms <= 1500 ? '#16a34a' : r.p95Ms <= 3000 ? '#ca8a04' : '#dc2626') : '#9cac9e'
-    const sp = r.p95Series ? sparkline(r.p95Series, p95color) : ''
-    return `
-      <div class="report-item ${state.selectedRunId === r.runId ? 'active' : ''}" data-run-id="${r.runId}">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-          <strong style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.runId.slice(0,19).replace('T',' ')}</strong>
-          <span class="report-tag ${vc}">${r.verdict}</span>
-        </div>
-        <div class="report-meta">
-          <span>${r.users ?? '?'} utenti</span>
-          <span>${r.durationSec ?? '?'}s</span>
-          <span style="color:${p95color};font-weight:700;">p95 ${r.p95Ms ?? '?'} ms</span>
-          <span>${r.requestsPerSecond ?? '?'} r/s</span>
-          ${sp}
-        </div>
-      </div>`
-  }).join('')
+  // group by date
+  const groups = {}
+  for (const r of st.reports) {
+    const d = r.date || r.runId.slice(0,10)
+    if (!groups[d]) groups[d] = []
+    groups[d].push(r)
+  }
 
-  document.querySelectorAll('.report-item').forEach(node => {
-    node.addEventListener('click', () => {
-      state.selectedRunId = node.getAttribute('data-run-id')
-      renderReports()
-      loadReport(state.selectedRunId)
+  const sorted = Object.keys(groups).sort((a,b)=>b.localeCompare(a))
+  let html = ''
+  for (const date of sorted) {
+    const label = formatDate(date)
+    html += `<div class="date-group"><div class="date-label">${label}</div>`
+    for (const r of groups[date]) {
+      const vc = r.verdict==='PASS'?'PASS':r.verdict==='WARN'?'WARN':'FAIL'
+      const p95c = r.p95Ms ? colorHex(p95Color(r.p95Ms)) : '#9cac9e'
+      const sp = r.p95Series ? sparkline(r.p95Series, p95c) : ''
+      const isActive = st.selectedRunId === r.runId
+      const tdayChip = r.tournamentDay ? `<span class="run-chip tday">⚡ Giorno Torneo</span>` : ''
+      html += `
+        <div class="run-card${isActive?' active':''}" data-run="${r.runId}">
+          <div class="run-card-top">
+            <span class="run-time">${r.time||'--:--'}</span>
+            <span class="run-badge ${vc}">${vc}</span>
+          </div>
+          <div class="run-meta">
+            <span class="run-chip">${r.users??'?'} utenti</span>
+            <span class="run-chip">${r.durationSec??'?'}s</span>
+            <span class="run-chip" style="color:${p95c};font-weight:800;">p95 ${r.p95Ms??'?'}ms</span>
+            <span class="run-chip">${r.requestsPerSecond??'?'} r/s</span>
+            ${tdayChip}
+            ${sp}
+          </div>
+        </div>`
+    }
+    html += '</div>'
+  }
+  document.getElementById('historyList').innerHTML = html
+
+  document.querySelectorAll('.run-card[data-run]').forEach(el => {
+    el.addEventListener('click', () => {
+      st.selectedRunId = el.dataset.run
+      renderHistory()
+      loadReport(el.dataset.run)
     })
   })
 }
 
-// ─── Report detail ────────────────────────────────────────────────────────────
-function renderSelectedReport() {
-  const report = state.selectedReport
-  if (!report) {
-    els.reportSummary.innerHTML = 'Seleziona un report per vedere i dettagli.'
-    els.reportRoutes.innerHTML = ''
+function formatDate(iso) {
+  const d = new Date(iso+'T12:00:00Z')
+  return d.toLocaleDateString('it-IT', {weekday:'long', day:'numeric', month:'long', year:'numeric'})
+}
+
+// ─── Detail panel ─────────────────────────────────────────────────────────────
+function renderDetail() {
+  const r = st.selectedReport
+  const panel = document.getElementById('detailPanel')
+  if (!r) {
+    panel.innerHTML = '<div class="detail-empty">← Seleziona un test per vedere il dettaglio.</div>'
     return
   }
+  const s = r.summary
+  const vc = s.verdict==='PASS'?'good':s.verdict==='WARN'?'warn':'bad'
 
-  const s = report.summary
-  const vc = s.verdict === 'PASS' ? 'good' : s.verdict === 'WARN' ? 'warn' : 'bad'
-  const discovery = (report.discovery || []).map(d => `<li><strong>${d.tournamentName}</strong> (${d.tournamentSlug})</li>`).join('')
+  const disc = (r.discovery||[]).map(d=>`<li style="font-size:12px;margin:4px 0;">${d.tournamentName} <span style="color:var(--muted)">(${d.tournamentSlug})</span></li>`).join('')
 
-  // summary cards
-  els.reportSummary.innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;">
-      <div class="stat" style="padding:10px 12px;">
-        <div class="stat-label">Verdetto</div>
-        <div class="stat-value" style="font-size:18px;" >${s.verdict}</div>
-        <div class="stat-help">${s.verdict === 'PASS' ? 'Sotto le soglie impostate' : 'Superata soglia error rate o P95'}</div>
+  panel.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${r.config?.users??'?'} utenti · ${r.config?.durationSec??'?'}s${r.config?.tournamentDay?' · ⚡ Giorno Torneo':''}</div>
+          <div class="card-sub">${new Date(r.generatedAt).toLocaleString('it-IT')}</div>
+        </div>
+        <span class="run-badge ${s.verdict}" style="font-size:13px;padding:6px 14px;">${s.verdict}</span>
       </div>
-      <div class="stat" style="padding:10px 12px;">
-        <div class="stat-label">Req/sec</div>
-        <div class="stat-value ${rpsColor(s.requestsPerSecond)}" style="font-size:18px;">${s.requestsPerSecond}</div>
-        <div class="stat-help">Throughput medio del test</div>
+      <div class="card-body">
+
+        <div class="detail-stats">
+          <div class="detail-stat">
+            <div class="detail-stat-label">Req/sec</div>
+            <div class="detail-stat-value ${rpsColor(s.requestsPerSecond)}">${s.requestsPerSecond}</div>
+            <div class="detail-stat-hint">Throughput medio</div>
+          </div>
+          <div class="detail-stat">
+            <div class="detail-stat-label">Error rate</div>
+            <div class="detail-stat-value ${errColor(s.failureRate)}">${s.failureRate}%</div>
+            <div class="detail-stat-hint">${s.failureRate<=2?'Accettabile':s.failureRate<=5?'Alto — attenzione':'Critico'}</div>
+          </div>
+          <div class="detail-stat">
+            <div class="detail-stat-label">P95</div>
+            <div class="detail-stat-value ${p95Color(s.p95Ms)}">${s.p95Ms}ms</div>
+            <div class="detail-stat-hint">${s.p95Ms<=1500?'Buona UX':s.p95Ms<=3000?'UX degradata':'Utenti abbandonano'}</div>
+          </div>
+          <div class="detail-stat">
+            <div class="detail-stat-label">P99</div>
+            <div class="detail-stat-value ${p95Color(s.p99Ms)}">${s.p99Ms}ms</div>
+            <div class="detail-stat-hint">Coda lenta</div>
+          </div>
+          <div class="detail-stat">
+            <div class="detail-stat-label">Sessioni ok</div>
+            <div class="detail-stat-value">${s.sessionsCompleted}</div>
+            <div class="detail-stat-hint">Percorsi completi</div>
+          </div>
+          <div class="detail-stat">
+            <div class="detail-stat-label">Totale req</div>
+            <div class="detail-stat-value">${s.totalRequests}</div>
+            <div class="detail-stat-hint">In ${r.config?.durationSec??'?'}s</div>
+          </div>
+        </div>
+
+        ${r.timeSeries&&r.timeSeries.length>=2?`
+        <div class="section-label">Andamento nel tempo</div>
+        <div class="charts-row" style="margin-top:8px;">
+          <div class="chart-card"><div class="chart-label">Req/sec</div><svg class="chart" id="dr-rps" viewBox="0 0 300 80" preserveAspectRatio="none"></svg></div>
+          <div class="chart-card"><div class="chart-label">Error rate %</div><svg class="chart" id="dr-err" viewBox="0 0 300 80" preserveAspectRatio="none"></svg></div>
+          <div class="chart-card"><div class="chart-label">P95 ms</div><svg class="chart" id="dr-p95" viewBox="0 0 300 80" preserveAspectRatio="none"></svg></div>
+        </div>`:''}
+
+        <div class="section-label">Route breakdown</div>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:4px;">
+          <span style="border-left:3px solid var(--green);padding-left:6px;margin-right:12px;">Verde &lt;1% errori</span>
+          <span style="border-left:3px solid var(--yellow);padding-left:6px;margin-right:12px;">Giallo 1-5%</span>
+          <span style="border-left:3px solid var(--red);padding-left:6px;">Rosso &gt;5%</span>
+        </p>
+        <table>
+          <thead><tr><th>Route</th><th>Req</th><th>Fail %</th><th>Avg ms</th><th>P95 ms</th><th>P99 ms</th></tr></thead>
+          <tbody>
+            ${(r.routes||[]).slice(0,20).map(rt=>{
+              const ep=(rt.count>0?(rt.fail/rt.count)*100:0).toFixed(1)
+              const rc=parseFloat(ep)>5?'row-bad':parseFloat(ep)>1?'row-warn':'row-good'
+              return `<tr class="${rc}"><td style="font-size:11px;">${rt.label}</td><td>${rt.count}</td><td class="${errColor(parseFloat(ep))}" style="font-weight:700;">${ep}%</td><td>${rt.avgMs}</td><td class="${p95Color(rt.p95Ms)}" style="font-weight:700;">${rt.p95Ms}</td><td>${rt.p99Ms}</td></tr>`
+            }).join('')}
+          </tbody>
+        </table>
+
+        ${r.sampleErrors&&r.sampleErrors.length?`
+        <div class="section-label">Campioni di errore</div>
+        <table>
+          <thead><tr><th>Route</th><th>Status</th><th>Messaggio</th></tr></thead>
+          <tbody>${r.sampleErrors.map(e=>`<tr><td>${e.routeKey}</td><td style="color:var(--red);font-weight:700;">${e.status}</td><td style="font-size:11px;">${e.error}</td></tr>`).join('')}</tbody>
+        </table>`:'<div class="empty-inline">Nessun errore campionato.</div>'}
+
+        ${disc?`<div class="section-label">Tornei testati</div><ul style="padding-left:18px;">${disc}</ul>`:''}
+
       </div>
-      <div class="stat" style="padding:10px 12px;">
-        <div class="stat-label">Error rate</div>
-        <div class="stat-value ${errColor(s.failureRate)}" style="font-size:18px;">${s.failureRate}%</div>
-        <div class="stat-help">${s.failureRate <= 2 ? 'Accettabile' : s.failureRate <= 5 ? 'Attenzione: alto' : 'Critico: sistema in crisi'}</div>
-      </div>
-      <div class="stat" style="padding:10px 12px;">
-        <div class="stat-label">P95</div>
-        <div class="stat-value ${p95Color(s.p95Ms)}" style="font-size:18px;">${s.p95Ms} ms</div>
-        <div class="stat-help">${s.p95Ms <= 1500 ? 'Buona UX' : s.p95Ms <= 3000 ? 'UX degradata' : 'Utenti abbandonano'}</div>
-      </div>
-      <div class="stat" style="padding:10px 12px;">
-        <div class="stat-label">P99</div>
-        <div class="stat-value ${p95Color(s.p99Ms)}" style="font-size:18px;">${s.p99Ms} ms</div>
-        <div class="stat-help">Coda lenta — 1 utente su 100</div>
-      </div>
-      <div class="stat" style="padding:10px 12px;">
-        <div class="stat-label">Sessioni ok</div>
-        <div class="stat-value" style="font-size:18px;">${s.sessionsCompleted}</div>
-        <div class="stat-help">Percorsi utente completati</div>
-      </div>
-    </div>
-    <div style="margin-top:14px;font-size:13px;color:var(--muted);">
-      <strong style="color:var(--ink);">Tornei testati:</strong>
-      <ul style="margin:6px 0 0;padding-left:18px;">${discovery}</ul>
     </div>
   `
 
-  // routes table with color coding
-  const routeRows = (report.routes || []).slice(0, 20).map(r => {
-    const errPct = r.count > 0 ? (r.fail / r.count) * 100 : 0
-    const rowClass = errPct > 5 ? 'row-bad' : errPct > 1 ? 'row-warn' : 'row-good'
-    const p95cls = p95Color(r.p95Ms)
-    const errCls = errColor(errPct)
-    return `<tr class="${rowClass}">
-      <td style="font-size:12px;">${r.label}</td>
-      <td>${r.count}</td>
-      <td class="${errCls}" style="font-weight:700;">${r.fail} <span style="font-size:11px;opacity:0.7;">(${errPct.toFixed(1)}%)</span></td>
-      <td>${r.avgMs}</td>
-      <td class="${p95cls}" style="font-weight:700;">${r.p95Ms}</td>
-      <td>${r.p99Ms}</td>
-    </tr>`
-  }).join('')
-
-  const errors = (report.sampleErrors || []).map(e =>
-    `<tr><td>${e.routeKey}</td><td>${e.status}</td><td style="color:#b91c1c;">${e.error}</td></tr>`
-  ).join('')
-
-  // timeseries chart from saved report (if stored)
-  let chartHtml = ''
-  if (report.timeSeries && report.timeSeries.length >= 2) {
-    chartHtml = `
-      <div class="charts-grid" style="margin-top:16px;">
-        <div class="chart-card">
-          <div class="chart-title">Req/sec nel tempo</div>
-          <svg id="detailChartRps" class="chart" viewBox="0 0 300 90" preserveAspectRatio="none"></svg>
-        </div>
-        <div class="chart-card">
-          <div class="chart-title">Error rate % nel tempo</div>
-          <svg id="detailChartErr" class="chart" viewBox="0 0 300 90" preserveAspectRatio="none"></svg>
-        </div>
-        <div class="chart-card">
-          <div class="chart-title">P95 ms nel tempo</div>
-          <svg id="detailChartP95" class="chart" viewBox="0 0 300 90" preserveAspectRatio="none"></svg>
-        </div>
-      </div>`
-  }
-
-  els.reportRoutes.innerHTML = `
-    ${chartHtml}
-    <h3 style="margin-top:18px;font-size:14px;font-weight:900;">Route breakdown</h3>
-    <p style="font-size:12px;color:var(--muted);margin-top:4px;">
-      <span style="border-left:3px solid #16a34a;padding-left:6px;margin-right:10px;">Verde = errori &lt;1%</span>
-      <span style="border-left:3px solid #ca8a04;padding-left:6px;margin-right:10px;">Giallo = errori 1–5%</span>
-      <span style="border-left:3px solid #dc2626;padding-left:6px;">Rosso = errori &gt;5%</span>
-    </p>
-    <table>
-      <thead><tr><th>Route</th><th>Req</th><th>Fail</th><th>Avg ms</th><th>P95 ms</th><th>P99 ms</th></tr></thead>
-      <tbody>${routeRows}</tbody>
-    </table>
-    <h3 style="margin-top:18px;font-size:14px;font-weight:900;">Error samples</h3>
-    ${errors
-      ? `<table><thead><tr><th>Route</th><th>Status</th><th>Errore</th></tr></thead><tbody>${errors}</tbody></table>`
-      : '<div class="empty">Nessun errore campionato.</div>'
-    }
-  `
-
-  // draw historic charts if available
-  if (report.timeSeries && report.timeSeries.length >= 2) {
+  if (r.timeSeries && r.timeSeries.length >= 2) {
     requestAnimationFrame(() => {
-      const rEl = document.getElementById('detailChartRps')
-      const eEl = document.getElementById('detailChartErr')
-      const pEl = document.getElementById('detailChartP95')
-      if (rEl) drawLineChart(rEl, report.timeSeries.map(t => t.reqSec),  rpsColor, 100, 50)
-      if (eEl) drawLineChart(eEl, report.timeSeries.map(t => t.errRate), errColor, 2,   5)
-      if (pEl) drawLineChart(pEl, report.timeSeries.map(t => t.p95),     p95Color, 1500, 3000)
+      const re = document.getElementById('dr-rps')
+      const ee = document.getElementById('dr-err')
+      const pe = document.getElementById('dr-p95')
+      if (re) drawChart(re, r.timeSeries.map(t=>t.reqSec),  rpsColor, 100,  50)
+      if (ee) drawChart(ee, r.timeSeries.map(t=>t.errRate), errColor, 2,    5)
+      if (pe) drawChart(pe, r.timeSeries.map(t=>t.p95),     p95Color, 1500, 3000)
     })
   }
 }
 
 // ─── Data loading ─────────────────────────────────────────────────────────────
 async function loadStatus() {
-  const data = await api('/api/status')
-  state.status = data
-  state.timeSeries = data.timeSeries || []
-  renderStatus()
+  const d = await api('/api/status')
+  st.status = d
+  st.timeSeries = d.timeSeries || []
+  renderLive()
 }
 
 async function loadReports() {
-  const data = await api('/api/reports')
-  state.reports = data.items || []
-  if (!state.selectedRunId && state.reports.length > 0) {
-    state.selectedRunId = state.reports[0].runId
-  }
-  renderReports()
-  if (state.selectedRunId) await loadReport(state.selectedRunId)
-  else renderSelectedReport()
+  const d = await api('/api/reports')
+  st.reports = d.items || []
+  if (!st.selectedRunId && st.reports.length) st.selectedRunId = st.reports[0].runId
+  renderHistory()
+  if (st.selectedRunId && !st.selectedReport) await loadReport(st.selectedRunId)
 }
 
 async function loadReport(runId) {
   try {
-    state.selectedReport = await api(`/api/reports/${encodeURIComponent(runId)}`)
-    renderSelectedReport()
-  } catch (e) {
-    showMessage(e.message, 'error')
-  }
+    st.selectedReport = await api(`/api/reports/${encodeURIComponent(runId)}`)
+    renderDetail()
+  } catch(e) { showMsg(e.message, 'err') }
 }
 
 async function refreshAll() {
   await Promise.all([loadStatus(), loadReports()])
 }
 
-// ─── Form ──────────────────────────────────────────────────────────────────────
-els.runForm.addEventListener('submit', async e => {
+// ─── Presets ─────────────────────────────────────────────────────────────────
+const presetDefs = {
+  smoke:  { users:10,  durationSec:30,  rampUpSec:5,  tournamentDay:false, spikeUsers:20,  spikeEveryMs:30000, maxP95Ms:1500, maxFailureRate:0.02 },
+  load:   { users:100, durationSec:60,  rampUpSec:15, tournamentDay:false, spikeUsers:30,  spikeEveryMs:30000, maxP95Ms:1500, maxFailureRate:0.02 },
+  stress: { users:500, durationSec:180, rampUpSec:60, tournamentDay:false, spikeUsers:60,  spikeEveryMs:30000, maxP95Ms:2000, maxFailureRate:0.05 },
+  tday:   { users:250, durationSec:300, rampUpSec:30, tournamentDay:true,  spikeUsers:80,  spikeEveryMs:30000, maxP95Ms:2000, maxFailureRate:0.02 },
+}
+let activePreset = null
+
+document.querySelectorAll('.preset-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const key = card.dataset.preset
+    const def = presetDefs[key]
+    if (!def) return
+    activePreset = key
+    document.querySelectorAll('.preset-card').forEach(c => c.classList.toggle('selected', c.dataset.preset === key))
+    const f = document.getElementById('runForm')
+    f.users.value        = def.users
+    f.durationSec.value  = def.durationSec
+    f.rampUpSec.value    = def.rampUpSec
+    f.maxP95Ms.value     = def.maxP95Ms
+    f.maxFailureRate.value = def.maxFailureRate
+    f.spikeUsers.value   = def.spikeUsers
+    f.spikeEveryMs.value = def.spikeEveryMs
+    document.getElementById('tournamentDay').checked = def.tournamentDay
+    if (key === 'tday') showMsg('Preset "Giorno Torneo": 250 utenti base + spike ogni 30s per 5 minuti. Simula 20 società con onde di risultati.', 'ok')
+    else clearMsg()
+  })
+})
+
+// ─── Form submit ──────────────────────────────────────────────────────────────
+document.getElementById('runForm').addEventListener('submit', async e => {
   e.preventDefault()
-  clearMessage()
-  const payload = Object.fromEntries(new FormData(els.runForm).entries())
+  clearMsg()
+  const payload = Object.fromEntries(new FormData(e.target).entries())
+  document.getElementById('launchBtn').disabled = true
   try {
-    const r = await api('/api/start', { method: 'POST', body: JSON.stringify(payload) })
-    showMessage(`Test avviato: ${r.runId}`)
+    const r = await api('/api/start', {method:'POST', body:JSON.stringify(payload)})
+    showMsg(`Test avviato: ${r.runId}`, 'ok')
+    switchTab('live')
     await refreshAll()
-  } catch (err) {
-    showMessage(err.message, 'error')
+  } catch(err) {
+    showMsg(err.message, 'err')
+  } finally {
+    document.getElementById('launchBtn').disabled = false
   }
 })
 
-function fillPreset(users, durationSec, rampUpSec) {
-  els.runForm.users.value = users
-  els.runForm.durationSec.value = durationSec
-  els.runForm.rampUpSec.value = rampUpSec
+function showMsg(text, kind) {
+  const b = document.getElementById('msgBox')
+  b.textContent = text; b.className = `msg-box ${kind}`; b.style.display = 'block'
 }
-document.getElementById('preset100').addEventListener('click', () => { fillPreset(100, 60,  15); els.tournamentDay.checked = false })
-document.getElementById('preset250').addEventListener('click', () => { fillPreset(250, 90,  30); els.tournamentDay.checked = false })
-document.getElementById('preset500').addEventListener('click', () => { fillPreset(500, 180, 60); els.tournamentDay.checked = false })
-document.getElementById('presetTDay').addEventListener('click', () => {
-  // Realistic tournament day: 250 background users + spikes of 80 every 30s for 5 minutes
-  fillPreset(250, 300, 30)
-  els.tournamentDay.checked = true
-  els.runForm.spikeUsers.value = 80
-  els.runForm.spikeEveryMs.value = 30000
-  els.runForm.maxP95Ms.value = 2000
-  showMessage('Preset "Giorno Torneo": 250 utenti di base + 80 in spike ogni 30s per 5 minuti. Simula ~3.600 genitori con 3 onde di risultati.', 'info')
-})
+function clearMsg() {
+  const b = document.getElementById('msgBox')
+  b.style.display = 'none'
+}
 
-// ─── Start ────────────────────────────────────────────────────────────────────
-refreshAll().catch(e => showMessage(e.message, 'error'))
-setInterval(() => refreshAll().catch(() => {}), 3000)
+// ─── Start & poll ─────────────────────────────────────────────────────────────
+let prevStatus = null
+refreshAll().catch(e => showMsg(e.message, 'err'))
+setInterval(async () => {
+  try {
+    await refreshAll()
+    const cur = st.status?.status
+    // auto-switch to live when test starts
+    if (cur === 'running' && prevStatus !== 'running') switchTab('live')
+    // auto-switch to history when test completes
+    if ((cur === 'completed' || cur === 'failed') && prevStatus === 'running') {
+      switchTab('history')
+      await loadReports()
+    }
+    prevStatus = cur
+  } catch {}
+}, 3000)
 </script>
 </body>
 </html>
