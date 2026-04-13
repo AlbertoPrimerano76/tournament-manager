@@ -11,8 +11,8 @@ from datetime import date
 from app.services.public_api_cache import public_api_cache
 
 router = APIRouter()
-PUBLIC_CACHE_TTL_SECONDS = 120
-PUBLIC_CACHE_STALE_SECONDS = 600
+PUBLIC_CACHE_TTL_SECONDS = 300   # 5 min fresh  (was 2 min)
+PUBLIC_CACHE_STALE_SECONDS = 1800  # 30 min stale (was 10 min)
 
 _team_loads = [
     selectinload(Match.home_team).selectinload(TournamentTeam.team),

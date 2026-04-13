@@ -62,7 +62,40 @@ class PublicApiCacheInvalidationMiddleware(BaseHTTPMiddleware):
         return response
 
 
+# Paths whose data changes rarely → longer CDN TTL (5 min)
+_LONG_CDN_PATTERNS = ("/program", "/standings", "/fields", "/organizations/")
+
+class PublicCacheHeaderMiddleware(BaseHTTPMiddleware):
+    """
+    Adds Cache-Control headers to all successful public GET responses so that
+    Cloudflare (in front of Render) and Vercel's edge cache can serve them
+    directly, bypassing the backend entirely for the majority of requests.
+
+    TTLs are intentionally shorter than the in-memory PublicApiCache TTLs so
+    that CDN-cached responses expire before the in-memory entries do.
+    """
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if (
+            request.method == "GET"
+            and path.startswith("/api/v1/")
+            and not path.startswith("/api/v1/admin")
+            and response.status_code == 200
+        ):
+            if any(pat in path for pat in _LONG_CDN_PATTERNS):
+                # Programs / standings / fields / orgs — change only via admin write
+                ttl, stale = 300, 1800
+            else:
+                # Tournament list / detail / age-groups / matches — moderate refresh
+                ttl, stale = 60, 300
+            response.headers["Cache-Control"] = f"public, max-age={ttl}, stale-while-revalidate={stale}"
+            response.headers["Vary"] = "Accept-Encoding"
+        return response
+
+
 app.add_middleware(PublicApiCacheInvalidationMiddleware)
+app.add_middleware(PublicCacheHeaderMiddleware)
 
 # Public routes (no auth)
 app.include_router(public_tournaments.router, prefix="/api/v1", tags=["public-tournaments"])

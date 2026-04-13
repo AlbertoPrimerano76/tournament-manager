@@ -13,9 +13,9 @@ engine = create_async_engine(
     echo=False,
     pool_pre_ping=True,
     **({} if _is_sqlite else {
-        "pool_size": 20,
-        "max_overflow": 40,
-        "pool_timeout": 30,
+        "pool_size": 10,       # persistent connections always open
+        "max_overflow": 20,    # burst headroom (was 40 — caused OOM on free tier)
+        "pool_timeout": 30,    # wait max 30s before giving up
         "pool_recycle": 300,
     }),
 )
