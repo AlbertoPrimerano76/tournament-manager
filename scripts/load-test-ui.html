@@ -243,11 +243,37 @@
             <input name="maxP95Ms" type="number" value="1500" min="1" />
           </label>
         </div>
+
+        <div style="margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:18px;background:#fafcfa;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <input type="checkbox" name="tournamentDay" id="tournamentDay" value="true" style="width:auto;margin:0;" />
+            <label for="tournamentDay" style="font-size:13px;text-transform:none;letter-spacing:0;font-weight:700;color:var(--ink);cursor:pointer;">
+              Modalità Giorno Torneo
+            </label>
+          </div>
+          <p style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5;">
+            Simula le <strong>onde di controllo risultati</strong>: ogni N secondi inietta uno spike di utenti che aprono
+            classifiche e programma simultaneamente, come succede quando un arbitro aggiorna un risultato.
+            Testa la resistenza del sistema al picco post-invalidazione cache.
+          </p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;" id="spikeCfg">
+            <label>Utenti per spike
+              <div class="field-help">Quanti aprono l'app insieme dopo il risultato</div>
+              <input name="spikeUsers" type="number" value="50" min="1" />
+            </label>
+            <label>Spike ogni (ms)
+              <div class="field-help">30000 = ogni 30 secondi</div>
+              <input name="spikeEveryMs" type="number" value="30000" min="5000" />
+            </label>
+          </div>
+        </div>
+
         <div class="actions">
           <button type="submit" class="btn-primary">▶ Avvia test</button>
           <button type="button" class="btn-secondary" id="preset100">100 utenti / 60s</button>
           <button type="button" class="btn-secondary" id="preset250">250 utenti / 90s</button>
           <button type="button" class="btn-secondary" id="preset500">500 utenti / 180s</button>
+          <button type="button" class="btn-secondary" id="presetTDay" style="background:#fff4e5;color:#b45309;">⚡ Giorno Torneo</button>
         </div>
       </form>
 
@@ -306,6 +332,7 @@ const els = {
   chartRps:      document.getElementById('chartRps'),
   chartErr:      document.getElementById('chartErr'),
   chartP95:      document.getElementById('chartP95'),
+  tournamentDay: document.getElementById('tournamentDay'),
 }
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
@@ -688,9 +715,18 @@ function fillPreset(users, durationSec, rampUpSec) {
   els.runForm.durationSec.value = durationSec
   els.runForm.rampUpSec.value = rampUpSec
 }
-document.getElementById('preset100').addEventListener('click', () => fillPreset(100, 60,  15))
-document.getElementById('preset250').addEventListener('click', () => fillPreset(250, 90,  30))
-document.getElementById('preset500').addEventListener('click', () => fillPreset(500, 180, 60))
+document.getElementById('preset100').addEventListener('click', () => { fillPreset(100, 60,  15); els.tournamentDay.checked = false })
+document.getElementById('preset250').addEventListener('click', () => { fillPreset(250, 90,  30); els.tournamentDay.checked = false })
+document.getElementById('preset500').addEventListener('click', () => { fillPreset(500, 180, 60); els.tournamentDay.checked = false })
+document.getElementById('presetTDay').addEventListener('click', () => {
+  // Realistic tournament day: 250 background users + spikes of 80 every 30s for 5 minutes
+  fillPreset(250, 300, 30)
+  els.tournamentDay.checked = true
+  els.runForm.spikeUsers.value = 80
+  els.runForm.spikeEveryMs.value = 30000
+  els.runForm.maxP95Ms.value = 2000
+  showMessage('Preset "Giorno Torneo": 250 utenti di base + 80 in spike ogni 30s per 5 minuti. Simula ~3.600 genitori con 3 onde di risultati.', 'info')
+})
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 refreshAll().catch(e => showMessage(e.message, 'error'))

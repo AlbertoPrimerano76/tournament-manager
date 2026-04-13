@@ -115,6 +115,12 @@ class PublicApiCache:
             if current and not current.done():
                 current.set_result(value)
 
+    async def invalidate_keys(self, keys: set[str]) -> None:
+        """Remove specific cache keys without touching other entries."""
+        async with self._lock:
+            for key in keys:
+                self._entries.pop(key, None)
+
     async def clear(self) -> None:
         async with self._lock:
             self._entries.clear()

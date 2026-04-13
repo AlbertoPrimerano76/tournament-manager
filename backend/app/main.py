@@ -22,6 +22,7 @@ from app.api.v1.admin import dashboard as admin_dashboard
 from app.api.v1.admin import maintenance as admin_maintenance
 from app.api.v1.admin import security_questions as admin_security_questions
 from app.services.public_api_cache import public_api_cache, warmup_public_cache
+from app.services.cache_invalidator import invalidate_for_request
 
 settings.validate_production_settings()
 
@@ -55,7 +56,9 @@ class PublicApiCacheInvalidationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
         if request.method != "GET" and request.url.path.startswith("/api/v1/admin") and response.status_code < 400:
-            await public_api_cache.clear()
+            from app.core.database import AsyncSessionLocal
+            async with AsyncSessionLocal() as db:
+                await invalidate_for_request(request.url.path, db)
         return response
 
 

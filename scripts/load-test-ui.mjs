@@ -27,6 +27,9 @@ const defaultConfig = {
   maxAgeGroups: 2,
   maxFailureRate: 0.02,
   maxP95Ms: 1500,
+  tournamentDay: false,
+  spikeUsers: 50,
+  spikeEveryMs: 30000,
 }
 
 const state = {
@@ -124,6 +127,9 @@ function sanitizeConfig(body) {
     maxAgeGroups: Number.parseInt(String(merged.maxAgeGroups), 10),
     maxFailureRate: Number.parseFloat(String(merged.maxFailureRate)),
     maxP95Ms: Number.parseInt(String(merged.maxP95Ms), 10),
+    tournamentDay: String(merged.tournamentDay) === 'true' || merged.tournamentDay === true,
+    spikeUsers: Number.parseInt(String(merged.spikeUsers ?? 50), 10),
+    spikeEveryMs: Number.parseInt(String(merged.spikeEveryMs ?? 30000), 10),
   }
 
   if (!cleaned.frontendUrl.startsWith('http')) throw new Error('frontendUrl must start with http or https')
@@ -214,6 +220,7 @@ function startRun(config) {
     '--output-dir', reportsRoot,
     '--max-failure-rate', String(config.maxFailureRate),
     '--max-p95', String(config.maxP95Ms),
+    ...(config.tournamentDay ? ['--tournament-day', '--spike-users', String(config.spikeUsers), '--spike-every', String(config.spikeEveryMs)] : []),
   ]
 
   const child = spawn(process.execPath, args, {

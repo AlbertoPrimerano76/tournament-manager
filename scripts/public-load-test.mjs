@@ -65,6 +65,10 @@ function parseArgs(argv) {
     outputDir: 'load-test-reports',
     maxFailureRate: 0.02,
     maxP95Ms: 1500,
+    // tournament-day spike mode
+    tournamentDay: false,
+    spikeUsers: 50,        // extra users injected at each spike
+    spikeEveryMs: 30_000,  // inject a spike every N ms
   }
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -87,6 +91,9 @@ function parseArgs(argv) {
     if (arg === '--output-dir') config.outputDir = next
     if (arg === '--max-failure-rate') config.maxFailureRate = Number.parseFloat(next)
     if (arg === '--max-p95') config.maxP95Ms = Number.parseInt(next, 10)
+    if (arg === '--tournament-day') config.tournamentDay = true
+    if (arg === '--spike-users') config.spikeUsers = Number.parseInt(next, 10)
+    if (arg === '--spike-every') config.spikeEveryMs = Number.parseInt(next, 10)
   }
 
   config.frontendUrl = normalizeBaseUrl(config.frontendUrl)
@@ -375,6 +382,40 @@ async function simulateJourney(profile, config, metrics) {
   }
 }
 
+/**
+ * Tournament-day spike: simulates a wave of parents who open the standings
+ * and program immediately after a score is updated (the cache-miss moment).
+ * Each spike user hits only the heavy endpoints without think time.
+ */
+async function simulateScoreCheckSpike(profile, config, metrics) {
+  const ageGroup = pickRandom(profile.ageGroups)
+  await Promise.all([
+    timedFetch({ baseUrl: config.apiUrl, path: `/api/v1/age-groups/${encodeURIComponent(ageGroup.id)}/standings`, timeoutMs: config.timeoutMs, parseAs: 'json', metrics, routeKey: 'apiAgeGroupStandings' }),
+    timedFetch({ baseUrl: config.apiUrl, path: `/api/v1/age-groups/${encodeURIComponent(ageGroup.id)}/program`,  timeoutMs: config.timeoutMs, parseAs: 'json', metrics, routeKey: 'apiAgeGroupProgram' }),
+    timedFetch({ baseUrl: config.apiUrl, path: `/api/v1/tournaments/${encodeURIComponent(profile.tournamentSlug)}/program`, timeoutMs: config.timeoutMs, parseAs: 'json', metrics, routeKey: 'apiTournamentProgram' }),
+  ])
+}
+
+/**
+ * Schedules repeated score-check spikes for the duration of the test.
+ * Every spikeEveryMs, injects spikeUsers simultaneous spike sessions.
+ */
+function startSpikeTicker(profiles, config, metrics, deadlineMs) {
+  let spikeCount = 0
+  const id = setInterval(async () => {
+    if (Date.now() >= deadlineMs) { clearInterval(id); return }
+    spikeCount += 1
+    process.stdout.write(`SCORE_SPIKE:${JSON.stringify({ spike: spikeCount, t: Date.now() })}\n`)
+    const profile = pickRandom(profiles)
+    await Promise.all(
+      Array.from({ length: config.spikeUsers }, () =>
+        simulateScoreCheckSpike(profile, config, metrics).catch(() => {})
+      )
+    )
+  }, config.spikeEveryMs)
+  return id
+}
+
 async function runUser(userIndex, deadlineMs, profiles, config, metrics) {
   const rampDelayMs = Math.floor((config.rampUpSec * 1000 * userIndex) / config.users)
   if (rampDelayMs > 0) await sleep(rampDelayMs)
@@ -639,7 +680,14 @@ async function main() {
   const deadlineMs = Date.now() + (config.durationSec * 1000)
   const collectedTicks = []
   const tickerId = startMetricsTicker(metrics, config, deadlineMs, collectedTicks)
+  const spikeTimerId = config.tournamentDay
+    ? startSpikeTicker(profiles, config, metrics, deadlineMs)
+    : null
+  if (config.tournamentDay) {
+    console.log(`Tournament-day mode: spike of ${config.spikeUsers} users every ${config.spikeEveryMs / 1000}s`)
+  }
   await Promise.all(Array.from({ length: config.users }, (_, index) => runUser(index, deadlineMs, profiles, config, metrics)))
+  if (spikeTimerId) clearInterval(spikeTimerId)
   clearInterval(tickerId)
   const wallClockMs = performance.now() - started
 
