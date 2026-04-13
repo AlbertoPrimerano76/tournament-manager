@@ -7,7 +7,15 @@ class Base(DeclarativeBase):
     pass
 
 
-engine = create_async_engine(settings.async_database_url, echo=False, pool_pre_ping=True)
+engine = create_async_engine(
+    settings.async_database_url,
+    echo=False,
+    pool_pre_ping=True,
+    pool_size=20,
+    max_overflow=40,
+    pool_timeout=30,
+    pool_recycle=300,
+)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 

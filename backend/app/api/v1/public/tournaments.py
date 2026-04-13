@@ -1,7 +1,9 @@
+import json as _json
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_, cast
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.models.tournament import Tournament, TournamentAgeGroup
@@ -70,27 +72,19 @@ def _serialize_tournament(tournament: Tournament) -> TournamentResponse:
 
 
 async def _find_published_tournament_by_slug(slug: str, db: AsyncSession) -> Tournament | None:
-    exact_match = (
-        await db.execute(
-            select(Tournament)
-            .options(selectinload(Tournament.organization))
-            .where(Tournament.is_published == True, Tournament.slug == slug)
+    result = await db.execute(
+        select(Tournament)
+        .options(selectinload(Tournament.organization))
+        .where(
+            Tournament.is_published == True,
+            or_(
+                Tournament.slug == slug,
+                Tournament.previous_slugs.cast(JSONB).op("@>")(cast(_json.dumps([slug]), JSONB)),
+            ),
         )
-    ).scalar_one_or_none()
-    if exact_match:
-        return exact_match
-
-    tournaments = (
-        await db.execute(
-            select(Tournament)
-            .options(selectinload(Tournament.organization))
-            .where(Tournament.is_published == True)
-        )
-    ).scalars().all()
-    for tournament in tournaments:
-        if slug in (tournament.previous_slugs or []):
-            return tournament
-    return None
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
 
 
 @router.get("/tournaments", response_model=list[TournamentResponse])

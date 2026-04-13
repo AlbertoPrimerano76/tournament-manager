@@ -41,6 +41,7 @@ const state = {
   stdoutTail: [],
   stderrTail: [],
   error: null,
+  timeSeries: [],
 }
 
 function showHelp() {
@@ -157,6 +158,7 @@ async function listReports() {
     try {
       const payload = JSON.parse(await readFile(reportPath, 'utf8'))
       const info = await stat(reportPath)
+      const ts = payload.timeSeries || []
       reports.push({
         runId: entry.name,
         generatedAt: payload.generatedAt ?? info.mtime.toISOString(),
@@ -166,6 +168,7 @@ async function listReports() {
         requestsPerSecond: payload.summary?.requestsPerSecond ?? null,
         failureRate: payload.summary?.failureRate ?? null,
         p95Ms: payload.summary?.p95Ms ?? null,
+        p95Series: ts.length >= 2 ? ts.map(t => t.p95) : null,
       })
     } catch {
       // Ignore malformed reports
@@ -229,8 +232,20 @@ function startRun(config) {
   state.stdoutTail = []
   state.stderrTail = []
   state.error = null
+  state.timeSeries = []
 
-  child.stdout.on('data', (chunk) => pushTail(state.stdoutTail, chunk.toString('utf8')))
+  child.stdout.on('data', (chunk) => {
+    const text = chunk.toString('utf8')
+    for (const line of text.split(/\r?\n/)) {
+      if (line.startsWith('METRIC_TICK:')) {
+        try {
+          const tick = JSON.parse(line.slice('METRIC_TICK:'.length))
+          state.timeSeries.push(tick)
+        } catch { /* ignore malformed tick */ }
+      }
+    }
+    pushTail(state.stdoutTail, text)
+  })
   child.stderr.on('data', (chunk) => pushTail(state.stderrTail, chunk.toString('utf8')))
   child.on('error', (error) => {
     state.status = 'failed'

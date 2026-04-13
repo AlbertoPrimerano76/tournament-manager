@@ -144,7 +144,36 @@ function createMetrics() {
     sessionErrors: 0,
     routeMap: new Map(),
     errors: [],
+    // per-tick accumulators (reset every TICK_INTERVAL_MS)
+    _tick: { requests: 0, errors: 0, durations: [] },
   }
+}
+
+const TICK_INTERVAL_MS = 10_000
+
+function startMetricsTicker(metrics, config, deadlineMs, collectedTicks = []) {
+  let tickIndex = 0
+  const id = setInterval(() => {
+    const now = Date.now()
+    tickIndex += 1
+    const elapsed = tickIndex * (TICK_INTERVAL_MS / 1000)
+    const total = config.durationSec + config.rampUpSec
+    const { requests, errors, durations } = metrics._tick
+    metrics._tick = { requests: 0, errors: 0, durations: [] }
+
+    const reqSec = Number((requests / (TICK_INTERVAL_MS / 1000)).toFixed(2))
+    const errRate = requests === 0 ? 0 : Number(((errors / requests) * 100).toFixed(2))
+    const p95 = Number(percentile(durations, 95).toFixed(1))
+    const p50 = Number(percentile(durations, 50).toFixed(1))
+    const activeSessions = metrics.sessionsStarted - metrics.sessionsCompleted - metrics.sessionErrors
+
+    const tick = { t: elapsed, total, reqSec, errRate, p95, p50, activeSessions, errors }
+    collectedTicks.push(tick)
+    process.stdout.write(`METRIC_TICK:${JSON.stringify(tick)}\n`)
+
+    if (now >= deadlineMs) clearInterval(id)
+  }, TICK_INTERVAL_MS)
+  return id
 }
 
 function recordRequest(metrics, routeKey, durationMs, status, ok, bytes, errorMessage = null) {
@@ -152,11 +181,15 @@ function recordRequest(metrics, routeKey, durationMs, status, ok, bytes, errorMe
   metrics.totalBytes += bytes
   metrics.allDurations.push(durationMs)
   metrics.statusCounts[status] = (metrics.statusCounts[status] ?? 0) + 1
+  // tick accumulator
+  metrics._tick.requests += 1
+  metrics._tick.durations.push(durationMs)
 
   if (ok) {
     metrics.successfulRequests += 1
   } else {
     metrics.failedRequests += 1
+    metrics._tick.errors += 1
     if (errorMessage && metrics.errors.length < 20) {
       metrics.errors.push({ routeKey, status, error: errorMessage })
     }
@@ -359,7 +392,7 @@ async function runUser(userIndex, deadlineMs, profiles, config, metrics) {
   }
 }
 
-function buildSummary(metrics, config, profiles, wallClockMs) {
+function buildSummary(metrics, config, profiles, wallClockMs, timeSeries) {
   const routes = [...metrics.routeMap.entries()].map(([routeKey, route]) => ({
     routeKey,
     label: route.label,
@@ -407,6 +440,7 @@ function buildSummary(metrics, config, profiles, wallClockMs) {
     },
     routes,
     sampleErrors: metrics.errors,
+    timeSeries: timeSeries || [],
   }
 }
 
@@ -603,10 +637,13 @@ async function main() {
 
   const started = performance.now()
   const deadlineMs = Date.now() + (config.durationSec * 1000)
+  const collectedTicks = []
+  const tickerId = startMetricsTicker(metrics, config, deadlineMs, collectedTicks)
   await Promise.all(Array.from({ length: config.users }, (_, index) => runUser(index, deadlineMs, profiles, config, metrics)))
+  clearInterval(tickerId)
   const wallClockMs = performance.now() - started
 
-  const report = buildSummary(metrics, config, profiles, wallClockMs)
+  const report = buildSummary(metrics, config, profiles, wallClockMs, collectedTicks)
   const runId = new Date().toISOString().replaceAll(':', '-')
   const outputDir = resolve(config.outputDir, runId)
   await mkdir(outputDir, { recursive: true })

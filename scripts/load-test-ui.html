@@ -17,605 +17,684 @@
       --warn-soft: #fff4e5;
       --bad: #b91c1c;
       --bad-soft: #fdecec;
-      --shadow: 0 26px 70px -46px rgba(15, 23, 42, 0.34);
+      --shadow: 0 26px 70px -46px rgba(15,23,42,0.34);
+      --green: #16a34a;
+      --yellow: #ca8a04;
+      --red: #dc2626;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       color: var(--ink);
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background:
-        radial-gradient(circle at top, #f5fff8 0%, #eef3ef 38%, #e8eeea 100%);
+      background: radial-gradient(circle at top, #f5fff8 0%, #eef3ef 38%, #e8eeea 100%);
     }
     .shell {
-      max-width: 1360px;
+      max-width: 1400px;
       margin: 0 auto;
-      padding: 28px 20px 40px;
+      padding: 28px 20px 60px;
       display: grid;
       gap: 18px;
     }
-    .hero, .panel {
-      border: 1px solid var(--line);
-      background: var(--panel);
-      border-radius: 28px;
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(10px);
-    }
+    .hero, .panel { border: 1px solid var(--line); background: var(--panel); border-radius: 28px; box-shadow: var(--shadow); backdrop-filter: blur(10px); }
     .hero {
       padding: 26px;
-      background:
-        radial-gradient(circle at top right, rgba(57, 181, 74, 0.12), transparent 34%),
-        linear-gradient(180deg, rgba(255,255,255,0.98), rgba(250,252,250,0.95));
+      background: radial-gradient(circle at top right, rgba(57,181,74,0.12), transparent 34%),
+                  linear-gradient(180deg, rgba(255,255,255,0.98), rgba(250,252,250,0.95));
     }
-    .hero-grid, .stats {
-      display: grid;
-      gap: 14px;
-    }
-    .hero-grid {
-      grid-template-columns: 1.2fr 0.8fr;
-      align-items: start;
-    }
-    .stats {
-      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-      margin-top: 18px;
-    }
-    .card, .stat {
-      border: 1px solid var(--line);
-      border-radius: 20px;
-      background: rgba(255,255,255,0.9);
-    }
-    .stat {
-      padding: 14px 16px;
-    }
-    .eyebrow {
-      font-size: 11px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.18em;
-      color: var(--muted);
-    }
+    .hero-top { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 18px; align-items: start; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px; margin-top: 18px; }
+    .stat { border: 1px solid var(--line); border-radius: 20px; background: rgba(255,255,255,0.9); padding: 14px 16px; }
+    .stat-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 700; }
+    .stat-help { color: var(--muted); font-size: 11px; margin-top: 4px; line-height: 1.4; }
+    .stat-value { margin-top: 8px; font-size: 28px; font-weight: 900; letter-spacing: -0.03em; }
+    .stat-value.good { color: var(--green); }
+    .stat-value.warn { color: var(--yellow); }
+    .stat-value.bad { color: var(--red); }
+    .eyebrow { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.18em; color: var(--muted); }
     h1, h2, h3, p { margin: 0; }
-    h1 {
-      margin-top: 8px;
-      font-size: 34px;
-      line-height: 1.05;
-      font-weight: 900;
-      letter-spacing: -0.03em;
-    }
-    .lede {
-      margin-top: 12px;
-      max-width: 62ch;
-      color: var(--muted);
-      line-height: 1.6;
-      font-size: 15px;
-    }
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 9px 14px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-    }
-    .pill.idle, .pill.completed {
-      background: var(--accent-soft);
-      color: var(--accent);
-    }
-    .pill.running {
-      background: #edf5ff;
-      color: #1d4ed8;
-    }
-    .pill.failed {
-      background: var(--bad-soft);
-      color: var(--bad);
-    }
-    .stat-label {
-      color: var(--muted);
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      font-weight: 700;
-    }
-    .stat-value {
-      margin-top: 8px;
-      font-size: 28px;
-      font-weight: 900;
-      letter-spacing: -0.03em;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
-      gap: 18px;
-    }
-    .panel {
-      padding: 22px;
-    }
-    .form-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-top: 16px;
-    }
-    label {
-      display: block;
-      font-size: 12px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      font-weight: 700;
-    }
-    input {
-      width: 100%;
-      margin-top: 8px;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 12px 13px;
-      font-size: 14px;
-      color: var(--ink);
-      background: #fff;
-    }
+    h1 { margin-top: 8px; font-size: 34px; line-height: 1.05; font-weight: 900; letter-spacing: -0.03em; }
+    .lede { margin-top: 12px; max-width: 62ch; color: var(--muted); line-height: 1.6; font-size: 15px; }
+    .pill { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; }
+    .pill.idle, .pill.completed { background: var(--accent-soft); color: var(--accent); }
+    .pill.running { background: #edf5ff; color: #1d4ed8; }
+    .pill.failed { background: var(--bad-soft); color: var(--bad); }
+    .grid-2 { display: grid; grid-template-columns: minmax(340px, 420px) minmax(0, 1fr); gap: 18px; }
+    .panel { padding: 22px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+    label { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; }
+    .field-help { font-size: 11px; color: var(--muted); margin-top: 3px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+    input { width: 100%; margin-top: 6px; border: 1px solid var(--line); border-radius: 14px; padding: 11px 13px; font-size: 14px; color: var(--ink); background: #fff; }
     .full { grid-column: 1 / -1; }
-    .actions {
-      margin-top: 16px;
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    button {
-      border: 0;
-      border-radius: 999px;
-      padding: 12px 18px;
-      font-size: 14px;
-      font-weight: 800;
-      cursor: pointer;
-      min-height: 44px;
-    }
-    .btn-primary {
-      background: linear-gradient(135deg, #0f5132 0%, #196241 100%);
-      color: white;
-    }
-    .btn-secondary {
-      background: #edf2ed;
-      color: var(--ink);
-    }
-    .muted {
-      color: var(--muted);
-    }
-    .report-list {
-      margin-top: 14px;
-      display: grid;
-      gap: 10px;
-      max-height: 460px;
-      overflow: auto;
-    }
-    .report-item {
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      background: white;
-      padding: 14px;
-      cursor: pointer;
-    }
-    .report-item.active {
-      border-color: #9bc2ab;
-      box-shadow: inset 0 0 0 1px #9bc2ab;
-      background: #f8fffa;
-    }
-    .report-meta {
-      margin-top: 8px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--muted);
-    }
-    .report-tag {
-      display: inline-flex;
-      padding: 5px 9px;
-      border-radius: 999px;
-      background: #f1f4f1;
-      color: var(--ink);
-      font-weight: 700;
-    }
-    .report-tag.warn {
-      background: var(--warn-soft);
-      color: var(--warn);
-    }
-    .report-tag.bad {
-      background: var(--bad-soft);
-      color: var(--bad);
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 14px;
-      font-size: 14px;
-    }
-    th, td {
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--line);
-      text-align: left;
-      vertical-align: top;
-    }
-    th {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--muted);
-    }
-    pre {
-      margin: 12px 0 0;
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      background: #101915;
-      color: #dff9e4;
-      padding: 14px;
-      overflow: auto;
-      max-height: 220px;
-      font-size: 12px;
-      line-height: 1.5;
-    }
-    .empty {
-      margin-top: 16px;
-      padding: 22px;
-      border: 1px dashed var(--line);
-      border-radius: 18px;
-      color: var(--muted);
-      background: rgba(255,255,255,0.72);
-    }
-    @media (max-width: 1024px) {
-      .hero-grid, .grid {
-        grid-template-columns: 1fr;
-      }
-    }
+    .actions { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+    button { border: 0; border-radius: 999px; padding: 12px 18px; font-size: 14px; font-weight: 800; cursor: pointer; min-height: 44px; }
+    .btn-primary { background: linear-gradient(135deg, #0f5132 0%, #196241 100%); color: white; }
+    .btn-secondary { background: #edf2ed; color: var(--ink); }
+    .muted { color: var(--muted); }
+    .report-list { margin-top: 14px; display: grid; gap: 8px; max-height: 480px; overflow: auto; }
+    .report-item { border: 1px solid var(--line); border-radius: 18px; background: white; padding: 12px 14px; cursor: pointer; }
+    .report-item.active { border-color: #9bc2ab; box-shadow: inset 0 0 0 1px #9bc2ab; background: #f8fffa; }
+    .report-meta { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--muted); align-items: center; }
+    .report-tag { display: inline-flex; padding: 4px 8px; border-radius: 999px; background: #f1f4f1; color: var(--ink); font-weight: 700; font-size: 11px; }
+    .report-tag.warn { background: var(--warn-soft); color: var(--warn); }
+    .report-tag.bad { background: var(--bad-soft); color: var(--bad); }
+    .report-tag.good { background: var(--accent-soft); color: var(--accent); }
+    table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
+    th, td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+    th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+    tr.row-good td:first-child { border-left: 3px solid var(--green); }
+    tr.row-warn td:first-child { border-left: 3px solid var(--yellow); }
+    tr.row-bad td:first-child { border-left: 3px solid var(--red); }
+    pre { margin: 12px 0 0; border: 1px solid var(--line); border-radius: 18px; background: #101915; color: #dff9e4; padding: 14px; overflow: auto; max-height: 180px; font-size: 12px; line-height: 1.5; }
+    .empty { margin-top: 16px; padding: 22px; border: 1px dashed var(--line); border-radius: 18px; color: var(--muted); background: rgba(255,255,255,0.72); font-size: 14px; }
+    .progress-wrap { margin-top: 16px; background: #e8eeea; border-radius: 999px; height: 10px; overflow: hidden; }
+    .progress-bar { height: 10px; border-radius: 999px; background: linear-gradient(90deg, #0f5132, #38a169); transition: width 0.5s ease; }
+    .chart-wrap { margin-top: 18px; }
+    .chart-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+    .chart-title span { font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+    svg.chart { width: 100%; height: 90px; display: block; }
+    .charts-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 14px; }
+    .chart-card { border: 1px solid var(--line); border-radius: 18px; background: white; padding: 14px; }
+    .legend { margin-top: 10px; display: flex; gap: 14px; flex-wrap: wrap; }
+    .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .sparkline { display: inline-block; vertical-align: middle; margin-left: 6px; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+    @media (max-width: 1100px) { .hero-top, .grid-2 { grid-template-columns: 1fr; } .charts-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 700px) { .form-grid { grid-template-columns: 1fr; } .detail-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
-  <main class="shell">
-    <section class="hero">
-      <div class="hero-grid">
+<main class="shell">
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-top">
+      <div>
+        <div class="eyebrow">Remote Stress Console</div>
+        <h1>Carico dal tuo PC, target su Vercel e Render</h1>
+        <p class="lede">La console gira in locale. Lancia il test dal tuo PC e colpisce direttamente il frontend Vercel e il backend Render, così l'app locale resta separata dal sistema sotto test.</p>
+      </div>
+      <div style="border:1px solid var(--line);border-radius:20px;padding:18px;background:white;">
+        <div class="eyebrow">Run State</div>
+        <div id="statusPill" class="pill idle" style="margin-top:10px;">Idle</div>
+        <div id="progressWrap" class="progress-wrap" style="display:none;margin-top:12px;">
+          <div id="progressBar" class="progress-bar" style="width:0%"></div>
+        </div>
+        <div id="progressLabel" style="font-size:11px;color:var(--muted);margin-top:6px;"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+          <span class="report-tag">Local console</span>
+          <span class="report-tag">Remote target</span>
+        </div>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-label">Req/sec</div>
+        <div id="statRps" class="stat-value">—</div>
+        <div class="stat-help">Richieste HTTP al secondo. Buono: &gt;100. Sotto test da 500 utenti, 150+ è ok.</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Error rate</div>
+        <div id="statErr" class="stat-value">—</div>
+        <div class="stat-help">% richieste fallite (5xx, timeout). Accettabile: &lt;2%. Oltre il 5% il sistema è in crisi.</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">P95 latenza</div>
+        <div id="statP95" class="stat-value">—</div>
+        <div class="stat-help">Il 95% delle richieste risponde entro questo tempo. Buono: &lt;1.5s. Oltre 3s gli utenti abbandonano.</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">P50 latenza</div>
+        <div id="statP50" class="stat-value">—</div>
+        <div class="stat-help">Latenza mediana (metà richieste). Riflette l'esperienza dell'utente medio.</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Sessioni ok</div>
+        <div id="statSessions" class="stat-value">—</div>
+        <div class="stat-help">Sessioni utente completate (homepage → torneo → categoria). Indica quanti "utenti reali" hanno finito il percorso.</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Utenti attivi</div>
+        <div id="statActive" class="stat-value">—</div>
+        <div class="stat-help">Utenti virtuali in ramp-up o in esecuzione in questo momento.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CHARTS LIVE -->
+  <section class="panel" id="chartsSection" style="display:none;">
+    <div class="eyebrow">Andamento in tempo reale</div>
+    <h2 style="margin-top:8px;font-size:20px;font-weight:900;letter-spacing:-0.02em;">Metriche live — aggiornate ogni 10 s</h2>
+    <div class="charts-grid" id="chartsGrid">
+      <div class="chart-card">
+        <div class="chart-title">Req/sec <span>richieste al secondo nell'intervallo</span></div>
+        <svg class="chart" id="chartRps" viewBox="0 0 300 90" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Error rate % <span>% errori nell'intervallo (rosso = critico)</span></div>
+        <svg class="chart" id="chartErr" viewBox="0 0 300 90" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">P95 ms <span>latenza del 95° percentile</span></div>
+        <svg class="chart" id="chartP95" viewBox="0 0 300 90" preserveAspectRatio="none"></svg>
+      </div>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#16a34a"></div>Buono</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ca8a04"></div>Attenzione</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#dc2626"></div>Critico</div>
+    </div>
+  </section>
+
+  <!-- LAUNCHER + REPORTS -->
+  <section class="grid-2">
+    <div class="panel">
+      <div class="eyebrow">Launcher</div>
+      <h2 style="margin-top:8px;font-size:22px;font-weight:900;letter-spacing:-0.03em;">Nuovo test</h2>
+      <p class="lede" style="max-width:none;font-size:13px;margin-top:8px;">Parti da 100 utenti per avere una baseline, poi 250, poi 500. Il ramp-up distribuisce l'arrivo degli utenti per simulare traffico reale.</p>
+
+      <form id="runForm">
+        <div class="form-grid">
+          <label class="full">Frontend URL
+            <input name="frontendUrl" value="https://minrugby-gestione-tornei.vercel.app" />
+          </label>
+          <label class="full">API URL
+            <input name="apiUrl" value="https://rugby-tournament-api.onrender.com" />
+          </label>
+          <label>Utenti concorrenti
+            <div class="field-help">Utenti virtuali simultanei</div>
+            <input name="users" type="number" value="100" min="1" />
+          </label>
+          <label>Durata (secondi)
+            <div class="field-help">Quanto dura il test dopo il ramp-up</div>
+            <input name="durationSec" type="number" value="60" min="1" />
+          </label>
+          <label>Ramp-up (secondi)
+            <div class="field-help">Tempo per portare tutti gli utenti a regime</div>
+            <input name="rampUpSec" type="number" value="15" min="0" />
+          </label>
+          <label>Timeout per richiesta (ms)
+            <div class="field-help">Oltre questo tempo = errore</div>
+            <input name="timeoutMs" type="number" value="10000" min="100" />
+          </label>
+          <label>Think time min (ms)
+            <div class="field-help">Pausa minima tra step (simula lettura)</div>
+            <input name="thinkMinMs" type="number" value="150" min="0" />
+          </label>
+          <label>Think time max (ms)
+            <div class="field-help">Pausa massima tra step</div>
+            <input name="thinkMaxMs" type="number" value="900" min="0" />
+          </label>
+          <label>Max tornei
+            <div class="field-help">Tornei usati per le sessioni</div>
+            <input name="maxTournaments" type="number" value="3" min="1" />
+          </label>
+          <label>Max categorie per torneo
+            <div class="field-help">Categorie per torneo</div>
+            <input name="maxAgeGroups" type="number" value="2" min="1" />
+          </label>
+          <label>Soglia error rate (es. 0.02)
+            <div class="field-help">Oltre questa % = WARN nel verdetto</div>
+            <input name="maxFailureRate" type="number" value="0.02" step="0.01" min="0" />
+          </label>
+          <label>Soglia P95 (ms)
+            <div class="field-help">Oltre questa latenza = WARN</div>
+            <input name="maxP95Ms" type="number" value="1500" min="1" />
+          </label>
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn-primary">▶ Avvia test</button>
+          <button type="button" class="btn-secondary" id="preset100">100 utenti / 60s</button>
+          <button type="button" class="btn-secondary" id="preset250">250 utenti / 90s</button>
+          <button type="button" class="btn-secondary" id="preset500">500 utenti / 180s</button>
+        </div>
+      </form>
+
+      <div id="messageBox" class="empty" style="display:none;"></div>
+
+      <h3 style="margin-top:20px;font-size:14px;font-weight:900;">Log output</h3>
+      <pre id="runLog">Nessuna esecuzione in corso.</pre>
+    </div>
+
+    <div class="panel">
+      <div class="eyebrow">Reports</div>
+      <h2 style="margin-top:8px;font-size:22px;font-weight:900;letter-spacing:-0.03em;">Storico e dettaglio</h2>
+      <div style="display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;margin-top:16px;">
         <div>
-          <div class="eyebrow">Remote Stress Console</div>
-          <h1>Carico dal tuo PC, target su Vercel e Render</h1>
-          <p class="lede">Questa console gira solo in locale. Lancia il test dal tuo computer e colpisce direttamente il frontend Vercel e il backend Render, così l'app in esecuzione sul PC resta separata dal sistema sotto test.</p>
+          <div id="reportList" class="report-list"></div>
         </div>
-        <div class="card" style="padding:18px;">
-          <div class="eyebrow">Run State</div>
-          <div id="statusPill" class="pill idle" style="margin-top:10px;">Idle</div>
-          <div class="report-meta" style="margin-top:12px;">
-            <span class="report-tag">Local console</span>
-            <span class="report-tag">Remote target</span>
-            <span class="report-tag">JSON + UI</span>
-          </div>
+        <div>
+          <div id="reportSummary" class="empty">Seleziona un report per vedere i dettagli.</div>
+          <div id="reportRoutes"></div>
         </div>
       </div>
-      <div class="stats">
-        <div class="stat"><div class="stat-label">Run attiva</div><div id="statRun" class="stat-value">No</div></div>
-        <div class="stat"><div class="stat-label">Utenti</div><div id="statUsers" class="stat-value">-</div></div>
-        <div class="stat"><div class="stat-label">Durata</div><div id="statDuration" class="stat-value">-</div></div>
-        <div class="stat"><div class="stat-label">Ultimo report</div><div id="statReport" class="stat-value">-</div></div>
-      </div>
-    </section>
+    </div>
+  </section>
 
-    <section class="grid">
-      <div class="panel">
-        <div class="eyebrow">Launcher</div>
-        <h2 style="margin-top:8px;font-size:24px;font-weight:900;letter-spacing:-0.03em;">Nuovo test</h2>
-        <p class="lede" style="max-width:none;">Configura il target remoto e la concorrenza. Parti da 100, poi 250, poi 500 utenti. Non sparare 500 subito se non hai già una baseline.</p>
+</main>
 
-        <form id="runForm">
-          <div class="form-grid">
-            <label class="full">Frontend URL
-              <input name="frontendUrl" value="https://minrugby-gestione-tornei.vercel.app" />
-            </label>
-            <label class="full">API URL
-              <input name="apiUrl" value="https://rugby-tournament-api.onrender.com" />
-            </label>
-            <label>Utenti concorrenti
-              <input name="users" type="number" value="100" min="1" />
-            </label>
-            <label>Durata secondi
-              <input name="durationSec" type="number" value="60" min="1" />
-            </label>
-            <label>Ramp-up secondi
-              <input name="rampUpSec" type="number" value="15" min="0" />
-            </label>
-            <label>Timeout ms
-              <input name="timeoutMs" type="number" value="10000" min="100" />
-            </label>
-            <label>Think min ms
-              <input name="thinkMinMs" type="number" value="150" min="0" />
-            </label>
-            <label>Think max ms
-              <input name="thinkMaxMs" type="number" value="900" min="0" />
-            </label>
-            <label>Max tornei
-              <input name="maxTournaments" type="number" value="3" min="1" />
-            </label>
-            <label>Max categorie per torneo
-              <input name="maxAgeGroups" type="number" value="2" min="1" />
-            </label>
-            <label>Soglia error rate
-              <input name="maxFailureRate" type="number" value="0.02" step="0.01" min="0" />
-            </label>
-            <label>Soglia p95 ms
-              <input name="maxP95Ms" type="number" value="1500" min="1" />
-            </label>
-          </div>
-          <div class="actions">
-            <button type="submit" class="btn-primary">Avvia test</button>
-            <button type="button" class="btn-secondary" id="preset100">Preset 100</button>
-            <button type="button" class="btn-secondary" id="preset250">Preset 250</button>
-            <button type="button" class="btn-secondary" id="preset500">Preset 500</button>
-          </div>
-        </form>
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+const state = {
+  status: null,
+  reports: [],
+  selectedRunId: null,
+  selectedReport: null,
+  timeSeries: [],
+}
 
-        <div id="messageBox" class="empty" style="display:none;"></div>
+// ─── DOM refs ─────────────────────────────────────────────────────────────────
+const els = {
+  runForm:       document.getElementById('runForm'),
+  messageBox:    document.getElementById('messageBox'),
+  statusPill:    document.getElementById('statusPill'),
+  statRps:       document.getElementById('statRps'),
+  statErr:       document.getElementById('statErr'),
+  statP95:       document.getElementById('statP95'),
+  statP50:       document.getElementById('statP50'),
+  statSessions:  document.getElementById('statSessions'),
+  statActive:    document.getElementById('statActive'),
+  reportList:    document.getElementById('reportList'),
+  reportSummary: document.getElementById('reportSummary'),
+  reportRoutes:  document.getElementById('reportRoutes'),
+  runLog:        document.getElementById('runLog'),
+  chartsSection: document.getElementById('chartsSection'),
+  progressWrap:  document.getElementById('progressWrap'),
+  progressBar:   document.getElementById('progressBar'),
+  progressLabel: document.getElementById('progressLabel'),
+  chartRps:      document.getElementById('chartRps'),
+  chartErr:      document.getElementById('chartErr'),
+  chartP95:      document.getElementById('chartP95'),
+}
 
-        <h3 style="margin-top:22px;font-size:16px;font-weight:900;">Output run</h3>
-        <pre id="runLog">Nessuna esecuzione in corso.</pre>
-      </div>
+// ─── API helpers ──────────────────────────────────────────────────────────────
+async function api(path, options = {}) {
+  const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...options })
+  const data = await r.json()
+  if (!r.ok) throw new Error(data.detail || 'Request failed')
+  return data
+}
 
-      <div class="panel">
-        <div class="eyebrow">Reports</div>
-        <h2 style="margin-top:8px;font-size:24px;font-weight:900;letter-spacing:-0.03em;">Storico e dettaglio</h2>
-        <div class="grid" style="grid-template-columns: 320px minmax(0,1fr); gap:16px; margin-top:16px;">
-          <div>
-            <div id="reportList" class="report-list"></div>
-          </div>
-          <div>
-            <div id="reportSummary" class="empty">Seleziona un report per vedere i dettagli.</div>
-            <div id="reportRoutes"></div>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
+function showMessage(text, kind = 'info') {
+  els.messageBox.style.display = 'block'
+  els.messageBox.textContent = text
+  els.messageBox.style.background = kind === 'error' ? '#fdecec' : '#eef8f1'
+  els.messageBox.style.color = kind === 'error' ? '#b91c1c' : '#155e3b'
+  els.messageBox.style.borderStyle = 'solid'
+}
+function clearMessage() { els.messageBox.style.display = 'none' }
 
-  <script>
-    const state = {
-      status: null,
-      reports: [],
-      selectedRunId: null,
-      selectedReport: null,
-      pollId: null,
-    }
+// ─── Color thresholds ─────────────────────────────────────────────────────────
+function rpsColor(v)  { return v >= 100 ? 'good' : v >= 50 ? 'warn' : 'bad' }
+function errColor(v)  { return v <= 2   ? 'good' : v <= 5  ? 'warn' : 'bad' }
+function p95Color(v)  { return v <= 1500 ? 'good' : v <= 3000 ? 'warn' : 'bad' }
+function p50Color(v)  { return v <= 800  ? 'good' : v <= 2000 ? 'warn' : 'bad' }
 
-    const els = {
-      runForm: document.getElementById('runForm'),
-      messageBox: document.getElementById('messageBox'),
-      statusPill: document.getElementById('statusPill'),
-      statRun: document.getElementById('statRun'),
-      statUsers: document.getElementById('statUsers'),
-      statDuration: document.getElementById('statDuration'),
-      statReport: document.getElementById('statReport'),
-      reportList: document.getElementById('reportList'),
-      reportSummary: document.getElementById('reportSummary'),
-      reportRoutes: document.getElementById('reportRoutes'),
-      runLog: document.getElementById('runLog'),
-      preset100: document.getElementById('preset100'),
-      preset250: document.getElementById('preset250'),
-      preset500: document.getElementById('preset500'),
-    }
+// ─── SVG chart ────────────────────────────────────────────────────────────────
+function drawLineChart(svgEl, values, colorFn, thresholdGood, thresholdWarn) {
+  const W = 300, H = 90, pad = { top: 8, bottom: 8, left: 4, right: 4 }
+  if (values.length < 2) {
+    svgEl.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="#9cac9e" font-size="11">In attesa di dati...</text>`
+    return
+  }
 
-    async function api(path, options = {}) {
-      const response = await fetch(path, {
-        headers: { 'Content-Type': 'application/json' },
-        ...options,
-      })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.detail || 'Request failed')
-      return data
-    }
+  const max = Math.max(...values) * 1.1 || 1
+  const min = 0
+  const range = max - min || 1
+  const innerW = W - pad.left - pad.right
+  const innerH = H - pad.top - pad.bottom
 
-    function showMessage(text, kind = 'info') {
-      els.messageBox.style.display = 'block'
-      els.messageBox.textContent = text
-      els.messageBox.style.borderStyle = 'solid'
-      els.messageBox.style.background = kind === 'error' ? '#fdecec' : '#eef8f1'
-      els.messageBox.style.color = kind === 'error' ? '#b91c1c' : '#155e3b'
-    }
+  const toX = (i) => pad.left + (i / (values.length - 1)) * innerW
+  const toY = (v) => pad.top + innerH - ((v - min) / range) * innerH
 
-    function clearMessage() {
-      els.messageBox.style.display = 'none'
-    }
+  // threshold lines
+  let lines = ''
+  if (thresholdGood != null) {
+    const y = toY(thresholdGood)
+    lines += `<line x1="${pad.left}" y1="${y}" x2="${W - pad.right}" y2="${y}" stroke="#16a34a" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>`
+  }
+  if (thresholdWarn != null) {
+    const y = toY(thresholdWarn)
+    lines += `<line x1="${pad.left}" y1="${y}" x2="${W - pad.right}" y2="${y}" stroke="#ca8a04" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>`
+  }
 
-    function fillPreset(users, durationSec, rampUpSec) {
-      els.runForm.users.value = users
-      els.runForm.durationSec.value = durationSec
-      els.runForm.rampUpSec.value = rampUpSec
-    }
+  // area fill path
+  const pts = values.map((v, i) => `${toX(i)},${toY(v)}`).join(' ')
+  const areaPath = `M ${toX(0)},${toY(0)} ` +
+    values.map((v, i) => `L ${toX(i)},${toY(v)}`).join(' ') +
+    ` L ${toX(values.length - 1)},${H - pad.bottom} L ${toX(0)},${H - pad.bottom} Z`
 
-    function renderStatus() {
-      const status = state.status
-      if (!status) return
-      const label = status.status === 'running'
-        ? 'Running'
-        : status.status === 'completed'
-          ? 'Completed'
-          : status.status === 'failed'
-            ? 'Failed'
-            : 'Idle'
+  // color last segment
+  const lastColor = colorFn(values[values.length - 1])
+  const strokeColor = lastColor === 'good' ? '#16a34a' : lastColor === 'warn' ? '#ca8a04' : '#dc2626'
+  const fillColor   = lastColor === 'good' ? 'rgba(22,163,74,0.08)' : lastColor === 'warn' ? 'rgba(202,138,4,0.08)' : 'rgba(220,38,38,0.08)'
 
-      els.statusPill.className = `pill ${status.status}`
-      els.statusPill.textContent = label
-      els.statRun.textContent = status.status === 'running' ? 'Si' : 'No'
-      els.statUsers.textContent = status.config?.users ?? '-'
-      els.statDuration.textContent = status.config?.durationSec ? `${status.config.durationSec}s` : '-'
-      els.statReport.textContent = status.runId ?? '-'
+  // polyline
+  const linePath = `M ` + values.map((v, i) => `${toX(i)},${toY(v)}`).join(' L ')
 
-      const stdout = status.stdoutTail || []
-      const stderr = status.stderrTail || []
-      const error = status.error ? [`ERROR: ${status.error}`] : []
-      const lines = [...stdout, ...stderr, ...error]
-      els.runLog.textContent = lines.length > 0 ? lines.join('\n') : 'Nessuna esecuzione in corso.'
-    }
+  // dots for each tick
+  const dots = values.map((v, i) => {
+    const c = colorFn(v)
+    const col = c === 'good' ? '#16a34a' : c === 'warn' ? '#ca8a04' : '#dc2626'
+    const isLast = i === values.length - 1
+    return `<circle cx="${toX(i)}" cy="${toY(v)}" r="${isLast ? 3.5 : 2}" fill="${col}" />`
+  }).join('')
 
-    function verdictClass(report) {
-      const verdict = report?.summary?.verdict
-      if (verdict === 'PASS') return ''
-      if (verdict === 'WARN') return 'warn'
-      return 'bad'
-    }
+  // last value label
+  const lastVal = values[values.length - 1]
+  const lx = toX(values.length - 1)
+  const ly = toY(lastVal)
+  const labelText = lastVal % 1 === 0 ? lastVal : lastVal.toFixed(1)
 
-    function renderReports() {
-      if (state.reports.length === 0) {
-        els.reportList.innerHTML = '<div class="empty">Nessun report disponibile.</div>'
-        return
-      }
+  svgEl.innerHTML = `
+    ${lines}
+    <path d="${areaPath}" fill="${fillColor}" />
+    <path d="${linePath}" fill="none" stroke="${strokeColor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+    ${dots}
+    <text x="${Math.min(lx + 5, W - pad.right - 24)}" y="${Math.max(ly - 4, pad.top + 8)}" fill="${strokeColor}" font-size="10" font-weight="700">${labelText}</text>
+  `
+}
 
-      els.reportList.innerHTML = state.reports.map((report) => `
-        <div class="report-item ${state.selectedRunId === report.runId ? 'active' : ''}" data-run-id="${report.runId}">
-          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
-            <strong>${report.runId}</strong>
-            <span class="report-tag ${report.verdict === 'WARN' ? 'warn' : report.verdict === 'PASS' ? '' : 'bad'}">${report.verdict}</span>
-          </div>
-          <div class="report-meta">
-            <span>${report.users ?? '-'} utenti</span>
-            <span>${report.durationSec ?? '-'} s</span>
-            <span>p95 ${report.p95Ms ?? '-'} ms</span>
-          </div>
-        </div>
-      `).join('')
+// ─── Sparkline for report list ─────────────────────────────────────────────────
+function sparkline(values, color) {
+  if (!values || values.length < 2) return ''
+  const W = 48, H = 18
+  const max = Math.max(...values) || 1
+  const toX = (i) => (i / (values.length - 1)) * W
+  const toY = (v) => H - (v / max) * (H - 2) - 1
+  const d = values.map((v, i) => `${i === 0 ? 'M' : 'L'} ${toX(i)},${toY(v)}`).join(' ')
+  return `<svg class="sparkline" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><path d="${d}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/></svg>`
+}
 
-      document.querySelectorAll('.report-item').forEach((node) => {
-        node.addEventListener('click', () => {
-          const runId = node.getAttribute('data-run-id')
-          if (!runId) return
-          state.selectedRunId = runId
-          renderReports()
-          loadReport(runId)
-        })
-      })
-    }
+// ─── Render status / progress ─────────────────────────────────────────────────
+function renderStatus() {
+  const s = state.status
+  if (!s) return
 
-    function renderSelectedReport() {
-      const report = state.selectedReport
-      if (!report) {
-        els.reportSummary.innerHTML = 'Seleziona un report per vedere i dettagli.'
-        els.reportRoutes.innerHTML = ''
-        return
-      }
+  const label = { running: 'Running', completed: 'Completed', failed: 'Failed', idle: 'Idle' }[s.status] ?? 'Idle'
+  els.statusPill.className = `pill ${s.status}`
+  els.statusPill.textContent = label
 
-      const summary = report.summary
-      const discovery = (report.discovery || []).map((item) => `<li><strong>${item.tournamentName}</strong> (${item.tournamentSlug})</li>`).join('')
+  const isRunning = s.status === 'running'
 
-      els.reportSummary.innerHTML = `
-        <div class="stats" style="margin-top:0;">
-          <div class="stat"><div class="stat-label">Verdetto</div><div class="stat-value" style="font-size:22px;">${summary.verdict}</div></div>
-          <div class="stat"><div class="stat-label">Req/sec</div><div class="stat-value" style="font-size:22px;">${summary.requestsPerSecond}</div></div>
-          <div class="stat"><div class="stat-label">Error rate</div><div class="stat-value" style="font-size:22px;">${summary.failureRate}%</div></div>
-          <div class="stat"><div class="stat-label">P95</div><div class="stat-value" style="font-size:22px;">${summary.p95Ms} ms</div></div>
-        </div>
-        <div class="report-meta" style="margin-top:14px;">
-          <span class="report-tag ${verdictClass(report)}">${summary.totalRequests} request</span>
-          <span class="report-tag">${summary.sessionsCompleted} sessioni complete</span>
-          <span class="report-tag">${report.config.frontendUrl}</span>
-        </div>
-        <div style="margin-top:16px;">
-          <div class="eyebrow">Discovery</div>
-          <ul style="margin:10px 0 0; padding-left:18px;">${discovery}</ul>
-        </div>
-      `
+  // progress bar
+  if (isRunning && s.config) {
+    const total = (s.config.durationSec + s.config.rampUpSec) * 1000
+    const elapsed = s.startedAt ? Date.now() - new Date(s.startedAt).getTime() : 0
+    const pct = Math.min(100, (elapsed / total) * 100)
+    const remaining = Math.max(0, Math.ceil((total - elapsed) / 1000))
+    els.progressWrap.style.display = 'block'
+    els.progressBar.style.width = `${pct.toFixed(1)}%`
+    els.progressLabel.textContent = `${pct.toFixed(0)}% — ${remaining}s rimanenti (${s.config.users} utenti, ${s.config.durationSec}s + ${s.config.rampUpSec}s ramp-up)`
+  } else {
+    els.progressWrap.style.display = 'none'
+    els.progressLabel.textContent = ''
+  }
 
-      const routeRows = (report.routes || []).slice(0, 16).map((route) => `
-        <tr>
-          <td>${route.label}</td>
-          <td>${route.count}</td>
-          <td>${route.fail}</td>
-          <td>${route.avgMs}</td>
-          <td>${route.p95Ms}</td>
-          <td>${route.p99Ms}</td>
-        </tr>
-      `).join('')
-
-      const errors = (report.sampleErrors || []).map((item) => `
-        <tr>
-          <td>${item.routeKey}</td>
-          <td>${item.status}</td>
-          <td>${item.error}</td>
-        </tr>
-      `).join('')
-
-      els.reportRoutes.innerHTML = `
-        <h3 style="margin-top:18px;font-size:16px;font-weight:900;">Route principali</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Route</th>
-              <th>Req</th>
-              <th>Fail</th>
-              <th>Avg</th>
-              <th>P95</th>
-              <th>P99</th>
-            </tr>
-          </thead>
-          <tbody>${routeRows}</tbody>
-        </table>
-        <h3 style="margin-top:18px;font-size:16px;font-weight:900;">Error samples</h3>
-        ${errors ? `<table><thead><tr><th>Route</th><th>Status</th><th>Error</th></tr></thead><tbody>${errors}</tbody></table>` : '<div class="empty">Nessun errore campionato.</div>'}
-      `
-    }
-
-    async function loadStatus() {
-      state.status = await api('/api/status')
-      renderStatus()
-    }
-
-    async function loadReports() {
-      const data = await api('/api/reports')
-      state.reports = data.items || []
-      if (!state.selectedRunId && state.reports.length > 0) {
-        state.selectedRunId = state.reports[0].runId
-      }
-      renderReports()
-      if (state.selectedRunId) {
-        await loadReport(state.selectedRunId)
-      } else {
-        renderSelectedReport()
-      }
-    }
-
-    async function loadReport(runId) {
-      try {
-        state.selectedReport = await api(`/api/reports/${encodeURIComponent(runId)}`)
-        renderSelectedReport()
-      } catch (error) {
-        showMessage(error.message, 'error')
-      }
-    }
-
-    async function refreshAll() {
-      await Promise.all([loadStatus(), loadReports()])
-    }
-
-    els.runForm.addEventListener('submit', async (event) => {
-      event.preventDefault()
-      clearMessage()
-      const formData = new FormData(els.runForm)
-      const payload = Object.fromEntries(formData.entries())
-      try {
-        const result = await api('/api/start', {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        })
-        showMessage(`Test avviato: ${result.runId}`)
-        await refreshAll()
-      } catch (error) {
-        showMessage(error.message, 'error')
-      }
+  // live stat cards from timeSeries
+  const ts = state.timeSeries
+  if (ts && ts.length > 0) {
+    const last = ts[ts.length - 1]
+    setStatValue(els.statRps,      last.reqSec,      rpsColor(last.reqSec))
+    setStatValue(els.statErr,      `${last.errRate}%`, errColor(last.errRate))
+    setStatValue(els.statP95,      `${last.p95}ms`,  p95Color(last.p95))
+    setStatValue(els.statP50,      `${last.p50}ms`,  p50Color(last.p50))
+    setStatValue(els.statActive,   last.activeSessions ?? '—', 'neutral')
+    els.chartsSection.style.display = 'block'
+    drawCharts(ts)
+  } else if (s.status === 'running') {
+    // show dashes while waiting for first tick
+    ['statRps','statErr','statP95','statP50','statActive'].forEach(k => {
+      els[k].textContent = '…'
+      els[k].className = 'stat-value'
     })
+  }
 
-    els.preset100.addEventListener('click', () => fillPreset(100, 60, 15))
-    els.preset250.addEventListener('click', () => fillPreset(250, 90, 30))
-    els.preset500.addEventListener('click', () => fillPreset(500, 180, 60))
+  // sessions from stdout
+  if (s.status === 'completed' || s.status === 'running') {
+    // parse sessions from stdout tail
+    const tail = (s.stdoutTail || []).join('\n')
+    const m = tail.match(/Sessions completed: (\d+)/)
+    if (m) setStatValue(els.statSessions, m[1], 'good')
+  }
 
-    refreshAll().catch((error) => showMessage(error.message, 'error'))
-    state.pollId = window.setInterval(() => {
-      refreshAll().catch(() => {})
-    }, 3000)
-  </script>
+  // log
+  const lines = [...(s.stdoutTail || []), ...(s.stderrTail || []), ...(s.error ? [`ERROR: ${s.error}`] : [])]
+    .filter(l => !l.startsWith('METRIC_TICK:'))
+  els.runLog.textContent = lines.length > 0 ? lines.join('\n') : 'Nessuna esecuzione in corso.'
+}
+
+function setStatValue(el, value, colorClass) {
+  el.textContent = value
+  el.className = 'stat-value' + (colorClass && colorClass !== 'neutral' ? ` ${colorClass}` : '')
+}
+
+function drawCharts(ts) {
+  drawLineChart(els.chartRps, ts.map(t => t.reqSec),  rpsColor, 100, 50)
+  drawLineChart(els.chartErr, ts.map(t => t.errRate), errColor, 2,   5)
+  drawLineChart(els.chartP95, ts.map(t => t.p95),     p95Color, 1500, 3000)
+}
+
+// ─── Report list ──────────────────────────────────────────────────────────────
+function renderReports() {
+  if (state.reports.length === 0) {
+    els.reportList.innerHTML = '<div class="empty">Nessun report disponibile.</div>'
+    return
+  }
+
+  els.reportList.innerHTML = state.reports.map(r => {
+    const vc = r.verdict === 'PASS' ? 'good' : r.verdict === 'WARN' ? 'warn' : 'bad'
+    const p95color = r.p95Ms ? (r.p95Ms <= 1500 ? '#16a34a' : r.p95Ms <= 3000 ? '#ca8a04' : '#dc2626') : '#9cac9e'
+    const sp = r.p95Series ? sparkline(r.p95Series, p95color) : ''
+    return `
+      <div class="report-item ${state.selectedRunId === r.runId ? 'active' : ''}" data-run-id="${r.runId}">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <strong style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.runId.slice(0,19).replace('T',' ')}</strong>
+          <span class="report-tag ${vc}">${r.verdict}</span>
+        </div>
+        <div class="report-meta">
+          <span>${r.users ?? '?'} utenti</span>
+          <span>${r.durationSec ?? '?'}s</span>
+          <span style="color:${p95color};font-weight:700;">p95 ${r.p95Ms ?? '?'} ms</span>
+          <span>${r.requestsPerSecond ?? '?'} r/s</span>
+          ${sp}
+        </div>
+      </div>`
+  }).join('')
+
+  document.querySelectorAll('.report-item').forEach(node => {
+    node.addEventListener('click', () => {
+      state.selectedRunId = node.getAttribute('data-run-id')
+      renderReports()
+      loadReport(state.selectedRunId)
+    })
+  })
+}
+
+// ─── Report detail ────────────────────────────────────────────────────────────
+function renderSelectedReport() {
+  const report = state.selectedReport
+  if (!report) {
+    els.reportSummary.innerHTML = 'Seleziona un report per vedere i dettagli.'
+    els.reportRoutes.innerHTML = ''
+    return
+  }
+
+  const s = report.summary
+  const vc = s.verdict === 'PASS' ? 'good' : s.verdict === 'WARN' ? 'warn' : 'bad'
+  const discovery = (report.discovery || []).map(d => `<li><strong>${d.tournamentName}</strong> (${d.tournamentSlug})</li>`).join('')
+
+  // summary cards
+  els.reportSummary.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;">
+      <div class="stat" style="padding:10px 12px;">
+        <div class="stat-label">Verdetto</div>
+        <div class="stat-value" style="font-size:18px;" >${s.verdict}</div>
+        <div class="stat-help">${s.verdict === 'PASS' ? 'Sotto le soglie impostate' : 'Superata soglia error rate o P95'}</div>
+      </div>
+      <div class="stat" style="padding:10px 12px;">
+        <div class="stat-label">Req/sec</div>
+        <div class="stat-value ${rpsColor(s.requestsPerSecond)}" style="font-size:18px;">${s.requestsPerSecond}</div>
+        <div class="stat-help">Throughput medio del test</div>
+      </div>
+      <div class="stat" style="padding:10px 12px;">
+        <div class="stat-label">Error rate</div>
+        <div class="stat-value ${errColor(s.failureRate)}" style="font-size:18px;">${s.failureRate}%</div>
+        <div class="stat-help">${s.failureRate <= 2 ? 'Accettabile' : s.failureRate <= 5 ? 'Attenzione: alto' : 'Critico: sistema in crisi'}</div>
+      </div>
+      <div class="stat" style="padding:10px 12px;">
+        <div class="stat-label">P95</div>
+        <div class="stat-value ${p95Color(s.p95Ms)}" style="font-size:18px;">${s.p95Ms} ms</div>
+        <div class="stat-help">${s.p95Ms <= 1500 ? 'Buona UX' : s.p95Ms <= 3000 ? 'UX degradata' : 'Utenti abbandonano'}</div>
+      </div>
+      <div class="stat" style="padding:10px 12px;">
+        <div class="stat-label">P99</div>
+        <div class="stat-value ${p95Color(s.p99Ms)}" style="font-size:18px;">${s.p99Ms} ms</div>
+        <div class="stat-help">Coda lenta — 1 utente su 100</div>
+      </div>
+      <div class="stat" style="padding:10px 12px;">
+        <div class="stat-label">Sessioni ok</div>
+        <div class="stat-value" style="font-size:18px;">${s.sessionsCompleted}</div>
+        <div class="stat-help">Percorsi utente completati</div>
+      </div>
+    </div>
+    <div style="margin-top:14px;font-size:13px;color:var(--muted);">
+      <strong style="color:var(--ink);">Tornei testati:</strong>
+      <ul style="margin:6px 0 0;padding-left:18px;">${discovery}</ul>
+    </div>
+  `
+
+  // routes table with color coding
+  const routeRows = (report.routes || []).slice(0, 20).map(r => {
+    const errPct = r.count > 0 ? (r.fail / r.count) * 100 : 0
+    const rowClass = errPct > 5 ? 'row-bad' : errPct > 1 ? 'row-warn' : 'row-good'
+    const p95cls = p95Color(r.p95Ms)
+    const errCls = errColor(errPct)
+    return `<tr class="${rowClass}">
+      <td style="font-size:12px;">${r.label}</td>
+      <td>${r.count}</td>
+      <td class="${errCls}" style="font-weight:700;">${r.fail} <span style="font-size:11px;opacity:0.7;">(${errPct.toFixed(1)}%)</span></td>
+      <td>${r.avgMs}</td>
+      <td class="${p95cls}" style="font-weight:700;">${r.p95Ms}</td>
+      <td>${r.p99Ms}</td>
+    </tr>`
+  }).join('')
+
+  const errors = (report.sampleErrors || []).map(e =>
+    `<tr><td>${e.routeKey}</td><td>${e.status}</td><td style="color:#b91c1c;">${e.error}</td></tr>`
+  ).join('')
+
+  // timeseries chart from saved report (if stored)
+  let chartHtml = ''
+  if (report.timeSeries && report.timeSeries.length >= 2) {
+    chartHtml = `
+      <div class="charts-grid" style="margin-top:16px;">
+        <div class="chart-card">
+          <div class="chart-title">Req/sec nel tempo</div>
+          <svg id="detailChartRps" class="chart" viewBox="0 0 300 90" preserveAspectRatio="none"></svg>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Error rate % nel tempo</div>
+          <svg id="detailChartErr" class="chart" viewBox="0 0 300 90" preserveAspectRatio="none"></svg>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">P95 ms nel tempo</div>
+          <svg id="detailChartP95" class="chart" viewBox="0 0 300 90" preserveAspectRatio="none"></svg>
+        </div>
+      </div>`
+  }
+
+  els.reportRoutes.innerHTML = `
+    ${chartHtml}
+    <h3 style="margin-top:18px;font-size:14px;font-weight:900;">Route breakdown</h3>
+    <p style="font-size:12px;color:var(--muted);margin-top:4px;">
+      <span style="border-left:3px solid #16a34a;padding-left:6px;margin-right:10px;">Verde = errori &lt;1%</span>
+      <span style="border-left:3px solid #ca8a04;padding-left:6px;margin-right:10px;">Giallo = errori 1–5%</span>
+      <span style="border-left:3px solid #dc2626;padding-left:6px;">Rosso = errori &gt;5%</span>
+    </p>
+    <table>
+      <thead><tr><th>Route</th><th>Req</th><th>Fail</th><th>Avg ms</th><th>P95 ms</th><th>P99 ms</th></tr></thead>
+      <tbody>${routeRows}</tbody>
+    </table>
+    <h3 style="margin-top:18px;font-size:14px;font-weight:900;">Error samples</h3>
+    ${errors
+      ? `<table><thead><tr><th>Route</th><th>Status</th><th>Errore</th></tr></thead><tbody>${errors}</tbody></table>`
+      : '<div class="empty">Nessun errore campionato.</div>'
+    }
+  `
+
+  // draw historic charts if available
+  if (report.timeSeries && report.timeSeries.length >= 2) {
+    requestAnimationFrame(() => {
+      const rEl = document.getElementById('detailChartRps')
+      const eEl = document.getElementById('detailChartErr')
+      const pEl = document.getElementById('detailChartP95')
+      if (rEl) drawLineChart(rEl, report.timeSeries.map(t => t.reqSec),  rpsColor, 100, 50)
+      if (eEl) drawLineChart(eEl, report.timeSeries.map(t => t.errRate), errColor, 2,   5)
+      if (pEl) drawLineChart(pEl, report.timeSeries.map(t => t.p95),     p95Color, 1500, 3000)
+    })
+  }
+}
+
+// ─── Data loading ─────────────────────────────────────────────────────────────
+async function loadStatus() {
+  const data = await api('/api/status')
+  state.status = data
+  state.timeSeries = data.timeSeries || []
+  renderStatus()
+}
+
+async function loadReports() {
+  const data = await api('/api/reports')
+  state.reports = data.items || []
+  if (!state.selectedRunId && state.reports.length > 0) {
+    state.selectedRunId = state.reports[0].runId
+  }
+  renderReports()
+  if (state.selectedRunId) await loadReport(state.selectedRunId)
+  else renderSelectedReport()
+}
+
+async function loadReport(runId) {
+  try {
+    state.selectedReport = await api(`/api/reports/${encodeURIComponent(runId)}`)
+    renderSelectedReport()
+  } catch (e) {
+    showMessage(e.message, 'error')
+  }
+}
+
+async function refreshAll() {
+  await Promise.all([loadStatus(), loadReports()])
+}
+
+// ─── Form ──────────────────────────────────────────────────────────────────────
+els.runForm.addEventListener('submit', async e => {
+  e.preventDefault()
+  clearMessage()
+  const payload = Object.fromEntries(new FormData(els.runForm).entries())
+  try {
+    const r = await api('/api/start', { method: 'POST', body: JSON.stringify(payload) })
+    showMessage(`Test avviato: ${r.runId}`)
+    await refreshAll()
+  } catch (err) {
+    showMessage(err.message, 'error')
+  }
+})
+
+function fillPreset(users, durationSec, rampUpSec) {
+  els.runForm.users.value = users
+  els.runForm.durationSec.value = durationSec
+  els.runForm.rampUpSec.value = rampUpSec
+}
+document.getElementById('preset100').addEventListener('click', () => fillPreset(100, 60,  15))
+document.getElementById('preset250').addEventListener('click', () => fillPreset(250, 90,  30))
+document.getElementById('preset500').addEventListener('click', () => fillPreset(500, 180, 60))
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+refreshAll().catch(e => showMessage(e.message, 'error'))
+setInterval(() => refreshAll().catch(() => {}), 3000)
+</script>
 </body>
 </html>
