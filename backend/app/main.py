@@ -62,36 +62,42 @@ class PublicApiCacheInvalidationMiddleware(BaseHTTPMiddleware):
         return response
 
 
-# Paths whose data changes rarely → longer CDN TTL (5 min)
 _LONG_CDN_PATTERNS = ("/program", "/standings", "/fields", "/organizations/")
 
-class PublicCacheHeaderMiddleware(BaseHTTPMiddleware):
-    """
-    Adds Cache-Control headers to all successful public GET responses so that
-    Cloudflare (in front of Render) and Vercel's edge cache can serve them
-    directly, bypassing the backend entirely for the majority of requests.
 
-    TTLs are intentionally shorter than the in-memory PublicApiCache TTLs so
-    that CDN-cached responses expire before the in-memory entries do.
+class PublicCacheHeaderMiddleware:
     """
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
-        path = request.url.path
-        if (
-            request.method == "GET"
-            and path.startswith("/api/v1/")
-            and not path.startswith("/api/v1/admin")
-            and response.status_code == 200
-        ):
-            if any(pat in path for pat in _LONG_CDN_PATTERNS):
-                # Programs / standings / fields / orgs — change only via admin write
-                ttl, stale = 300, 1800
-            else:
-                # Tournament list / detail / age-groups / matches — moderate refresh
-                ttl, stale = 60, 300
-            response.headers["Cache-Control"] = f"public, max-age={ttl}, stale-while-revalidate={stale}"
-            response.headers["Vary"] = "Accept-Encoding"
-        return response
+    Pure ASGI middleware — zero response-buffering overhead.
+    Injects Cache-Control headers into public GET 200 responses so Cloudflare
+    (already in front of Render) caches them at the edge.
+    """
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope.get("method") != "GET":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        if not (path.startswith("/api/v1/") and not path.startswith("/api/v1/admin")):
+            await self.app(scope, receive, send)
+            return
+
+        if any(pat in path for pat in _LONG_CDN_PATTERNS):
+            header = b"public, max-age=300, stale-while-revalidate=1800"
+        else:
+            header = b"public, max-age=60, stale-while-revalidate=300"
+
+        async def send_with_cache(message):
+            if message["type"] == "http.response.start" and message.get("status") == 200:
+                headers = list(message.get("headers", []))
+                headers.append((b"cache-control", header))
+                headers.append((b"vary", b"accept-encoding"))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_cache)
 
 
 app.add_middleware(PublicApiCacheInvalidationMiddleware)
