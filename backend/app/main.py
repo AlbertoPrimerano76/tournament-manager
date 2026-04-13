@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
@@ -20,7 +21,7 @@ from app.api.v1.admin import upload as admin_upload
 from app.api.v1.admin import dashboard as admin_dashboard
 from app.api.v1.admin import maintenance as admin_maintenance
 from app.api.v1.admin import security_questions as admin_security_questions
-from app.services.public_api_cache import public_api_cache
+from app.services.public_api_cache import public_api_cache, warmup_public_cache
 
 settings.validate_production_settings()
 
@@ -28,6 +29,7 @@ settings.validate_production_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await bootstrap_local_environment()
+    asyncio.create_task(warmup_public_cache())
     yield
 
 

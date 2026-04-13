@@ -18,10 +18,10 @@ from app.services.program_pdf import build_age_group_program_pdf
 from app.services.public_api_cache import public_api_cache
 
 router = APIRouter()
-PUBLIC_CACHE_TTL_SECONDS = 120
-PUBLIC_CACHE_STALE_SECONDS = 600
-PROGRAM_CACHE_TTL_SECONDS = 300
-PROGRAM_CACHE_STALE_SECONDS = 1800
+PUBLIC_CACHE_TTL_SECONDS = 300        # 5 min fresh  (was 2 min)
+PUBLIC_CACHE_STALE_SECONDS = 1800     # 30 min stale (was 10 min)
+PROGRAM_CACHE_TTL_SECONDS = 1800      # 30 min fresh (was 5 min) — programs change only via admin
+PROGRAM_CACHE_STALE_SECONDS = 7200    # 2 h stale    (was 30 min)
 
 
 def _serialize_standings_row(row):
