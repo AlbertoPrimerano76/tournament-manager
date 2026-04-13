@@ -245,6 +245,23 @@ async function fetchWithTimeout(url, timeoutMs, parseAs = 'json') {
   }
 }
 
+async function fetchWithRetry(url, timeoutMs, parseAs = 'json', maxRetries = 3) {
+  let lastError
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fetchWithTimeout(url, timeoutMs, parseAs)
+    } catch (err) {
+      lastError = err
+      if (attempt < maxRetries) {
+        const delayMs = attempt * 2000
+        console.log(`  Retry ${attempt}/${maxRetries - 1} for ${url} after ${delayMs}ms (${err instanceof Error ? err.message : String(err)})`)
+        await sleep(delayMs)
+      }
+    }
+  }
+  throw lastError
+}
+
 async function timedFetch({ baseUrl, path, timeoutMs, parseAs, metrics, routeKey }) {
   const started = performance.now()
   const controller = new AbortController()
@@ -281,16 +298,31 @@ async function timedFetch({ baseUrl, path, timeoutMs, parseAs, metrics, routeKey
 }
 
 async function discoverProfiles(config) {
-  const tournaments = await fetchWithTimeout(`${config.apiUrl}/api/v1/tournaments`, config.timeoutMs, 'json')
+  // Extended timeout for discovery to handle cold-start on free-tier hosting
+  const discoveryTimeoutMs = Math.max(config.timeoutMs, 30_000)
+
+  let tournaments
+  try {
+    console.log(`  Connecting to API... (up to ${discoveryTimeoutMs / 1000}s, retries on cold start)`)
+    tournaments = await fetchWithRetry(`${config.apiUrl}/api/v1/tournaments`, discoveryTimeoutMs, 'json')
+  } catch (err) {
+    throw new Error(`Cannot reach API at ${config.apiUrl}/api/v1/tournaments — ${err instanceof Error ? err.message : String(err)}`)
+  }
+  if (!Array.isArray(tournaments)) {
+    throw new Error(`API at ${config.apiUrl}/api/v1/tournaments returned unexpected data: ${JSON.stringify(tournaments).slice(0, 200)}`)
+  }
+  if (tournaments.length === 0) {
+    throw new Error(`API returned an empty tournament list — make sure at least one tournament is published on ${config.apiUrl}`)
+  }
   const selectedTournaments = tournaments.slice(0, config.maxTournaments)
 
   const profiles = []
   for (const tournament of selectedTournaments) {
     let ageGroups = []
     try {
-      ageGroups = await fetchWithTimeout(
+      ageGroups = await fetchWithRetry(
         `${config.apiUrl}/api/v1/tournaments/${encodeURIComponent(tournament.slug)}/age-groups`,
-        config.timeoutMs,
+        discoveryTimeoutMs,
         'json',
       )
     } catch {
@@ -301,9 +333,9 @@ async function discoverProfiles(config) {
     for (const ageGroup of ageGroups.slice(0, config.maxAgeGroups)) {
       let matches = []
       try {
-        matches = await fetchWithTimeout(
+        matches = await fetchWithRetry(
           `${config.apiUrl}/api/v1/age-groups/${encodeURIComponent(ageGroup.id)}/matches`,
-          config.timeoutMs,
+          discoveryTimeoutMs,
           'json',
         )
       } catch {
@@ -328,7 +360,10 @@ async function discoverProfiles(config) {
   }
 
   if (profiles.length === 0) {
-    throw new Error('No public tournaments with age groups were discovered')
+    throw new Error(
+      `Discovery found ${tournaments.length} tournament(s) but none had usable age groups. ` +
+      `Check that tournaments are published and have at least one age group configured on ${config.apiUrl}.`
+    )
   }
 
   return profiles

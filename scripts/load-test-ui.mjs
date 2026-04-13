@@ -276,7 +276,10 @@ function startRun(config) {
     } else {
       state.status = 'failed'
       if (!state.error) {
-        state.error = `Load test exited with code ${code}`
+        // Try to extract the actual error from stderr/stdout tails
+        const allLines = [...state.stderrTail, ...state.stdoutTail]
+        const errorLine = allLines.reverse().find((l) => l.includes('Load test failed:') || l.includes('Error:') || l.includes('error:'))
+        state.error = errorLine ? errorLine.replace(/^.*?(Load test failed:|Error:|error:)\s*/, '$1 ').trim() : `Load test exited with code ${code}`
       }
     }
   })
