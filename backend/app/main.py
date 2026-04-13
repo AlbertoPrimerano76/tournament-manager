@@ -3,8 +3,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import settings
 from app.core.local_bootstrap import bootstrap_local_environment
 from app.api.v1.public import tournaments as public_tournaments
@@ -52,14 +52,40 @@ app.add_middleware(
 )
 
 
-class PublicApiCacheInvalidationMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
-        if request.method != "GET" and request.url.path.startswith("/api/v1/admin") and response.status_code < 400:
+class PublicApiCacheInvalidationMiddleware:
+    """
+    Pure ASGI middleware — fires cache invalidation after successful admin writes
+    without buffering the response body (no BaseHTTPMiddleware overhead).
+    """
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        method = scope.get("method", "")
+        path   = scope.get("path", "")
+        should_invalidate = method != "GET" and path.startswith("/api/v1/admin")
+
+        if not should_invalidate:
+            await self.app(scope, receive, send)
+            return
+
+        status_holder = [None]
+
+        async def capture_status(message):
+            if message["type"] == "http.response.start":
+                status_holder[0] = message.get("status")
+            await send(message)
+
+        await self.app(scope, receive, capture_status)
+
+        if status_holder[0] is not None and status_holder[0] < 400:
             from app.core.database import AsyncSessionLocal
             async with AsyncSessionLocal() as db:
-                await invalidate_for_request(request.url.path, db)
-        return response
+                await invalidate_for_request(path, db)
 
 
 _LONG_CDN_PATTERNS = ("/program", "/standings", "/fields", "/organizations/")
@@ -100,6 +126,7 @@ class PublicCacheHeaderMiddleware:
         await self.app(scope, receive, send_with_cache)
 
 
+app.add_middleware(GZipMiddleware, minimum_size=512)  # compress responses ≥ 512 bytes
 app.add_middleware(PublicApiCacheInvalidationMiddleware)
 app.add_middleware(PublicCacheHeaderMiddleware)
 
