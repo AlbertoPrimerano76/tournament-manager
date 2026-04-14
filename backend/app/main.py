@@ -29,7 +29,9 @@ settings.validate_production_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await bootstrap_local_environment()
+    is_sqlite = settings.async_database_url.startswith("sqlite")
+    if is_sqlite or not settings.is_production:
+        await bootstrap_local_environment()
     asyncio.create_task(warmup_public_cache())
     yield
 
@@ -83,9 +85,13 @@ class PublicApiCacheInvalidationMiddleware:
         await self.app(scope, receive, capture_status)
 
         if status_holder[0] is not None and status_holder[0] < 400:
-            from app.core.database import AsyncSessionLocal
-            async with AsyncSessionLocal() as db:
-                await invalidate_for_request(path, db)
+            is_sqlite = settings.async_database_url.startswith("sqlite")
+            if is_sqlite or not settings.is_production:
+                await public_api_cache.clear()
+            else:
+                from app.core.database import AsyncSessionLocal
+                async with AsyncSessionLocal() as db:
+                    await invalidate_for_request(path, db)
 
 
 _LONG_CDN_PATTERNS = ("/program", "/standings", "/fields", "/organizations/")

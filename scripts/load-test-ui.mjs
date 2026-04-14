@@ -2,7 +2,7 @@
 
 import http from 'node:http'
 import { spawn } from 'node:child_process'
-import { readFile, readdir, stat } from 'node:fs/promises'
+import { readFile, readdir, stat, rm, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,7 +11,9 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = resolve(__filename, '..')
 const projectRoot = resolve(__dirname, '..')
 const reportsRoot = resolve(projectRoot, 'load-test-reports')
+const scenariosPath = resolve(reportsRoot, 'scenarios.json')
 const loadTestScript = resolve(projectRoot, 'scripts/public-load-test.mjs')
+const bpTestScript   = resolve(projectRoot, 'scripts/breaking-point-test.mjs')
 const htmlPath = resolve(projectRoot, 'scripts/load-test-ui.html')
 
 const defaultConfig = {
@@ -30,6 +32,7 @@ const defaultConfig = {
   tournamentDay: false,
   spikeUsers: 50,
   spikeEveryMs: 30000,
+  bypassCache: true,
 }
 
 const state = {
@@ -44,6 +47,23 @@ const state = {
   stdoutTail: [],
   stderrTail: [],
   error: null,
+  timeSeries: [],
+  reportPayload: null,
+}
+
+const bpState = {
+  status: 'idle',   // idle | running | completed | failed
+  startedAt: null,
+  finishedAt: null,
+  config: null,
+  childPid: null,
+  exitCode: null,
+  stdoutTail: [],
+  stderrTail: [],
+  error: null,
+  currentStep: null,   // {step, users, phase}
+  steps: [],           // completed STEP_RESULT items
+  breakingPoint: null, // final BREAKING_POINT payload
   timeSeries: [],
 }
 
@@ -130,6 +150,7 @@ function sanitizeConfig(body) {
     tournamentDay: String(merged.tournamentDay) === 'true' || merged.tournamentDay === true,
     spikeUsers: Number.parseInt(String(merged.spikeUsers ?? 50), 10),
     spikeEveryMs: Number.parseInt(String(merged.spikeEveryMs ?? 30000), 10),
+    bypassCache: String(merged.bypassCache) !== 'false' && merged.bypassCache !== false,
   }
 
   if (!cleaned.frontendUrl.startsWith('http')) throw new Error('frontendUrl must start with http or https')
@@ -179,6 +200,7 @@ async function listReports() {
         durationSec: payload.config?.durationSec ?? null,
         rampUpSec: payload.config?.rampUpSec ?? null,
         tournamentDay: payload.config?.tournamentDay ?? false,
+        bypassCache: payload.config?.bypassCache ?? true,
         requestsPerSecond: payload.summary?.requestsPerSecond ?? null,
         failureRate: payload.summary?.failureRate ?? null,
         p95Ms: payload.summary?.p95Ms ?? null,
@@ -191,6 +213,16 @@ async function listReports() {
   }
 
   return reports.sort((left, right) => right.runId.localeCompare(left.runId))
+}
+
+async function readScenarios() {
+  if (!existsSync(scenariosPath)) return []
+  try { return JSON.parse(await readFile(scenariosPath, 'utf8')) } catch { return [] }
+}
+
+async function writeScenarios(scenarios) {
+  await mkdir(reportsRoot, { recursive: true })
+  await writeFile(scenariosPath, JSON.stringify(scenarios, null, 2), 'utf8')
 }
 
 async function readReport(runId) {
@@ -227,9 +259,11 @@ function startRun(config) {
     '--max-tournaments', String(config.maxTournaments),
     '--max-age-groups', String(config.maxAgeGroups),
     '--output-dir', reportsRoot,
+    '--run-id', runId,
     '--max-failure-rate', String(config.maxFailureRate),
     '--max-p95', String(config.maxP95Ms),
     ...(config.tournamentDay ? ['--tournament-day', '--spike-users', String(config.spikeUsers), '--spike-every', String(config.spikeEveryMs)] : []),
+    ...(config.bypassCache ? [] : ['--no-bypass-cache']),
   ]
 
   const child = spawn(process.execPath, args, {
@@ -249,6 +283,7 @@ function startRun(config) {
   state.stderrTail = []
   state.error = null
   state.timeSeries = []
+  state.reportPayload = null
 
   child.stdout.on('data', (chunk) => {
     const text = chunk.toString('utf8')
@@ -258,6 +293,10 @@ function startRun(config) {
           const tick = JSON.parse(line.slice('METRIC_TICK:'.length))
           state.timeSeries.push(tick)
         } catch { /* ignore malformed tick */ }
+      } else if (line.startsWith('REPORT_JSON:')) {
+        try {
+          state.reportPayload = JSON.parse(line.slice('REPORT_JSON:'.length))
+        } catch { /* ignore malformed report */ }
       }
     }
     pushTail(state.stdoutTail, text)
@@ -273,6 +312,14 @@ function startRun(config) {
     state.finishedAt = new Date().toISOString()
     if (code === 0) {
       state.status = 'completed'
+      if (state.reportPayload?.runId && state.reportPayload?.report) {
+        const reportDir = join(reportsRoot, state.reportPayload.runId)
+        mkdir(reportDir, { recursive: true })
+          .then(() => writeFile(join(reportDir, 'summary.json'), `${JSON.stringify(state.reportPayload.report, null, 2)}\n`, 'utf8'))
+          .catch((error) => {
+            state.error = `Report save failed: ${error.message}`
+          })
+      }
     } else {
       state.status = 'failed'
       if (!state.error) {
@@ -281,6 +328,89 @@ function startRun(config) {
         const errorLine = allLines.reverse().find((l) => l.includes('Load test failed:') || l.includes('Error:') || l.includes('error:'))
         state.error = errorLine ? errorLine.replace(/^.*?(Load test failed:|Error:|error:)\s*/, '$1 ').trim() : `Load test exited with code ${code}`
       }
+    }
+  })
+}
+
+function sanitizeBpConfig(body) {
+  const defaults = {
+    frontendUrl: defaultConfig.frontendUrl,
+    apiUrl: defaultConfig.apiUrl,
+    startUsers: 50, maxUsers: 1200,
+    stepDurationSec: 45, stepRampSec: 10, cooldownSec: 8,
+    thinkMinMs: 150, thinkMaxMs: 900, timeoutMs: 10000,
+    maxTournaments: 3, maxAgeGroups: 2,
+    maxFailureRate: 0.05, maxP95Ms: 2000,
+  }
+  const m = { ...defaults, ...body }
+  return {
+    frontendUrl: String(m.frontendUrl).replace(/\/+$/, ''),
+    apiUrl:      String(m.apiUrl).replace(/\/+$/, ''),
+    startUsers:     Number.parseInt(String(m.startUsers), 10),
+    maxUsers:       Number.parseInt(String(m.maxUsers), 10),
+    stepDurationSec:Number.parseInt(String(m.stepDurationSec), 10),
+    stepRampSec:    Number.parseInt(String(m.stepRampSec), 10),
+    cooldownSec:    Number.parseInt(String(m.cooldownSec), 10),
+    thinkMinMs:     Number.parseInt(String(m.thinkMinMs), 10),
+    thinkMaxMs:     Number.parseInt(String(m.thinkMaxMs), 10),
+    timeoutMs:      Number.parseInt(String(m.timeoutMs), 10),
+    maxTournaments: Number.parseInt(String(m.maxTournaments), 10),
+    maxAgeGroups:   Number.parseInt(String(m.maxAgeGroups), 10),
+    maxFailureRate: Number.parseFloat(String(m.maxFailureRate)),
+    maxP95Ms:       Number.parseInt(String(m.maxP95Ms), 10),
+  }
+}
+
+function startBpRun(config) {
+  if (bpState.status === 'running') throw new Error('A breaking point test is already running')
+  if (state.status === 'running') throw new Error('A load test is already running — stop it first')
+
+  const args = [
+    bpTestScript,
+    '--frontend-url', config.frontendUrl, '--api-url', config.apiUrl,
+    '--start-users',  String(config.startUsers),
+    '--max-users',    String(config.maxUsers),
+    '--step-duration',String(config.stepDurationSec),
+    '--step-ramp',    String(config.stepRampSec),
+    '--cooldown',     String(config.cooldownSec),
+    '--think-min',    String(config.thinkMinMs),
+    '--think-max',    String(config.thinkMaxMs),
+    '--timeout',      String(config.timeoutMs),
+    '--max-tournaments', String(config.maxTournaments),
+    '--max-age-groups',  String(config.maxAgeGroups),
+    '--output-dir',   reportsRoot,
+    '--max-failure-rate', String(config.maxFailureRate),
+    '--max-p95',      String(config.maxP95Ms),
+  ]
+
+  const child = spawn(process.execPath, args, { cwd: projectRoot, stdio: ['ignore', 'pipe', 'pipe'] })
+
+  Object.assign(bpState, {
+    status: 'running', startedAt: new Date().toISOString(), finishedAt: null,
+    config, childPid: child.pid ?? null, exitCode: null,
+    stdoutTail: [], stderrTail: [], error: null,
+    currentStep: null, steps: [], breakingPoint: null, timeSeries: [],
+  })
+
+  child.stdout.on('data', (chunk) => {
+    const text = chunk.toString('utf8')
+    for (const line of text.split(/\r?\n/)) {
+      if (line.startsWith('STEP_RESULT:'))    { try { bpState.steps.push(JSON.parse(line.slice(12))) } catch {} }
+      else if (line.startsWith('STEP_START:'))     { try { bpState.currentStep = JSON.parse(line.slice(11)) } catch {} }
+      else if (line.startsWith('BREAKING_POINT:')) { try { bpState.breakingPoint = JSON.parse(line.slice(15)) } catch {} }
+      else if (line.startsWith('METRIC_TICK:'))    { try { bpState.timeSeries.push(JSON.parse(line.slice(12))) } catch {} }
+    }
+    pushTail(bpState.stdoutTail, text)
+  })
+  child.stderr.on('data', (chunk) => pushTail(bpState.stderrTail, chunk.toString('utf8')))
+  child.on('error', (err) => { bpState.status = 'failed'; bpState.finishedAt = new Date().toISOString(); bpState.error = err.message })
+  child.on('close', (code) => {
+    bpState.exitCode = code; bpState.finishedAt = new Date().toISOString()
+    bpState.status = code === 0 ? 'completed' : 'failed'
+    if (code !== 0 && !bpState.error) {
+      const lines = [...bpState.stderrTail, ...bpState.stdoutTail]
+      const el = lines.reverse().find(l => l.includes('failed:') || l.includes('Error:'))
+      bpState.error = el || `BP test exited with code ${code}`
     }
   })
 }
@@ -313,6 +443,68 @@ async function requestHandler(req, res) {
       return
     }
     json(res, 200, report)
+    return
+  }
+
+  if (req.method === 'GET' && requestUrl.pathname === '/api/bp/status') {
+    json(res, 200, bpState)
+    return
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname === '/api/bp/start') {
+    try {
+      const body = await readBody(req)
+      const config = sanitizeBpConfig(body)
+      startBpRun(config)
+      json(res, 202, { status: 'started' })
+    } catch (error) {
+      json(res, 400, { detail: error instanceof Error ? error.message : String(error) })
+    }
+    return
+  }
+
+  if (req.method === 'DELETE' && requestUrl.pathname === '/api/reports') {
+    if (!existsSync(reportsRoot)) { json(res, 200, { deleted: 0 }); return }
+    const entries = await readdir(reportsRoot, { withFileTypes: true })
+    let deleted = 0
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      await rm(join(reportsRoot, entry.name), { recursive: true, force: true })
+      deleted += 1
+    }
+    json(res, 200, { deleted })
+    return
+  }
+
+  if (req.method === 'GET' && requestUrl.pathname === '/api/scenarios') {
+    json(res, 200, { items: await readScenarios() })
+    return
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname === '/api/scenarios') {
+    try {
+      const body = await readBody(req)
+      const name = String(body.name || '').trim()
+      if (!name) throw new Error('name is required')
+      const config = sanitizeConfig(body.config || {})
+      const scenarios = await readScenarios()
+      const idx = scenarios.findIndex(s => s.name === name)
+      const entry = { name, config, savedAt: new Date().toISOString() }
+      if (idx >= 0) scenarios[idx] = entry
+      else scenarios.push(entry)
+      await writeScenarios(scenarios)
+      json(res, 200, { ok: true })
+    } catch (error) {
+      json(res, 400, { detail: error instanceof Error ? error.message : String(error) })
+    }
+    return
+  }
+
+  if (req.method === 'DELETE' && requestUrl.pathname.startsWith('/api/scenarios/')) {
+    const name = decodeURIComponent(requestUrl.pathname.replace('/api/scenarios/', ''))
+    const scenarios = await readScenarios()
+    await writeScenarios(scenarios.filter(s => s.name !== name))
+    json(res, 200, { ok: true })
     return
   }
 

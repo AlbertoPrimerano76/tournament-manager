@@ -4,6 +4,9 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { performance } from 'node:perf_hooks'
 
+// Set to false via --no-bypass-cache to let CDN serve cached responses
+let BYPASS_CACHE = true
+
 const ROUTES = {
   pageHome: 'GET /',
   apiTournaments: 'GET /api/v1/tournaments',
@@ -42,6 +45,7 @@ Options:
   --output-dir <path>        Report output directory
   --max-failure-rate <pct>   Heuristic failure threshold, default 0.02
   --max-p95 <ms>             Heuristic p95 threshold, default 1500
+  --run-id <id>              Explicit run id used for the report folder
   --help                     Show this help
 
 Examples:
@@ -63,12 +67,14 @@ function parseArgs(argv) {
     maxTournaments: 3,
     maxAgeGroups: 2,
     outputDir: 'load-test-reports',
+    runId: '',
     maxFailureRate: 0.02,
     maxP95Ms: 1500,
     // tournament-day spike mode
     tournamentDay: false,
     spikeUsers: 50,        // extra users injected at each spike
     spikeEveryMs: 30_000,  // inject a spike every N ms
+    bypassCache: true,     // send Cache-Control: no-cache (bypasses CDN)
   }
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -89,11 +95,13 @@ function parseArgs(argv) {
     if (arg === '--max-tournaments') config.maxTournaments = Number.parseInt(next, 10)
     if (arg === '--max-age-groups') config.maxAgeGroups = Number.parseInt(next, 10)
     if (arg === '--output-dir') config.outputDir = next
+    if (arg === '--run-id') config.runId = next
     if (arg === '--max-failure-rate') config.maxFailureRate = Number.parseFloat(next)
     if (arg === '--max-p95') config.maxP95Ms = Number.parseInt(next, 10)
     if (arg === '--tournament-day') config.tournamentDay = true
     if (arg === '--spike-users') config.spikeUsers = Number.parseInt(next, 10)
     if (arg === '--spike-every') config.spikeEveryMs = Number.parseInt(next, 10)
+    if (arg === '--no-bypass-cache') config.bypassCache = false
   }
 
   config.frontendUrl = normalizeBaseUrl(config.frontendUrl)
@@ -229,7 +237,7 @@ async function fetchWithTimeout(url, timeoutMs, parseAs = 'json') {
       headers: {
         Accept: parseAs === 'json' ? 'application/json' : 'text/html,application/xhtml+xml',
         'User-Agent': 'rugby-public-load-tester/1.0',
-        'Cache-Control': 'no-cache',
+        ...(BYPASS_CACHE ? { 'Cache-Control': 'no-cache' } : {}),
       },
       signal: controller.signal,
     })
@@ -272,7 +280,7 @@ async function timedFetch({ baseUrl, path, timeoutMs, parseAs, metrics, routeKey
       headers: {
         Accept: parseAs === 'json' ? 'application/json' : 'text/html,application/xhtml+xml',
         'User-Agent': 'rugby-public-load-tester/1.0',
-        'Cache-Control': 'no-cache',
+        ...(BYPASS_CACHE ? { 'Cache-Control': 'no-cache' } : {}),
       },
       signal: controller.signal,
     })
@@ -705,6 +713,7 @@ function renderHtmlReport(report) {
 
 async function main() {
   const config = parseArgs(process.argv.slice(2))
+  BYPASS_CACHE = config.bypassCache
   const metrics = createMetrics()
 
   console.log(`Discovering public journeys from ${config.apiUrl} ...`)
@@ -727,11 +736,12 @@ async function main() {
   const wallClockMs = performance.now() - started
 
   const report = buildSummary(metrics, config, profiles, wallClockMs, collectedTicks)
-  const runId = new Date().toISOString().replaceAll(':', '-')
+  const runId = config.runId || new Date().toISOString().replaceAll(':', '-')
   const outputDir = resolve(config.outputDir, runId)
   await mkdir(outputDir, { recursive: true })
   await writeFile(join(outputDir, 'summary.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8')
   await writeFile(join(outputDir, 'report.html'), renderHtmlReport(report), 'utf8')
+  process.stdout.write(`REPORT_JSON:${JSON.stringify({ runId, report })}\n`)
 
   console.log('')
   console.log(`Verdict: ${report.summary.verdict}`)

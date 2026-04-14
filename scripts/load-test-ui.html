@@ -145,6 +145,9 @@
     .preset-card.tday .preset-name { color: var(--warn); }
     .preset-card.tday { border-color: #fde68a; background: #fffbeb; }
     .preset-card.tday:hover { border-color: var(--warn); }
+    .preset-card.peak .preset-name { color: var(--bad); }
+    .preset-card.peak { border-color: #fca5a5; background: #fff5f5; }
+    .preset-card.peak:hover { border-color: var(--bad); }
 
     /* ── Launch button ───────────────────────────────── */
     .launch-bar {
@@ -180,12 +183,21 @@
       margin-top: 14px; background: #e8eeea;
       border-radius: 999px; height: 8px; overflow: hidden;
     }
+    .progress-bar-bg { position: relative; }
     .progress-bar {
       height: 8px; border-radius: 999px;
       background: linear-gradient(90deg, #0f5132, #38a169);
       transition: width 0.5s ease; width: 0%;
     }
+    .progress-bar.rampup { background: linear-gradient(90deg, #b45309, #f59e0b); }
     .progress-label { margin-top: 6px; font-size: 11px; color: var(--muted); }
+    .phase-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em;
+      padding: 3px 9px; border-radius: 999px; margin-left: 8px;
+    }
+    .phase-pill.rampup { background: #fff4e5; color: var(--warn); }
+    .phase-pill.regime { background: var(--accent-soft); color: var(--accent); }
 
     /* ── Stats grid ──────────────────────────────────── */
     .stats-grid { display: grid; grid-template-columns: repeat(6,1fr); gap: 12px; margin-top: 16px; }
@@ -273,6 +285,13 @@
     tr.row-good td:first-child { border-left: 3px solid var(--green); }
     tr.row-warn td:first-child { border-left: 3px solid var(--yellow); }
     tr.row-bad  td:first-child { border-left: 3px solid var(--red); }
+    .btn-clear-history {
+      font-size: 11px; font-weight: 700; padding: 4px 10px;
+      border-radius: 8px; border: 1px solid var(--border);
+      background: var(--panel); color: var(--red); cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-clear-history:hover { background: #fff0f0; }
     .section-label {
       font-size: 11px; font-weight: 800; text-transform: uppercase;
       letter-spacing: 0.14em; color: var(--muted); margin: 18px 0 8px;
@@ -291,7 +310,95 @@
     .spike-hint { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
     .spike-fields { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-    @media (max-width: 1100px) {
+    /* ── Breaking Point tab ─────────────────────────────── */
+    .bp-layout { display: grid; grid-template-columns: 280px minmax(0,1fr); gap: 18px; align-items: start; }
+    .bp-result-hero {
+      background: linear-gradient(135deg, #f5f3ff, #ede9fe);
+      border: 2px solid #a78bfa; border-radius: var(--radius);
+      padding: 24px; text-align: center; margin-bottom: 16px;
+    }
+    .bp-result-hero.not-found { background: linear-gradient(135deg,#f0fdf4,#dcfce7); border-color: var(--green); }
+    .bp-result-hero.failed    { background: var(--bad-soft); border-color: var(--bad); }
+    .bp-hero-num  { font-size: 64px; font-weight: 900; letter-spacing: -0.04em; color: #7c3aed; line-height: 1; }
+    .bp-hero-num.not-found { color: var(--green); }
+    .bp-hero-label { font-size: 13px; font-weight: 700; color: #6d28d9; margin-top: 4px; }
+    .bp-hero-conf  { font-size: 11px; color: #7c3aed; margin-top: 6px; }
+    .bp-step-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+    .bp-step-table th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--line); }
+    .bp-step-table td { padding: 7px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+    .bp-step-table tr.pass td:first-child { border-left: 3px solid var(--green); }
+    .bp-step-table tr.fail td:first-child { border-left: 3px solid var(--red); }
+    .bp-step-table tr.refine { background: #fafaf5; }
+    .bp-chart-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-top: 14px; }
+    .bp-chart-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 8px; }
+    svg.bp-chart { width: 100%; height: 160px; display: block; overflow: visible; }
+    .bp-current-step {
+      background: linear-gradient(135deg,#f5f3ff,#ede9fe); border: 1px solid #c4b5fd;
+      border-radius: 14px; padding: 12px 16px; margin-bottom: 12px;
+    }
+    .bp-current-label { font-size: 11px; font-weight: 800; color: #7c3aed; text-transform: uppercase; letter-spacing: 0.1em; }
+    .bp-current-val   { font-size: 22px; font-weight: 900; color: #5b21b6; margin-top: 2px; }
+    .btn-bp {
+      padding: 13px 28px; border-radius: 999px; border: none;
+      background: linear-gradient(135deg, #6d28d9, #7c3aed);
+      color: white; font-size: 14px; font-weight: 800; cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn-bp:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    @media (max-width: 1100px) { .bp-layout { grid-template-columns: 1fr; } }
+
+    /* ── Saved scenarios ─────────────────────────────── */
+    .scenario-chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 20px 4px; min-height: 42px; }
+    .scenario-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 12px; border-radius: 12px;
+      background: #f0f4f1; border: 1px solid var(--line);
+      font-size: 12px; font-weight: 700; cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .scenario-chip:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+    .scenario-chip-del {
+      font-size: 13px; font-weight: 900; color: var(--muted);
+      background: none; border: none; cursor: pointer; line-height: 1;
+      padding: 0 2px; margin-left: 2px;
+    }
+    .scenario-chip-del:hover { color: var(--red); }
+    .scenario-save-row {
+      display: flex; gap: 8px; padding: 10px 20px 14px;
+      border-top: 1px solid var(--line); margin-top: 4px;
+    }
+
+    /* ── Compare ─────────────────────────────────────── */
+    .compare-check {
+      display: inline-flex; align-items: center; gap: 4px;
+      cursor: pointer; padding: 2px 6px; border-radius: 8px;
+      border: 1px solid var(--line); background: #fafcfa;
+      font-size: 10px; font-weight: 700; color: var(--muted);
+      transition: border-color 0.15s;
+    }
+    .compare-check:has(input:checked) { border-color: #7c3aed; background: #f5f3ff; color: #7c3aed; }
+    .compare-check input[type=checkbox] { width: 12px; height: 12px; accent-color: #7c3aed; cursor: pointer; }
+    .compare-bar {
+      background: linear-gradient(135deg,#f5f3ff,#ede9fe); border: 1px solid #c4b5fd;
+      border-radius: 12px; padding: 10px 14px;
+      display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+    }
+    .compare-bar-text { font-size: 12px; font-weight: 700; color: #6d28d9; flex: 1; }
+    .btn-compare {
+      padding: 8px 16px; border-radius: 999px; border: none;
+      background: linear-gradient(135deg,#6d28d9,#7c3aed);
+      color: white; font-size: 12px; font-weight: 800; cursor: pointer;
+    }
+    .btn-compare-clear {
+      padding: 6px 12px; border-radius: 999px;
+      border: 1px solid #c4b5fd; background: white;
+      color: #7c3aed; font-size: 11px; font-weight: 700; cursor: pointer;
+    }
+    .compare-panel table { margin-top: 0; }
+    .compare-panel td.delta-good { color: var(--green); font-weight: 800; }
+    .compare-panel td.delta-bad  { color: var(--red);   font-weight: 800; }
+    .compare-panel td.delta-neut { color: var(--muted); font-weight: 700; }
       .stats-grid  { grid-template-columns: repeat(3,1fr); }
       .charts-row  { grid-template-columns: 1fr; }
       .history-layout { grid-template-columns: 1fr; }
@@ -323,6 +430,7 @@
   <button class="tab-btn active" data-tab="configure">① Configura</button>
   <button class="tab-btn" data-tab="live">② Live</button>
   <button class="tab-btn" data-tab="history">③ Storico <span id="historyBadge" class="tab-badge" style="display:none"></span></button>
+  <button class="tab-btn" data-tab="bp">④ Breaking Point</button>
 </nav>
 
 <!-- ═══════════════════════ TAB 1 — CONFIGURA ══════════════════════════ -->
@@ -337,15 +445,15 @@
         <div class="card-sub">Puoi modificare qualsiasi parametro dopo aver selezionato un preset</div>
       </div>
     </div>
-    <div class="presets">
+    <div class="presets" style="grid-template-columns:repeat(5,1fr);">
       <div class="preset-card" id="preset-smoke" data-preset="smoke">
         <div class="preset-name">Smoke</div>
-        <div class="preset-desc">Verifica che l'app risponda correttamente senza carico.</div>
+        <div class="preset-desc">Verifica che l'app risponda senza carico.</div>
         <div class="preset-meta">10 utenti · 30s · ramp 5s</div>
       </div>
       <div class="preset-card" id="preset-load" data-preset="load">
         <div class="preset-name">Load</div>
-        <div class="preset-desc">Carico normale. Trova la latenza di base del sistema.</div>
+        <div class="preset-desc">Carico normale. Trova la latenza di base.</div>
         <div class="preset-meta">100 utenti · 60s · ramp 15s</div>
       </div>
       <div class="preset-card" id="preset-stress" data-preset="stress">
@@ -353,12 +461,35 @@
         <div class="preset-desc">Carico elevato. Trova il punto di rottura.</div>
         <div class="preset-meta">500 utenti · 180s · ramp 60s</div>
       </div>
+      <div class="preset-card peak" id="preset-peak" data-preset="peak">
+        <div class="preset-name">🔴 Peak</div>
+        <div class="preset-desc">Massimo carico realistico con ramp-up graduale.</div>
+        <div class="preset-meta">1000 utenti · 120s · ramp 30s</div>
+      </div>
       <div class="preset-card tday" id="preset-tday" data-preset="tday">
         <div class="preset-name">⚡ Giorno Torneo</div>
-        <div class="preset-desc">Simula onde di controllo risultati dopo ogni aggiornamento score.</div>
-        <div class="preset-meta">250 base + 80 spike / 30s · 5 min</div>
+        <div class="preset-desc">Onde di risultati dopo ogni aggiornamento score.</div>
+        <div class="preset-meta">1000 base + 80 spike / 30s · 5 min</div>
       </div>
     </div>
+  </div>
+
+  <!-- Scenari salvati -->
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header" style="padding-bottom:8px;">
+      <div>
+        <div class="card-title">Scenari salvati</div>
+        <div class="card-sub">Salva la configurazione attuale e richiamala con un click</div>
+      </div>
+    </div>
+    <div class="scenario-chips" id="scenariosList">
+      <span class="empty-inline">Nessuno scenario salvato.</span>
+    </div>
+    <div class="scenario-save-row">
+      <input type="text" id="scenarioNameInput" placeholder="Nome scenario (es. Peak 500u giorno torneo)…" maxlength="60" style="flex:1;min-width:0;" />
+      <button type="button" id="saveScenarioBtn" style="padding:9px 18px;border-radius:12px;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">Salva</button>
+    </div>
+    <div id="scenarioMsg" style="display:none;font-size:12px;padding:0 20px 10px;"></div>
   </div>
 
   <!-- Form -->
@@ -451,6 +582,21 @@
           <input name="maxP95Ms" type="number" value="1500" min="1" />
         </div>
       </div>
+    </div>
+
+    <!-- Sezione: Cache -->
+    <div class="form-section">
+      <div class="form-section-title">Modalità cache</div>
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+        <input type="checkbox" name="bypassCache" id="bypassCache" value="true" checked style="margin-top:3px;width:16px;height:16px;cursor:pointer;accent-color:var(--accent);" />
+        <div>
+          <div style="font-size:13px;font-weight:700;">Bypassa CDN (Cache-Control: no-cache)</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5;">
+            <strong>Attivo</strong>: tutte le richieste arrivano a Render, bypassando Cloudflare — misura la capacità raw del backend.<br>
+            <strong>Disattivo</strong>: Cloudflare risponde dalla cache per le pagine già visitate — misura l'esperienza reale degli utenti in produzione.
+          </div>
+        </div>
+      </label>
     </div>
 
     <!-- Sezione: Spike -->
@@ -591,7 +737,16 @@
 
     <!-- Colonna sinistra: lista test raggruppati per data -->
     <div>
-      <div class="section-label" style="margin-top:0;">Test eseguiti</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div class="section-label" style="margin:0;">Test eseguiti</div>
+        <button id="clearHistoryBtn" class="btn-clear-history" title="Elimina tutti i report dal disco">Svuota storico</button>
+      </div>
+      <div id="historyMsg" style="display:none;font-size:12px;padding:6px 10px;border-radius:8px;margin-bottom:8px;"></div>
+      <div id="compareBar" style="display:none;" class="compare-bar">
+        <span class="compare-bar-text" id="compareBarText">2 test selezionati</span>
+        <button class="btn-compare" id="compareBtn">Confronta →</button>
+        <button class="btn-compare-clear" id="compareClearBtn">✕</button>
+      </div>
       <div id="historyList"><div class="detail-empty" style="padding:24px;">Nessun test disponibile.</div></div>
     </div>
 
@@ -600,6 +755,101 @@
       <div class="detail-empty">← Seleziona un test per vedere il dettaglio.</div>
     </div>
 
+  </div>
+</div>
+</div>
+
+<!-- ══════════════════════ TAB 4 — BREAKING POINT ═════════════════════ -->
+<div class="tab-pane" id="tab-bp">
+<div class="page">
+  <div class="bp-layout">
+
+    <!-- Left: config form -->
+    <div>
+      <form id="bpForm">
+      <div class="card">
+        <div class="card-header" style="padding-bottom:12px;">
+          <div>
+            <div class="card-title">🔍 Breaking Point Finder</div>
+            <div class="card-sub">Trova il massimo carico sostenibile in automatico</div>
+          </div>
+        </div>
+        <div style="padding:0 20px 4px;">
+          <div class="form-grid cols-1" style="gap:10px;">
+            <div class="field">
+              <label>Utenti iniziali</label>
+              <input name="startUsers" type="number" value="50" min="1" />
+            </div>
+            <div class="field">
+              <label>Utenti massimi</label>
+              <input name="maxUsers" type="number" value="1200" min="10" />
+            </div>
+            <div class="field">
+              <label>Durata step (s)</label>
+              <div class="field-hint">Ogni livello di carico dura questo tempo</div>
+              <input name="stepDurationSec" type="number" value="45" min="10" />
+            </div>
+            <div class="field">
+              <label>Ramp-up step (s)</label>
+              <input name="stepRampSec" type="number" value="10" min="0" />
+            </div>
+            <div class="field">
+              <label>Cooldown tra step (s)</label>
+              <div class="field-hint">Recupero backend tra un livello e l'altro</div>
+              <input name="cooldownSec" type="number" value="8" min="0" />
+            </div>
+            <div class="field">
+              <label>Max error rate (es. 0.05)</label>
+              <input name="maxFailureRate" type="number" value="0.05" step="0.01" min="0" />
+            </div>
+            <div class="field">
+              <label>Max P95 (ms)</label>
+              <input name="maxP95Ms" type="number" value="2000" min="100" />
+            </div>
+          </div>
+        </div>
+        <div class="launch-bar">
+          <button type="submit" class="btn-bp" id="bpLaunchBtn">🔍 Avvia ricerca</button>
+          <div class="msg-box" id="bpMsg"></div>
+        </div>
+      </div>
+      </form>
+
+      <div class="card" style="margin-top:12px;padding:16px 20px;">
+        <div class="section-label" style="margin-top:0;">Come funziona</div>
+        <ol style="font-size:12px;color:var(--muted);padding-left:18px;line-height:2;margin-top:6px;">
+          <li><strong>Ricerca esponenziale</strong> × 1.5 ad ogni PASS</li>
+          <li><strong>Individua il range</strong> [ultimo PASS → primo FAIL]</li>
+          <li><strong>Bisezione ×3</strong> per affinare al ±50 utenti</li>
+        </ol>
+        <div style="margin-top:8px;font-size:11px;color:var(--muted);">
+          Tempo stimato: ~<span id="bpTimeEst">10-15</span> min · ~8-12 step totali
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: live + results -->
+    <div>
+
+      <!-- Current step indicator (visible while running) -->
+      <div id="bpCurrentWrap" style="display:none;" class="bp-current-step">
+        <div class="bp-current-label" id="bpCurrentPhase">Ricerca in corso…</div>
+        <div class="bp-current-val" id="bpCurrentUsers">—</div>
+        <div style="font-size:11px;color:#7c3aed;margin-top:4px;" id="bpCurrentDetail"></div>
+      </div>
+
+      <!-- Results panel -->
+      <div id="bpResultPanel">
+        <div class="detail-empty">← Configura e avvia la ricerca per vedere i risultati.</div>
+      </div>
+
+      <!-- Log -->
+      <div style="margin-top:12px;">
+        <div class="section-label">Output</div>
+        <pre class="log-box" id="bpLog" style="max-height:180px;">In attesa...</pre>
+      </div>
+
+    </div>
   </div>
 </div>
 </div>
@@ -667,7 +917,7 @@ async function api(path, opts={}) {
 }
 
 // ─── State ───────────────────────────────────────────────────────────────────
-const st = { status: null, reports: [], selectedRunId: null, selectedReport: null, timeSeries: [] }
+const st = { status: null, reports: [], selectedRunId: null, selectedReport: null, timeSeries: [], scenarios: [], compareSet: new Set(), compareReports: [] }
 
 // ─── Topbar + pill ───────────────────────────────────────────────────────────
 function setStatusPill(status, elPill, elDot, elText) {
@@ -687,14 +937,21 @@ function renderLive() {
   const isRunning = s.status === 'running'
   const pw = document.getElementById('liveProgressWrap')
   if (isRunning && s.config) {
-    const total = (s.config.durationSec + s.config.rampUpSec) * 1000
-    const elapsed = s.startedAt ? Date.now() - new Date(s.startedAt).getTime() : 0
-    const pct = Math.min(100, (elapsed/total)*100)
-    const rem = Math.max(0, Math.ceil((total-elapsed)/1000))
+    const rampMs   = s.config.rampUpSec * 1000
+    const totalMs  = (s.config.durationSec + s.config.rampUpSec) * 1000
+    const elapsed  = s.startedAt ? Date.now() - new Date(s.startedAt).getTime() : 0
+    const pct      = Math.min(100, (elapsed / totalMs) * 100)
+    const rem      = Math.max(0, Math.ceil((totalMs - elapsed) / 1000))
+    const inRampup = elapsed < rampMs
+    const bar      = document.getElementById('liveProgressBar')
     pw.style.display = 'block'
-    document.getElementById('liveProgressBar').style.width = `${pct.toFixed(1)}%`
-    document.getElementById('liveProgressLabel').textContent =
-      `${pct.toFixed(0)}% completato — ${rem}s rimanenti · ${s.config.users} utenti · ${s.config.durationSec}s + ${s.config.rampUpSec}s ramp-up${s.config.tournamentDay?' · ⚡ Giorno Torneo':''}`
+    bar.style.width = `${pct.toFixed(1)}%`
+    bar.className = `progress-bar${inRampup ? ' rampup' : ''}`
+    const phasePill = inRampup
+      ? `<span class="phase-pill rampup">↑ Ramp-up · ${Math.max(0,Math.ceil((rampMs-elapsed)/1000))}s</span>`
+      : `<span class="phase-pill regime">▶ Regime</span>`
+    document.getElementById('liveProgressLabel').innerHTML =
+      `${pct.toFixed(0)}% · ${rem}s rimanenti · <strong>${s.config.users}</strong> utenti · ramp ${s.config.rampUpSec}s${s.config.tournamentDay?' · ⚡ Giorno Torneo':''} ${phasePill}`
     document.getElementById('liveTitle').textContent = 'Test in corso…'
     document.getElementById('liveSubtitle').textContent =
       `${s.config.frontendUrl}  ·  ${s.config.apiUrl}`
@@ -708,7 +965,7 @@ function renderLive() {
       document.getElementById('liveTitle').textContent = 'Test fallito'
       document.getElementById('liveSubtitle').textContent = s.error || ''
     }
-    document.getElementById('liveProgressLabel').textContent = ''
+    document.getElementById('liveProgressLabel').innerHTML = ''
   }
 
   const ts = st.timeSeries
@@ -730,7 +987,10 @@ function renderLive() {
 
   const lines = [...(s.stdoutTail||[]),...(s.stderrTail||[]),...(s.error?[`ERROR: ${s.error}`]:[])]
     .filter(l=>!l.startsWith('METRIC_TICK:')&&!l.startsWith('SCORE_SPIKE:'))
-  document.getElementById('liveLog').textContent = lines.length ? lines.join('\n') : 'Nessun output ancora.'
+  const logEl = document.getElementById('liveLog')
+  const wasAtBottom = logEl.scrollHeight - logEl.scrollTop <= logEl.clientHeight + 20
+  logEl.textContent = lines.length ? lines.join('\n') : 'Nessun output ancora.'
+  if (wasAtBottom) logEl.scrollTop = logEl.scrollHeight
 
   // sessions from stdout
   const tail = (s.stdoutTail||[]).join('\n')
@@ -751,6 +1011,9 @@ function renderHistory() {
   const badge = document.getElementById('historyBadge')
   badge.textContent = st.reports.length
   badge.style.display = st.reports.length ? 'inline-flex' : 'none'
+
+  // compare bar
+  renderCompareBar()
 
   if (!st.reports.length) {
     document.getElementById('historyList').innerHTML = '<div class="detail-empty" style="padding:24px;">Nessun test disponibile.</div>'
@@ -774,20 +1037,32 @@ function renderHistory() {
       const vc = r.verdict==='PASS'?'PASS':r.verdict==='WARN'?'WARN':'FAIL'
       const p95c = r.p95Ms ? colorHex(p95Color(r.p95Ms)) : '#9cac9e'
       const sp = r.p95Series ? sparkline(r.p95Series, p95c) : ''
-      const isActive = st.selectedRunId === r.runId
+      const isActive = st.selectedRunId === r.runId && st.compareSet.size < 2
+      const isCompare = st.compareSet.has(r.runId)
       const tdayChip = r.tournamentDay ? `<span class="run-chip tday">⚡ Giorno Torneo</span>` : ''
+      const cacheChip = r.bypassCache === false
+        ? `<span class="run-chip" style="background:#e0f2fe;color:#0369a1;font-weight:800;">CDN ✓</span>`
+        : `<span class="run-chip" style="background:#fef9c3;color:#854d0e;">no-cache</span>`
+      const errc = r.failureRate != null ? colorHex(errColor(r.failureRate)) : '#9cac9e'
+      const runIdEsc = r.runId.replace(/'/g, "\\'")
       html += `
         <div class="run-card${isActive?' active':''}" data-run="${r.runId}">
           <div class="run-card-top">
             <span class="run-time">${r.time||'--:--'}</span>
+            <label class="compare-check" onclick="event.stopPropagation()" title="Seleziona per confronto">
+              <input type="checkbox" data-compare="${r.runId}" ${isCompare?'checked':''} onclick="event.stopPropagation()" onchange="toggleCompare('${runIdEsc}',this.checked)" />
+              cmp
+            </label>
             <span class="run-badge ${vc}">${vc}</span>
           </div>
           <div class="run-meta">
-            <span class="run-chip">${r.users??'?'} utenti</span>
-            <span class="run-chip">${r.durationSec??'?'}s</span>
+            <span class="run-chip"><strong>${r.users??'?'}</strong> utenti</span>
+            <span class="run-chip">${r.durationSec??'?'}s${r.rampUpSec>0?` +${r.rampUpSec}s`:''}</span>
             <span class="run-chip" style="color:${p95c};font-weight:800;">p95 ${r.p95Ms??'?'}ms</span>
+            <span class="run-chip" style="color:${errc};font-weight:800;">err ${r.failureRate??'?'}%</span>
             <span class="run-chip">${r.requestsPerSecond??'?'} r/s</span>
             ${tdayChip}
+            ${cacheChip}
             ${sp}
           </div>
         </div>`
@@ -799,6 +1074,7 @@ function renderHistory() {
   document.querySelectorAll('.run-card[data-run]').forEach(el => {
     el.addEventListener('click', () => {
       st.selectedRunId = el.dataset.run
+      st.compareSet.clear()
       renderHistory()
       loadReport(el.dataset.run)
     })
@@ -827,8 +1103,8 @@ function renderDetail() {
     <div class="card">
       <div class="card-header">
         <div>
-          <div class="card-title">${r.config?.users??'?'} utenti · ${r.config?.durationSec??'?'}s${r.config?.tournamentDay?' · ⚡ Giorno Torneo':''}</div>
-          <div class="card-sub">${new Date(r.generatedAt).toLocaleString('it-IT')}</div>
+          <div class="card-title">${r.config?.users??'?'} utenti · ${r.config?.durationSec??'?'}s + ramp ${r.config?.rampUpSec??0}s${r.config?.tournamentDay?' · ⚡ Giorno Torneo':''}</div>
+          <div class="card-sub">${new Date(r.generatedAt).toLocaleString('it-IT')} · soglie: err≤${((r.config?.maxFailureRate??0.02)*100).toFixed(0)}% · p95≤${r.config?.maxP95Ms??1500}ms</div>
         </div>
         <span class="run-badge ${s.verdict}" style="font-size:13px;padding:6px 14px;">${s.verdict}</span>
       </div>
@@ -941,15 +1217,16 @@ async function loadReport(runId) {
 }
 
 async function refreshAll() {
-  await Promise.all([loadStatus(), loadReports()])
+  await Promise.all([loadStatus(), loadReports(), loadBpStatus(), loadScenarios()])
 }
 
 // ─── Presets ─────────────────────────────────────────────────────────────────
 const presetDefs = {
-  smoke:  { users:10,  durationSec:30,  rampUpSec:5,  tournamentDay:false, spikeUsers:20,  spikeEveryMs:30000, maxP95Ms:1500, maxFailureRate:0.02 },
-  load:   { users:100, durationSec:60,  rampUpSec:15, tournamentDay:false, spikeUsers:30,  spikeEveryMs:30000, maxP95Ms:1500, maxFailureRate:0.02 },
-  stress: { users:500, durationSec:180, rampUpSec:60, tournamentDay:false, spikeUsers:60,  spikeEveryMs:30000, maxP95Ms:2000, maxFailureRate:0.05 },
-  tday:   { users:250, durationSec:300, rampUpSec:30, tournamentDay:true,  spikeUsers:80,  spikeEveryMs:30000, maxP95Ms:2000, maxFailureRate:0.02 },
+  smoke:  { users:10,   durationSec:30,  rampUpSec:5,  tournamentDay:false, spikeUsers:20, spikeEveryMs:30000, maxP95Ms:1500, maxFailureRate:0.02 },
+  load:   { users:100,  durationSec:60,  rampUpSec:15, tournamentDay:false, spikeUsers:30, spikeEveryMs:30000, maxP95Ms:1500, maxFailureRate:0.02 },
+  stress: { users:500,  durationSec:120, rampUpSec:30, tournamentDay:false, spikeUsers:60, spikeEveryMs:30000, maxP95Ms:2000, maxFailureRate:0.05 },
+  peak:   { users:1000, durationSec:120, rampUpSec:30, tournamentDay:false, spikeUsers:80, spikeEveryMs:30000, maxP95Ms:2000, maxFailureRate:0.05 },
+  tday:   { users:1000, durationSec:300, rampUpSec:30, tournamentDay:true,  spikeUsers:80, spikeEveryMs:30000, maxP95Ms:2000, maxFailureRate:0.02 },
 }
 let activePreset = null
 
@@ -979,6 +1256,9 @@ document.getElementById('runForm').addEventListener('submit', async e => {
   e.preventDefault()
   clearMsg()
   const payload = Object.fromEntries(new FormData(e.target).entries())
+  // checkboxes only appear in FormData when checked — normalise to boolean string
+  payload.bypassCache = document.getElementById('bypassCache').checked ? 'true' : 'false'
+  payload.tournamentDay = document.getElementById('tournamentDay').checked ? 'true' : 'false'
   document.getElementById('launchBtn').disabled = true
   try {
     const r = await api('/api/start', {method:'POST', body:JSON.stringify(payload)})
@@ -999,6 +1279,521 @@ function showMsg(text, kind) {
 function clearMsg() {
   const b = document.getElementById('msgBox')
   b.style.display = 'none'
+}
+
+// ─── Clear history ───────────────────────────────────────────────────────────
+function showHistoryMsg(text, kind) {
+  const el = document.getElementById('historyMsg')
+  el.textContent = text
+  el.style.display = 'block'
+  el.style.background = kind === 'err' ? '#fff0f0' : '#f0fdf4'
+  el.style.color = kind === 'err' ? 'var(--red)' : 'var(--green)'
+  el.style.border = `1px solid ${kind === 'err' ? '#fca5a5' : '#86efac'}`
+  setTimeout(() => { el.style.display = 'none' }, 4000)
+}
+
+document.getElementById('clearHistoryBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('clearHistoryBtn')
+  if (btn.dataset.confirm !== '1') {
+    btn.textContent = 'Sicuro? Clicca ancora'
+    btn.dataset.confirm = '1'
+    setTimeout(() => { btn.textContent = 'Svuota storico'; btn.dataset.confirm = '0' }, 3000)
+    return
+  }
+  btn.textContent = 'Svuota storico'
+  btn.dataset.confirm = '0'
+  btn.disabled = true
+  try {
+    const r = await api('/api/reports', { method: 'DELETE' })
+    st.reports = []
+    st.selectedRunId = null
+    st.selectedReport = null
+    renderHistory()
+    document.getElementById('detailPanel').innerHTML = '<div class="detail-empty">← Seleziona un test per vedere il dettaglio.</div>'
+    showHistoryMsg(`Storico svuotato — ${r.deleted} report eliminati.`, 'ok')
+  } catch(e) {
+    showHistoryMsg(e.message, 'err')
+  } finally {
+    btn.disabled = false
+  }
+})
+
+// ─── Breaking Point ──────────────────────────────────────────────────────────
+const bpSt = { status: null }
+
+document.getElementById('bpForm').addEventListener('submit', async e => {
+  e.preventDefault()
+  const btn = document.getElementById('bpLaunchBtn')
+  btn.disabled = true
+  const bpMsgEl = document.getElementById('bpMsg')
+  bpMsgEl.style.display = 'none'
+  try {
+    const payload = Object.fromEntries(new FormData(e.target).entries())
+    await api('/api/bp/start', { method: 'POST', body: JSON.stringify(payload) })
+    switchTab('bp')
+  } catch(err) {
+    bpMsgEl.textContent = err.message; bpMsgEl.className = 'msg-box err'; bpMsgEl.style.display = 'block'
+  } finally { btn.disabled = false }
+})
+
+function renderBp() {
+  const s = bpSt.status
+  if (!s) return
+
+  // Current step banner
+  const cw = document.getElementById('bpCurrentWrap')
+  if (s.status === 'running' && s.currentStep) {
+    cw.style.display = 'block'
+    const phase = s.currentStep.phase === 'refine'
+      ? `Bisezione ${s.currentStep.refineRound || ''}/3 — affinamento`
+      : `Ricerca esponenziale — step ${s.currentStep.step}`
+    document.getElementById('bpCurrentPhase').textContent = phase
+    document.getElementById('bpCurrentUsers').textContent = `${s.currentStep.users} utenti`
+    const lastTick = s.timeSeries?.at(-1)
+    document.getElementById('bpCurrentDetail').textContent = lastTick
+      ? `p95 ${lastTick.p95}ms · err ${lastTick.errRate}% · ${lastTick.reqSec} r/s`
+      : 'In ramp-up…'
+  } else {
+    cw.style.display = 'none'
+  }
+
+  // Log
+  const logEl = document.getElementById('bpLog')
+  const lines = [...(s.stdoutTail||[]), ...(s.stderrTail||[]), ...(s.error?[`ERROR: ${s.error}`]:[])]
+    .filter(l => !l.startsWith('METRIC_TICK:') && !l.startsWith('STEP_RESULT:') && !l.startsWith('STEP_START:') && !l.startsWith('BREAKING_POINT:'))
+  const atBottom = logEl.scrollHeight - logEl.scrollTop <= logEl.clientHeight + 20
+  logEl.textContent = lines.length ? lines.join('\n') : 'In attesa...'
+  if (atBottom) logEl.scrollTop = logEl.scrollHeight
+
+  // Results panel
+  const panel = document.getElementById('bpResultPanel')
+  const steps  = s.steps || []
+  const bp     = s.breakingPoint
+
+  if (!steps.length && s.status !== 'running') {
+    panel.innerHTML = '<div class="detail-empty">← Configura e avvia la ricerca per vedere i risultati.</div>'
+    return
+  }
+
+  // Hero
+  let heroHtml = ''
+  if (bp) {
+    if (bp.found) {
+      heroHtml = `
+        <div class="bp-result-hero">
+          <div class="bp-hero-num">${bp.breakingPoint}</div>
+          <div class="bp-hero-label">utenti — breaking point stimato</div>
+          <div class="bp-hero-conf">Confidenza: ${bp.confidence} · ${bp.lastPass?.users??'?'} ✓ → ${bp.firstFail?.users??'?'} ✗</div>
+        </div>`
+    } else {
+      heroHtml = `
+        <div class="bp-result-hero not-found">
+          <div class="bp-hero-num not-found">${s.config?.maxUsers??'?'}</div>
+          <div class="bp-hero-label" style="color:var(--green);">utenti — limite del test non raggiunto</div>
+          <div class="bp-hero-conf" style="color:var(--green);">Il sistema regge fino al massimo configurato</div>
+        </div>`
+    }
+  } else if (s.status === 'running') {
+    const lastPass = [...steps].reverse().find(s => s.passed)
+    const lastFail = [...steps].reverse().find(s => !s.passed)
+    heroHtml = `<div class="bp-current-step" style="text-align:center;margin-bottom:12px;">
+      <div style="font-size:11px;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:0.1em;">In corso…</div>
+      ${lastPass ? `<div style="font-size:12px;color:var(--green);margin-top:4px;">Ultimo PASS: <strong>${lastPass.users}</strong> utenti</div>` : ''}
+      ${lastFail ? `<div style="font-size:12px;color:var(--red);">Primo FAIL: <strong>${lastFail.users}</strong> utenti</div>` : ''}
+    </div>`
+  }
+
+  // Chart (only if ≥2 steps)
+  let chartHtml = ''
+  if (steps.length >= 1) {
+    chartHtml = `
+      <div class="bp-chart-wrap">
+        <div class="bp-chart-title">Utenti vs P95 / Error rate</div>
+        <svg class="bp-chart" id="bpChartSvg" viewBox="0 0 560 160" preserveAspectRatio="none"></svg>
+      </div>`
+  }
+
+  // Steps table
+  const tableRows = steps.map(r => `
+    <tr class="${r.passed?'pass':'fail'}${r.step > (steps.filter(x=>x.passed).length)?'':''}" data-phase="${r.phase||'search'}">
+      <td>${r.step}</td>
+      <td><strong>${r.users}</strong></td>
+      <td class="${r.passed?'good':'bad'}" style="font-weight:800;">${r.verdict}</td>
+      <td class="${r.errorRate<=5?r.errorRate<=2?'good':'warn':'bad'}" style="font-weight:700;">${r.errorRate}%</td>
+      <td class="${r.p95<=1500?'good':r.p95<=3000?'warn':'bad'}" style="font-weight:700;">${r.p95}ms</td>
+      <td>${r.reqSec}</td>
+      <td style="font-size:10px;color:var(--muted);">${r.step > steps.filter(x=>x.phase!=='refine').length?'refine':'search'}</td>
+    </tr>`).join('')
+
+  panel.innerHTML = `
+    ${heroHtml}
+    ${chartHtml}
+    <div class="card" style="margin-top:14px;">
+      <div class="card-body" style="padding-bottom:16px;">
+        <div class="section-label" style="margin-top:0;">Step completati (${steps.length})</div>
+        <table class="bp-step-table">
+          <thead><tr><th>#</th><th>Utenti</th><th>Verdetto</th><th>Error %</th><th>P95</th><th>Req/s</th><th>Fase</th></tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+    </div>`
+
+  // Draw chart after DOM update
+  if (steps.length >= 1) {
+    requestAnimationFrame(() => drawBpChart(steps, bp))
+  }
+}
+
+function drawBpChart(steps, bp) {
+  const svg = document.getElementById('bpChartSvg')
+  if (!svg) return
+
+  const W = 560, H = 160, pl = 50, pr = 20, pt = 14, pb = 30
+  const usersArr   = steps.map(s => s.users)
+  const p95Arr     = steps.map(s => s.p95)
+  const errArr     = steps.map(s => s.errorRate)
+  const maxUsers   = Math.max(...usersArr)
+  const maxP95     = Math.max(...p95Arr, 2000) * 1.1
+  const maxErr     = Math.max(...errArr, 10) * 1.1
+
+  const tx = u => pl + ((u - Math.min(...usersArr)) / (maxUsers - Math.min(...usersArr) || 1)) * (W - pl - pr)
+  const tyP95 = v => pt + (H - pt - pb) * (1 - v / maxP95)
+  const tyErr = v => pt + (H - pt - pb) * (1 - v / maxErr)
+
+  // Grid lines
+  let grid = ''
+  for (let i = 0; i <= 4; i++) {
+    const y = pt + (H - pt - pb) * (i / 4)
+    const val = Math.round(maxP95 * (1 - i / 4))
+    grid += `<line x1="${pl}" y1="${y}" x2="${W-pr}" y2="${y}" stroke="#e2e8e3" stroke-width="1"/>`
+    grid += `<text x="${pl-4}" y="${y+4}" text-anchor="end" font-size="8.5" fill="#9cac9e">${val>999?(val/1000).toFixed(1)+'s':val+'ms'}</text>`
+  }
+
+  // X axis labels
+  let xLabels = ''
+  steps.forEach(s => {
+    const x = tx(s.users)
+    xLabels += `<text x="${x}" y="${H-pb+14}" text-anchor="middle" font-size="8.5" fill="${s.passed?'#16a34a':'#dc2626'}" font-weight="700">${s.users}</text>`
+  })
+
+  // Threshold lines
+  const yP95thresh = tyP95(2000)
+  const yErrThresh = tyErr(5)
+  grid += `<line x1="${pl}" y1="${yP95thresh}" x2="${W-pr}" y2="${yP95thresh}" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4,3" opacity="0.8"/>`
+  grid += `<text x="${W-pr+3}" y="${yP95thresh+4}" font-size="8" fill="#f59e0b">2s</text>`
+
+  // Area fill under P95 line — green for pass, red for fail
+  let areaPath = ''
+  steps.forEach((s, i) => {
+    const x = tx(s.users), y = tyP95(s.p95)
+    areaPath += (i === 0 ? `M${x},${y}` : ` L${x},${y}`)
+  })
+  if (steps.length > 0) {
+    areaPath += ` L${tx(steps.at(-1).users)},${H-pb} L${tx(steps[0].users)},${H-pb}Z`
+  }
+
+  // P95 line
+  let p95Line = steps.map((s, i) => `${i===0?'M':'L'}${tx(s.users)},${tyP95(s.p95)}`).join(' ')
+
+  // Error rate line (dashed, secondary Y axis)
+  let errLine = steps.map((s, i) => `${i===0?'M':'L'}${tx(s.users)},${tyErr(s.errorRate)}`).join(' ')
+
+  // Dots
+  let dots = ''
+  steps.forEach(s => {
+    const x = tx(s.users), y = tyP95(s.p95)
+    const fill = s.passed ? '#16a34a' : '#dc2626'
+    dots += `<circle cx="${x}" cy="${y}" r="4" fill="${fill}" stroke="white" stroke-width="1.5"/>`
+    // label p95 value
+    dots += `<text x="${x}" y="${y-7}" text-anchor="middle" font-size="8.5" fill="${fill}" font-weight="700">${s.p95>999?(s.p95/1000).toFixed(1)+'s':s.p95+'ms'}</text>`
+  })
+
+  // Breaking point vertical line
+  let bpLine = ''
+  if (bp?.found && bp.breakingPoint) {
+    const x = tx(bp.breakingPoint)
+    bpLine = `<line x1="${x}" y1="${pt}" x2="${x}" y2="${H-pb}" stroke="#7c3aed" stroke-width="2" stroke-dasharray="5,3"/>
+      <text x="${x}" y="${pt-2}" text-anchor="middle" font-size="9" fill="#7c3aed" font-weight="800">~${bp.breakingPoint}</text>`
+  }
+
+  // Y axis label
+  const yAxisLabel = `<text x="10" y="${pt + (H-pt-pb)/2}" text-anchor="middle" font-size="9" fill="#9cac9e" transform="rotate(-90,10,${pt+(H-pt-pb)/2})">P95</text>`
+  // Error % legend
+  const legend = `
+    <circle cx="${pl}" cy="${pt-6}" r="3" fill="#16a34a"/>
+    <text x="${pl+6}" y="${pt-3}" font-size="8.5" fill="#16a34a">P95 (PASS)</text>
+    <circle cx="${pl+70}" cy="${pt-6}" r="3" fill="#dc2626"/>
+    <text x="${pl+76}" y="${pt-3}" font-size="8.5" fill="#dc2626">P95 (FAIL)</text>
+    <line x1="${pl+140}" y1="${pt-6}" x2="${pl+155}" y2="${pt-6}" stroke="#64748b" stroke-width="1.5" stroke-dasharray="3,2"/>
+    <text x="${pl+158}" y="${pt-3}" font-size="8.5" fill="#64748b">err%</text>
+    ${bp?.found?`<line x1="${pl+195}" y1="${pt-6}" x2="${pl+210}" y2="${pt-6}" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="4,2"/>
+    <text x="${pl+213}" y="${pt-3}" font-size="8.5" fill="#7c3aed">breaking point</text>`:''}
+  `
+
+  svg.innerHTML = `
+    ${grid}
+    ${xLabels}
+    ${yAxisLabel}
+    ${legend}
+    <path d="${areaPath}" fill="rgba(100,116,139,0.06)"/>
+    <path d="${p95Line}" fill="none" stroke="#475569" stroke-width="2" stroke-linejoin="round"/>
+    <path d="${errLine}" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,2" stroke-linejoin="round" opacity="0.6"/>
+    ${dots}
+    ${bpLine}
+  `
+}
+
+// ─── Scenarios ────────────────────────────────────────────────────────────────
+async function loadScenarios() {
+  try {
+    const d = await api('/api/scenarios')
+    st.scenarios = d.items || []
+    renderScenarios()
+  } catch {}
+}
+
+function renderScenarios() {
+  const el = document.getElementById('scenariosList')
+  if (!el) return
+  if (!st.scenarios.length) {
+    el.innerHTML = '<span class="empty-inline">Nessuno scenario salvato.</span>'
+    return
+  }
+  el.innerHTML = st.scenarios.map(s => {
+    const nameEsc = s.name.replace(/'/g, "\\'").replace(/"/g, '&quot;')
+    const cfg = s.config
+    const meta = cfg ? `${cfg.users}u · ${cfg.durationSec}s${cfg.tournamentDay ? ' ⚡' : ''}` : ''
+    return `<span class="scenario-chip" onclick="loadScenario('${nameEsc}')" title="${meta}">
+      ${s.name.replace(/</g,'&lt;')}
+      <span class="scenario-desc" style="font-weight:400;font-size:10px;color:var(--muted);">${meta}</span>
+      <button class="scenario-chip-del" onclick="event.stopPropagation();deleteScenario('${nameEsc}')" title="Elimina">×</button>
+    </span>`
+  }).join('')
+}
+
+function loadScenario(name) {
+  const sc = st.scenarios.find(s => s.name === name)
+  if (!sc || !sc.config) return
+  const cfg = sc.config
+  const f = document.getElementById('runForm')
+  if (!f) return
+  f.users.value = cfg.users
+  f.durationSec.value = cfg.durationSec
+  f.rampUpSec.value = cfg.rampUpSec
+  f.thinkMinMs.value = cfg.thinkMinMs
+  f.thinkMaxMs.value = cfg.thinkMaxMs
+  f.timeoutMs.value = cfg.timeoutMs
+  f.maxTournaments.value = cfg.maxTournaments
+  f.maxAgeGroups.value = cfg.maxAgeGroups
+  f.maxFailureRate.value = cfg.maxFailureRate
+  f.maxP95Ms.value = cfg.maxP95Ms
+  f.spikeUsers.value = cfg.spikeUsers
+  f.spikeEveryMs.value = cfg.spikeEveryMs
+  document.getElementById('tournamentDay').checked = cfg.tournamentDay
+  document.getElementById('bypassCache').checked = cfg.bypassCache !== false
+  document.querySelectorAll('.preset-card').forEach(c => c.classList.remove('selected'))
+  showScenarioMsg(`Scenario "${name}" caricato.`, 'ok')
+}
+
+async function deleteScenario(name) {
+  try {
+    await api(`/api/scenarios/${encodeURIComponent(name)}`, { method: 'DELETE' })
+    await loadScenarios()
+  } catch(e) {
+    showScenarioMsg(e.message, 'err')
+  }
+}
+
+document.getElementById('saveScenarioBtn').addEventListener('click', async () => {
+  const nameEl = document.getElementById('scenarioNameInput')
+  const name = nameEl.value.trim()
+  if (!name) { showScenarioMsg('Inserisci un nome per lo scenario.', 'err'); return }
+  const f = document.getElementById('runForm')
+  const payload = Object.fromEntries(new FormData(f).entries())
+  try {
+    await api('/api/scenarios', { method: 'POST', body: JSON.stringify({ name, config: payload }) })
+    nameEl.value = ''
+    await loadScenarios()
+    showScenarioMsg(`Scenario "${name}" salvato.`, 'ok')
+  } catch(e) {
+    showScenarioMsg(e.message, 'err')
+  }
+})
+
+function showScenarioMsg(text, kind) {
+  const el = document.getElementById('scenarioMsg')
+  if (!el) return
+  el.textContent = text
+  el.style.display = 'block'
+  el.style.color = kind === 'err' ? 'var(--red)' : 'var(--green)'
+  clearTimeout(el._timer)
+  el._timer = setTimeout(() => { el.style.display = 'none' }, 3000)
+}
+
+// ─── Compare ──────────────────────────────────────────────────────────────────
+function toggleCompare(runId, checked) {
+  if (checked) {
+    if (st.compareSet.size >= 2) {
+      // deselect oldest and add new
+      const first = st.compareSet.values().next().value
+      st.compareSet.delete(first)
+    }
+    st.compareSet.add(runId)
+  } else {
+    st.compareSet.delete(runId)
+  }
+  renderHistory()
+  if (st.compareSet.size === 2) {
+    loadComparison()
+  } else {
+    // restore normal detail view
+    if (st.selectedRunId && st.selectedReport) renderDetail()
+    else document.getElementById('detailPanel').innerHTML = '<div class="detail-empty">← Seleziona un test per vedere il dettaglio.</div>'
+  }
+}
+
+function renderCompareBar() {
+  const bar = document.getElementById('compareBar')
+  if (!bar) return
+  const n = st.compareSet.size
+  if (n === 0) { bar.style.display = 'none'; return }
+  bar.style.display = 'flex'
+  document.getElementById('compareBarText').textContent =
+    n === 1 ? '1 test selezionato — selezionane un altro per confrontare' : '2 test selezionati'
+  document.getElementById('compareBtn').style.display = n === 2 ? 'inline-block' : 'none'
+}
+
+document.getElementById('compareBtn').addEventListener('click', loadComparison)
+document.getElementById('compareClearBtn').addEventListener('click', () => {
+  st.compareSet.clear()
+  st.compareReports = []
+  renderHistory()
+  if (st.selectedRunId && st.selectedReport) renderDetail()
+  else document.getElementById('detailPanel').innerHTML = '<div class="detail-empty">← Seleziona un test per vedere il dettaglio.</div>'
+})
+
+async function loadComparison() {
+  if (st.compareSet.size < 2) return
+  const [idA, idB] = [...st.compareSet]
+  try {
+    const [rA, rB] = await Promise.all([
+      api(`/api/reports/${encodeURIComponent(idA)}`),
+      api(`/api/reports/${encodeURIComponent(idB)}`),
+    ])
+    st.compareReports = [rA, rB]
+    renderComparison(rA, rB)
+  } catch(e) {
+    document.getElementById('detailPanel').innerHTML = `<div class="detail-empty">Errore nel caricamento: ${e.message}</div>`
+  }
+}
+
+function renderComparison(rA, rB) {
+  const panel = document.getElementById('detailPanel')
+
+  function cfg(r) { return r.config || {} }
+  function sum(r) { return r.summary || {} }
+
+  const label = r => `${cfg(r).users??'?'}u · ${cfg(r).durationSec??'?'}s${cfg(r).tournamentDay?' ⚡':''}`
+  const time  = r => new Date(r.generatedAt).toLocaleString('it-IT')
+
+  // Delta helpers: higher=bad for p95/errors, higher=good for rps/sessions
+  function delta(a, b, higherIsBad, unit='') {
+    if (a == null || b == null) return { html: '<td class="delta-neut">—</td>' }
+    const d = b - a
+    if (d === 0) return { html: `<td class="delta-neut">±0${unit}</td>` }
+    const sign = d > 0 ? '+' : ''
+    const arrow = d > 0 ? ' ↑' : ' ↓'
+    const cls = (higherIsBad ? d > 0 : d < 0) ? 'delta-bad' : 'delta-good'
+    const val = Math.abs(d) < 1 ? d.toFixed(2) : Math.round(d)
+    return { html: `<td class="${cls}">${sign}${val}${unit}${arrow}</td>` }
+  }
+
+  const rows = [
+    ['Utenti', cfg(rA).users, cfg(rB).users, false, ''],
+    ['Durata (s)', cfg(rA).durationSec, cfg(rB).durationSec, false, 's'],
+    ['Req/sec', sum(rA).requestsPerSecond, sum(rB).requestsPerSecond, false, ''],
+    ['Error rate', sum(rA).failureRate, sum(rB).failureRate, true, '%'],
+    ['P95', sum(rA).p95Ms, sum(rB).p95Ms, true, 'ms'],
+    ['P99', sum(rA).p99Ms, sum(rB).p99Ms, true, 'ms'],
+    ['Sessioni ok', sum(rA).sessionsCompleted, sum(rB).sessionsCompleted, false, ''],
+    ['Totale req', sum(rA).totalRequests, sum(rB).totalRequests, false, ''],
+  ]
+
+  function verdictCell(v) {
+    const c = v==='PASS'?'good':v==='WARN'?'warn':'bad'
+    return `<td class="${c}" style="font-weight:800;">${v??'—'}</td>`
+  }
+
+  const tableRows = rows.map(([label, va, vb, higherIsBad, unit]) => {
+    const ca = va != null ? (higherIsBad ? p95Color(Number(va)) : rpsColor(Number(va))) : ''
+    return `<tr>
+      <td style="font-weight:700;font-size:12px;">${label}</td>
+      <td>${va??'—'}${unit}</td>
+      <td>${vb??'—'}${unit}</td>
+      ${delta(Number(va), Number(vb), higherIsBad, unit).html}
+    </tr>`
+  }).join('')
+
+  panel.innerHTML = `
+    <div class="card compare-panel">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Confronto test</div>
+          <div class="card-sub">A: ${time(rA)} &nbsp;|&nbsp; B: ${time(rB)}</div>
+        </div>
+        <button onclick="document.getElementById('compareClearBtn').click()" style="padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:white;font-size:12px;cursor:pointer;">✕ Chiudi</button>
+      </div>
+      <div class="card-body">
+        <table>
+          <thead>
+            <tr>
+              <th>Metrica</th>
+              <th>A: ${label(rA)}</th>
+              <th>B: ${label(rB)}</th>
+              <th>Δ (B − A)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="font-weight:700;font-size:12px;">Verdetto</td>
+              ${verdictCell(sum(rA).verdict)}
+              ${verdictCell(sum(rB).verdict)}
+              <td class="delta-neut">—</td>
+            </tr>
+            ${tableRows}
+          </tbody>
+        </table>
+
+        ${[rA,rB].every(r=>r.timeSeries&&r.timeSeries.length>=2) ? `
+        <div class="section-label" style="margin-top:16px;">P95 nel tempo</div>
+        <div class="charts-row" style="margin-top:8px;">
+          <div class="chart-card">
+            <div class="chart-label">A — P95 ms</div>
+            <svg class="chart" id="cmpA" viewBox="0 0 300 80" preserveAspectRatio="none"></svg>
+          </div>
+          <div class="chart-card">
+            <div class="chart-label">B — P95 ms</div>
+            <svg class="chart" id="cmpB" viewBox="0 0 300 80" preserveAspectRatio="none"></svg>
+          </div>
+        </div>` : ''}
+      </div>
+    </div>
+  `
+
+  if (rA.timeSeries?.length >= 2 && rB.timeSeries?.length >= 2) {
+    requestAnimationFrame(() => {
+      const a = document.getElementById('cmpA')
+      const b = document.getElementById('cmpB')
+      if (a) drawChart(a, rA.timeSeries.map(t=>t.p95), p95Color, 1500, 3000)
+      if (b) drawChart(b, rB.timeSeries.map(t=>t.p95), p95Color, 1500, 3000)
+    })
+  }
+}
+
+async function loadBpStatus() {
+  const d = await api('/api/bp/status')
+  Object.assign(bpSt, { status: d })
+  renderBp()
 }
 
 // ─── Start & poll ─────────────────────────────────────────────────────────────

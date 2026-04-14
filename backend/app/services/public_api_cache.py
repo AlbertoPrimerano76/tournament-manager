@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
@@ -125,6 +126,19 @@ class PublicApiCache:
         async with self._lock:
             self._entries.clear()
             self._generation += 1
+
+    async def get_json_bytes_or_set(
+        self,
+        key: str,
+        ttl_seconds: float,
+        loader: Callable[[], Awaitable[Any]],
+        stale_while_revalidate_seconds: float = 0,
+    ) -> bytes:
+        async def serialize() -> bytes:
+            value = await loader()
+            return json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+        return await self.get_or_set(key, ttl_seconds, serialize, stale_while_revalidate_seconds)
 
 
 public_api_cache = PublicApiCache()
