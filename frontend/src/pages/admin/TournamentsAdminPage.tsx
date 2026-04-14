@@ -1689,7 +1689,7 @@ type ScheduleConfig = {
   playing_fields: PlayingFieldConfig[]
 }
 
-type CategoryWizardStep = 'squadre' | 'impostazioni' | 'fasi'
+type CategoryWizardStep = 'squadre' | 'impostazioni' | 'fasi' | 'partite'
 
 type StructureConfig = {
   expected_teams: number | null
@@ -2283,7 +2283,9 @@ function AgeGroupConfigurationScreen({
 }) {
   const { data: ageGroups, isLoading } = useAdminTournamentAgeGroups(tournament.id)
   const ageGroup = ageGroups?.find((item) => item.id === ageGroupId) ?? null
+  const { data: program } = useAdminAgeGroupProgram(ageGroupId)
   const [activeStep, setActiveStep] = useState<CategoryWizardStep>('squadre')
+  const [isPdfDownloading, setIsPdfDownloading] = useState(false)
 
   if (isLoading) {
     return <div className="py-12 text-center text-sm text-slate-500">Caricamento categoria...</div>
@@ -2301,7 +2303,17 @@ function AgeGroupConfigurationScreen({
     { id: 'squadre', label: 'Squadre', description: 'Definisci quante sono e inseriscile.' },
     { id: 'impostazioni', label: 'Impostazioni', description: 'Durata incontri, campi, classifica e spareggi.' },
     { id: 'fasi', label: 'Fasi', description: 'Gironi, passaggi turno e generazione del programma.' },
+    { id: 'partite', label: 'Partite', description: 'Modifica orari e squadre di ogni partita.' },
   ]
+
+  async function handleDownloadPdf() {
+    setIsPdfDownloading(true)
+    try {
+      await downloadAdminAgeGroupProgramPdf(ageGroup!.id)
+    } finally {
+      setIsPdfDownloading(false)
+    }
+  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
@@ -2329,6 +2341,17 @@ function AgeGroupConfigurationScreen({
             )}
           </div>
           <div className="flex flex-wrap gap-2">
+            {program?.generated && (
+              <button
+                type="button"
+                onClick={() => void handleDownloadPdf()}
+                disabled={isPdfDownloading}
+                className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+              >
+                <Download className="h-4 w-4" />
+                {isPdfDownloading ? 'Download...' : 'PDF calendario'}
+              </button>
+            )}
             <Link
               to={`/admin/tornei/${tournament.id}/calendario`}
               className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
@@ -2359,8 +2382,12 @@ function AgeGroupConfigurationScreen({
                     ? activeStep === step.id
                       ? 'border-emerald-300 bg-emerald-50 text-emerald-950'
                       : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                    : activeStep === step.id
+                  : step.id === 'fasi'
+                    ? activeStep === step.id
                       ? 'border-amber-300 bg-amber-50 text-amber-950'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    : activeStep === step.id
+                      ? 'border-violet-300 bg-violet-50 text-violet-950'
                       : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               }`}
             >
@@ -2448,35 +2475,18 @@ function AgeGroupOperationsPanel({ ageGroup }: { ageGroup: AgeGroup }) {
   const { data: program } = useAdminAgeGroupProgram(ageGroup.id)
   const structure = normalizeStructureConfig(ageGroup.structure_config)
   const totalMatches = program ? countProgramMatches(program) : 0
-  const [activePanel, setActivePanel] = useState<'tabellini' | 'modifica'>('tabellini')
 
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 bg-slate-50 px-5 py-5">
+        <p className="text-sm text-slate-600">
+          Apri solo le partite da aggiornare. Filtri, risultati e ritardi sono raccolti qui per lavorare velocemente sul campo.
+        </p>
         <div className="mt-4 grid gap-3 md:grid-cols-4">
           <InfoField label="Squadre" value={`${participants?.length ?? 0}`} />
           <InfoField label="Partite" value={program ? `${totalMatches}` : '0'} />
           <InfoField label="Fasi" value={`${structure.phases.length}`} />
           <InfoField label="Durata" value={structure.schedule.match_duration_minutes ? `${structure.schedule.match_duration_minutes} min` : 'Da definire'} />
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {([
-            { id: 'tabellini' as const, label: 'Tabellini e ritardi' },
-            { id: 'modifica' as const, label: 'Modifica partite' },
-          ]).map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActivePanel(tab.id)}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-                activePanel === tab.id
-                  ? 'bg-slate-900 text-white'
-                  : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
         </div>
       </div>
 
@@ -2486,25 +2496,15 @@ function AgeGroupOperationsPanel({ ageGroup }: { ageGroup: AgeGroup }) {
             Aggiungi prima le squadre partecipanti, poi genera gironi e partite.
           </div>
         ) : program ? (
-          activePanel === 'tabellini' ? (
-            <AgeGroupProgramView
-              program={program}
-              mode="admin"
-              variant="operations"
-              playingFields={structure.schedule.playing_fields}
-              participants={participants ?? []}
-              matchDurationMinutes={structure.schedule.match_duration_minutes ?? 12}
-              intervalMinutes={structure.schedule.interval_minutes ?? 8}
-            />
-          ) : (
-            <AdminAllMatchesEditorView
-              program={program}
-              playingFields={structure.schedule.playing_fields}
-              participants={participants ?? []}
-              matchDurationMinutes={structure.schedule.match_duration_minutes ?? 12}
-              intervalMinutes={structure.schedule.interval_minutes ?? 8}
-            />
-          )
+          <AgeGroupProgramView
+            program={program}
+            mode="admin"
+            variant="operations"
+            playingFields={structure.schedule.playing_fields}
+            participants={participants ?? []}
+            matchDurationMinutes={structure.schedule.match_duration_minutes ?? 12}
+            intervalMinutes={structure.schedule.interval_minutes ?? 8}
+          />
         ) : (
           <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-500">
             Nessun programma generato per questa categoria.
@@ -4419,6 +4419,31 @@ function AgeGroupConfigurationPanel({
                   </div>
                 )}
               </div>
+            </div>
+          </section>
+          )}
+
+          {currentTab === 'partite' && (
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 bg-slate-50 px-5 py-5">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Passo 4</p>
+              <p className="mt-1 text-lg font-black text-slate-950">Modifica partite</p>
+              <p className="mt-1 text-sm text-slate-600">Modifica orario e squadre di ogni singola partita generata.</p>
+            </div>
+            <div className="p-5">
+              {program ? (
+                <AdminAllMatchesEditorView
+                  program={program}
+                  playingFields={structure.schedule.playing_fields}
+                  participants={participants ?? []}
+                  matchDurationMinutes={structure.schedule.match_duration_minutes ?? 12}
+                  intervalMinutes={structure.schedule.interval_minutes ?? 8}
+                />
+              ) : (
+                <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-500">
+                  Genera prima il programma dalla tab Fasi.
+                </div>
+              )}
             </div>
           </section>
           )}
