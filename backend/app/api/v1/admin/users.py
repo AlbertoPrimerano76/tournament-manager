@@ -41,6 +41,30 @@ async def _build_age_group_assignments(
     ]
 
 
+async def _apply_user_assignments(
+    user_id: str,
+    tournament_ids: list[str],
+    age_group_ids: list[str],
+    db: AsyncSession,
+) -> None:
+    seen_pairs: set[tuple[str, str | None]] = set()
+
+    for tournament_id in tournament_ids:
+        key = (tournament_id, None)
+        if key in seen_pairs:
+            continue
+        seen_pairs.add(key)
+        db.add(UserTournamentAssignment(user_id=user_id, tournament_id=tournament_id))
+
+    for assignment in await _build_age_group_assignments(age_group_ids, db):
+        key = (assignment.tournament_id, assignment.age_group_id)
+        if key in seen_pairs:
+            continue
+        seen_pairs.add(key)
+        assignment.user_id = user_id
+        db.add(assignment)
+
+
 def serialize_user(user: User) -> UserResponse:
     assigned_tournament_ids = sorted({
         assignment.tournament_id
@@ -97,11 +121,12 @@ async def create_user(
     )
     db.add(user)
     await db.flush()
-    for tournament_id in body.assigned_tournament_ids:
-        db.add(UserTournamentAssignment(user_id=user.id, tournament_id=tournament_id))
-    for assignment in await _build_age_group_assignments(body.assigned_age_group_ids, db):
-        assignment.user_id = user.id
-        db.add(assignment)
+    await _apply_user_assignments(
+        user.id,
+        body.assigned_tournament_ids,
+        body.assigned_age_group_ids,
+        db,
+    )
     await db.commit()
     await db.refresh(user)
     user = (
@@ -138,11 +163,12 @@ async def update_user(
         for assignment in list(user.tournament_assignments):
             await db.delete(assignment)
         await db.flush()
-        for tournament_id in assigned_tournament_ids or []:
-            db.add(UserTournamentAssignment(user_id=user.id, tournament_id=tournament_id))
-        for assignment in await _build_age_group_assignments(assigned_age_group_ids or [], db):
-            assignment.user_id = user.id
-            db.add(assignment)
+        await _apply_user_assignments(
+            user.id,
+            assigned_tournament_ids or [],
+            assigned_age_group_ids or [],
+            db,
+        )
     await db.commit()
     user = (
         await db.execute(
