@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date as date_type, datetime, time, timedelta
+from datetime import date as date_type, datetime, time, timedelta, timezone
 import json
 import math
 import re
@@ -210,6 +210,14 @@ def _schedule_settings(age_group: TournamentAgeGroup) -> dict[str, Any]:
     return schedule if isinstance(schedule, dict) else {}
 
 
+def _build_field_name(raw_name: str, category_label: str | None) -> str:
+    """Incorporate category_label (e.g. 'U6', 'U8') into the field name so that
+    fields with the same base name but different age-group labels are treated as
+    distinct physical locations in conflict detection."""
+    label = (category_label or "").strip()
+    return f"{raw_name} · {label}" if label else raw_name
+
+
 def _schedule_playing_fields(age_group: TournamentAgeGroup) -> list[dict[str, Any]]:
     schedule = _schedule_settings(age_group)
     raw_fields = schedule.get("playing_fields", [])
@@ -223,10 +231,12 @@ def _schedule_playing_fields(age_group: TournamentAgeGroup) -> list[dict[str, An
             continue
         field_name = raw_field.get("field_name") or raw_field.get("facility_name")
         field_number = raw_field.get("field_number")
+        category_label = raw_field.get("category_label")
         if not field_name:
             continue
+        effective_name = _build_field_name(str(field_name), category_label)
         normalized_field = {
-            "field_name": str(field_name),
+            "field_name": effective_name,
             "field_number": int(field_number) if isinstance(field_number, int) else None,
         }
         field_key = (normalized_field["field_name"], normalized_field["field_number"])
@@ -376,10 +386,12 @@ def _group_lanes(
                 continue
             field_name = lane.get("field_name")
             field_number = lane.get("field_number")
+            category_label = lane.get("category_label")
             if not field_name:
                 continue
+            effective_name = _build_field_name(str(field_name), category_label)
             normalized_lane = {
-                "field_name": str(field_name),
+                "field_name": effective_name,
                 "field_number": int(field_number) if isinstance(field_number, int) else None,
             }
             lane_key = (normalized_lane["field_name"], normalized_lane["field_number"])
@@ -417,10 +429,12 @@ def _knockout_lanes(age_group: TournamentAgeGroup, phase_config: dict[str, Any])
                 continue
             field_name = lane.get("field_name")
             field_number = lane.get("field_number")
+            category_label = lane.get("category_label")
             if not field_name:
                 continue
+            effective_name = _build_field_name(str(field_name), category_label)
             lanes.append({
-                "field_name": str(field_name),
+                "field_name": effective_name,
                 "field_number": int(field_number) if isinstance(field_number, int) else None,
             })
     return lanes or _schedule_playing_fields(age_group)
@@ -530,39 +544,129 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
         .join(Phase, Match.phase_id == Phase.id)
         .where(Phase.tournament_age_group_id == age_group.id)
         .order_by(
-            Match.scheduled_at.asc().nulls_last(),
             Phase.phase_order.asc(),
+            Match.scheduled_at.asc().nulls_last(),
             Match.bracket_round_order.asc().nulls_last(),
             Match.bracket_position.asc().nulls_last(),
         )
     )
     age_group_matches = age_group_matches_result.scalars().all()
 
+    # Build phase-order lookup from loaded phase objects
+    phase_order_by_id: dict[str, int] = {phase.id: phase.phase_order for phase in age_group.phases}
+
+    # Separate group-stage matches from knockout matches
+    group_stage_matches: list[Match] = []
+    knockout_by_phase: dict[str, list[Match]] = defaultdict(list)
     for match in age_group_matches:
+        if match.group_id is not None:
+            group_stage_matches.append(match)
+        elif match.phase_id:
+            knockout_by_phase[match.phase_id].append(match)
+
+    # Sort group-stage matches by scheduled_at. Use timestamp float as sort key
+    # to avoid TypeError when mixing naive and tz-aware datetimes (SQLite vs PG).
+    def _sort_ts(m: Match) -> tuple[int, float, int]:
+        if m.scheduled_at is None:
+            return (1, 0.0, m.bracket_position or 0)
+        try:
+            ts = m.scheduled_at.timestamp()
+        except (OSError, OverflowError, ValueError):
+            ts = 0.0
+        return (0, ts, m.bracket_position or 0)
+    group_stage_matches.sort(key=_sort_ts)
+
+    def _find_free_slot(field_key: tuple[str, int | None], earliest: datetime) -> datetime:
+        candidate = earliest
+        while True:
+            candidate_end = candidate + slot_delta
+            conflicts = [
+                (s, e) for s, e in occupied_slots[field_key]
+                if candidate < e and candidate_end > s
+            ]
+            if not conflicts:
+                return candidate
+            candidate = max(e for _, e in conflicts)
+
+    # ── 1. Group-stage matches (resolved independently by scheduled_at) ──────
+    for match in group_stage_matches:
         if not match.scheduled_at or not match.field_name:
             continue
-
         field_key = (match.field_name, match.field_number)
         if _match_has_recorded_result(match):
             end_time = _match_end_time(match, slot_delta)
             if end_time:
                 occupied_slots[field_key].append((match.scheduled_at, end_time))
             continue
+        resolved = _find_free_slot(field_key, match.scheduled_at)
+        match.scheduled_at = resolved
+        occupied_slots[field_key].append((resolved, resolved + slot_delta))
 
-        candidate_start = match.scheduled_at
-        while True:
-            candidate_end = candidate_start + slot_delta
-            conflicting_slots = [
-                (start, end)
-                for start, end in occupied_slots[field_key]
-                if candidate_start < end and candidate_end > start
-            ]
-            if not conflicting_slots:
-                break
-            candidate_start = max(end for _, end in conflicting_slots)
+    # ── 2. Knockout matches: process by phase, then bracket_round_order ──────
+    # This enforces that finals are never scheduled before their semifinals,
+    # and aligns matches within the same round to the same start time.
+    for phase_id in sorted(knockout_by_phase.keys(), key=lambda pid: phase_order_by_id.get(pid, 0)):
+        phase_matches = knockout_by_phase[phase_id]
+        phase_matches.sort(key=lambda m: (m.bracket_round_order or 0, m.bracket_position or 0))
 
-        match.scheduled_at = candidate_start
-        occupied_slots[field_key].append((candidate_start, candidate_start + slot_delta))
+        prev_round_end: datetime | None = None
+        idx = 0
+        while idx < len(phase_matches):
+            current_round = phase_matches[idx].bracket_round_order or 0
+            end_idx = idx
+            while end_idx < len(phase_matches) and (phase_matches[end_idx].bracket_round_order or 0) == current_round:
+                end_idx += 1
+            round_matches = phase_matches[idx:end_idx]
+
+            # First pass: resolve each match with min_start = prev_round_end
+            resolved_times: list[datetime] = []
+            for match in round_matches:
+                if not match.scheduled_at or not match.field_name:
+                    continue
+                field_key = (match.field_name, match.field_number)
+                if _match_has_recorded_result(match):
+                    end_time = _match_end_time(match, slot_delta)
+                    if end_time:
+                        occupied_slots[field_key].append((match.scheduled_at, end_time))
+                    resolved_times.append(match.scheduled_at)
+                    continue
+                earliest = max(match.scheduled_at, prev_round_end) if prev_round_end else match.scheduled_at
+                resolved = _find_free_slot(field_key, earliest)
+                match.scheduled_at = resolved
+                occupied_slots[field_key].append((resolved, resolved + slot_delta))
+                resolved_times.append(resolved)
+
+            if not resolved_times:
+                idx = end_idx
+                continue
+
+            # Second pass: align all unplayed matches in this round to the max
+            # resolved time so that matches in the same round start in parallel.
+            max_round_start = max(resolved_times)
+            for match in round_matches:
+                if (
+                    not match.scheduled_at
+                    or _match_has_recorded_result(match)
+                    or not match.field_name
+                    or match.scheduled_at >= max_round_start
+                ):
+                    continue
+                field_key = (match.field_name, match.field_number)
+                # Remove the previously placed slot for this match
+                old_start = match.scheduled_at
+                occupied_slots[field_key] = [
+                    (s, e) for s, e in occupied_slots[field_key]
+                    if not (s == old_start and e == old_start + slot_delta)
+                ]
+                # Re-resolve from max_round_start (field might be busy there)
+                resolved = _find_free_slot(field_key, max_round_start)
+                match.scheduled_at = resolved
+                occupied_slots[field_key].append((resolved, resolved + slot_delta))
+
+            # prev_round_end = latest end time in this round
+            actual_max = max(m.scheduled_at for m in round_matches if m.scheduled_at is not None)
+            prev_round_end = actual_max + slot_delta
+            idx = end_idx
 
 
 def _next_power_of_two(value: int) -> int:

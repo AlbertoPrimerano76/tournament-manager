@@ -4731,6 +4731,7 @@ function serializeStructureForComparison(structure: StructureConfig) {
       group_field_assignments: phase.group_field_assignments,
       knockout_field_assignments: phase.knockout_field_assignments.map((field) => ({
         field_name: field.field_name,
+        category_label: field.category_label ?? '',
         field_number: field.field_number,
       })),
       referee_group_assignments: phase.referee_group_assignments,
