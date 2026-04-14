@@ -30,6 +30,7 @@ from app.schemas.program import (
 _SEED_TYPE_KEY = "_seed"
 _LEGACY_SEED_PREFIX = "AUTOSEED::"
 _DEFAULT_TIMEZONE = "Europe/Rome"
+_PHASE_BREAK = timedelta(minutes=15)
 
 
 def _tournament_tz(age_group: TournamentAgeGroup) -> ZoneInfo:
@@ -307,9 +308,16 @@ def _resolve_phase_start(
     if not base:
         return fallback_start
     explicit_start = phase_config.get("start_time")
+    minimum_start = fallback_start + _PHASE_BREAK if fallback_start else None
     if isinstance(explicit_start, str) and explicit_start:
-        return datetime.combine(base.date(), _parse_start_time(explicit_start), tzinfo=_tournament_tz(age_group))
-    return fallback_start or _phase_start_datetime(age_group, phase_index)
+        resolved = datetime.combine(base.date(), _parse_start_time(explicit_start), tzinfo=_tournament_tz(age_group))
+        if minimum_start and resolved < minimum_start:
+            return minimum_start
+        return resolved
+    resolved = fallback_start or _phase_start_datetime(age_group, phase_index)
+    if minimum_start and resolved and resolved < minimum_start:
+        return minimum_start
+    return resolved
 
 
 def _slot_delta(age_group: TournamentAgeGroup) -> timedelta:
@@ -2323,8 +2331,13 @@ def _build_placeholder_phase_from_config(
         phase_start_at = _resolve_phase_start(age_group, phase_order - 1, phase_config, None)
         return groups, [], phase_date, phase_id, phase_name, phase_type, phase_start_at, None
 
-    phase_start_at = _resolve_phase_start(age_group, phase_order - 1, phase_config, None)
-    return [], [], phase_date, phase_id, phase_name, phase_type, phase_start_at, None
+    phase_start_at, estimated_end_at = _estimate_placeholder_knockout_end(
+        age_group,
+        phase_order,
+        phase_config,
+        phases_config,
+    )
+    return [], [], phase_date, phase_id, phase_name, phase_type, phase_start_at, estimated_end_at
 
 
 def _build_placeholder_group_slot_labels(
@@ -2362,6 +2375,110 @@ def _build_placeholder_group_slot_labels(
     for group_name, entries in labels_by_group.items():
         ordered[group_name] = [label for _, label in sorted(entries.items(), key=lambda item: item[0])]
     return ordered
+
+
+def _placeholder_entries_for_knockout_phase(
+    target_phase_config: dict[str, Any],
+    phases_config: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    target_phase_id = target_phase_config.get("id")
+    if not isinstance(target_phase_id, str) or not target_phase_id:
+        return []
+
+    entries: list[dict[str, Any]] = []
+    for source_phase in phases_config:
+        if not isinstance(source_phase, dict):
+            continue
+        source_phase_name = str(source_phase.get("name") or "Fase precedente")
+        num_groups = int(source_phase.get("num_groups") or 0)
+        group_names = [_group_name(index) for index in range(max(num_groups, 0))]
+        for route in source_phase.get("advancement_routes", []) if isinstance(source_phase.get("advancement_routes"), list) else []:
+            if not isinstance(route, dict) or route.get("target_phase_id") != target_phase_id:
+                continue
+            source_mode = str(route.get("source_mode") or "group_rank")
+            if source_mode == "knockout_winner":
+                route_entries = [
+                    {"label": f"Vincente {source_phase_name} {index + 1}"}
+                    for index, _ in enumerate(_normalize_route_target_slots(route))
+                ]
+            elif source_mode == "knockout_loser":
+                route_entries = [
+                    {"label": f"Perdente {source_phase_name} {index + 1}"}
+                    for index, _ in enumerate(_normalize_route_target_slots(route))
+                ]
+            else:
+                route_entries = _entries_for_group_route(route, group_names, None)
+            entries.extend(_apply_target_slot_assignments(route_entries, route, target_phase_config))
+    return entries
+
+
+def _count_standard_bucket_matches(bucket_entries: list[dict[str, Any]], knockout_progression: str) -> int:
+    if not bucket_entries:
+        return 0
+    bracket_size = _next_power_of_two(len(bucket_entries))
+    padded = bucket_entries + [
+        {"label": f"Riposo {index + 1}", "rank": 999}
+        for index in range(max(bracket_size - len(bucket_entries), 0))
+    ]
+
+    round_entries = padded
+    round_size = bracket_size
+    round_order = 1
+    total_matches = 0
+    stop_after_first_round = knockout_progression == "single_round"
+
+    while round_size >= 2:
+        pairs = _build_cross_group_direct_pairs(bucket_entries) if round_order == 1 else None
+        pairs = pairs or _pair_seed_entries(round_entries)
+        total_matches += len(pairs)
+        if stop_after_first_round:
+            break
+        round_entries = [{"label": f"Round {round_order} vincente {index + 1}"} for index, _ in enumerate(pairs)]
+        round_size = len(round_entries)
+        round_order += 1
+        if round_size <= 1:
+            break
+
+    return total_matches
+
+
+def _estimate_placeholder_knockout_end(
+    age_group: TournamentAgeGroup,
+    phase_order: int,
+    phase_config: dict[str, Any],
+    phases_config: list[dict[str, Any]],
+) -> tuple[datetime | None, datetime | None]:
+    phase_start_at = _resolve_phase_start(age_group, phase_order - 1, phase_config, None)
+    if not phase_start_at:
+        return None, None
+
+    entries = _sort_entries_for_knockout(_placeholder_entries_for_knockout_phase(phase_config, phases_config))
+    if not entries:
+        return phase_start_at, None
+
+    bracket_mode = str(phase_config.get("bracket_mode") or "standard")
+    knockout_progression = str(phase_config.get("knockout_progression") or "full_bracket")
+    match_count = 0
+
+    if bracket_mode == "group_blocks":
+        carry_matches = _build_group_block_buckets(entries, _group_block_size(phase_config))
+        match_count = sum(len(pairs) for _, _, pairs in _ordered_group_block_rounds(carry_matches))
+    elif bracket_mode == "placement":
+        buckets: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        for entry in entries:
+            buckets[int(entry.get("rank") or 1)].append(entry)
+        for bucket_entries in buckets.values():
+            match_count += _count_standard_bucket_matches(bucket_entries, knockout_progression)
+    else:
+        match_count = _count_standard_bucket_matches(entries, knockout_progression)
+
+    if match_count <= 0:
+        return phase_start_at, None
+
+    lane_count = max(len(_knockout_lanes(age_group, phase_config)) or 0, 1)
+    slot_duration = _phase_slot_duration(age_group)
+    slot_rows = math.ceil(match_count / lane_count)
+    return phase_start_at, phase_start_at + (slot_duration * slot_rows)
 
 
 def _serialize_match(match: Match, phase_name: str, phase_type: str, group_name: str | None) -> ProgramMatchResponse:

@@ -13,7 +13,7 @@ from app.models.organization import Organization
 from app.models.phase import Group, GroupTeam, Phase, PhaseType
 from app.models.team import Team, TournamentTeam
 from app.models.tournament import Tournament, TournamentAgeGroup, AgeGroup
-from app.services.program_builder import decode_seed_note, generate_age_group_program
+from app.services.program_builder import decode_seed_note, generate_age_group_program, get_age_group_program
 
 
 def make_formula_configs() -> list[tuple[str, dict, dict[str, int]]]:
@@ -1887,3 +1887,130 @@ async def test_shared_group_field_schedule_interleaves_rounds_across_groups(db: 
     assert (group_a_times[2] - group_a_times[1]).total_seconds() >= 24 * 60
     assert (group_b_times[1] - group_b_times[0]).total_seconds() >= 24 * 60
     assert (group_b_times[2] - group_b_times[1]).total_seconds() >= 24 * 60
+
+
+@pytest.mark.asyncio
+async def test_next_phase_starts_at_least_15_minutes_after_previous_phase_end(db: AsyncSession):
+    _, age_group = await create_tournament_with_teams(
+        db,
+        slug_suffix=f"phase-gap-{uuid.uuid4().hex[:6]}",
+        structure_config={
+            "expected_teams": 8,
+            "notes": "",
+            "schedule": {
+                "start_time": "09:30",
+                "match_duration_minutes": 12,
+                "interval_minutes": 8,
+                "playing_fields": [
+                    {"field_name": "Impianto Nord", "field_number": 1},
+                    {"field_name": "Impianto Sud", "field_number": 1},
+                ],
+            },
+            "phases": [
+                {
+                    "id": "phase-1",
+                    "name": "Gironi",
+                    "phase_type": "GROUP_STAGE",
+                    "num_groups": 2,
+                    "group_sizes": "4,4",
+                    "qualifiers_per_group": 2,
+                    "best_extra_teams": 0,
+                    "next_phase_type": "KNOCKOUT",
+                    "bracket_mode": "standard",
+                    "group_field_assignments": {
+                        "Girone A": [{"field_name": "Impianto Nord", "field_number": 1}],
+                        "Girone B": [{"field_name": "Impianto Sud", "field_number": 1}],
+                    },
+                },
+                {
+                    "id": "phase-2",
+                    "name": "Finali",
+                    "phase_type": "KNOCKOUT",
+                    "bracket_mode": "standard",
+                    "knockout_field_assignments": [
+                        {"field_name": "Impianto Finale", "field_number": 1},
+                    ],
+                },
+            ],
+        },
+    )
+
+    await generate_age_group_program(age_group.id, db)
+
+    result = await db.execute(
+        select(Phase)
+        .options(selectinload(Phase.matches))
+        .where(Phase.tournament_age_group_id == age_group.id)
+        .order_by(Phase.phase_order.asc())
+    )
+    phases = result.scalars().all()
+    first_phase_end = max(match.scheduled_at for match in phases[0].matches if match.scheduled_at) + timedelta(minutes=20)
+    second_phase_start = min(match.scheduled_at for match in phases[1].matches if match.scheduled_at)
+
+    assert second_phase_start >= first_phase_end + timedelta(minutes=15)
+
+
+@pytest.mark.asyncio
+async def test_placeholder_knockout_phase_has_estimated_end_time(db: AsyncSession):
+    _, age_group = await create_tournament_with_teams(
+        db,
+        slug_suffix=f"placeholder-ko-{uuid.uuid4().hex[:6]}",
+        structure_config={
+            "expected_teams": 8,
+            "notes": "",
+            "schedule": {
+                "start_time": "09:30",
+                "match_duration_minutes": 12,
+                "interval_minutes": 8,
+                "playing_fields": [
+                    {"field_name": "Impianto Nord", "field_number": 1},
+                    {"field_name": "Impianto Sud", "field_number": 1},
+                ],
+            },
+            "phases": [
+                {
+                    "id": "phase-1",
+                    "name": "Gironi",
+                    "phase_type": "GROUP_STAGE",
+                    "num_groups": 2,
+                    "group_sizes": "4,4",
+                    "qualifiers_per_group": 2,
+                    "best_extra_teams": 0,
+                    "next_phase_type": "KNOCKOUT",
+                    "advancement_routes": [
+                        {
+                            "target_phase_id": "phase-2",
+                            "source_mode": "group_rank",
+                            "source_groups": [],
+                            "rank_from": 1,
+                            "rank_to": 2,
+                            "target_slots": [],
+                        },
+                    ],
+                    "bracket_mode": "standard",
+                    "group_field_assignments": {
+                        "Girone A": [{"field_name": "Impianto Nord", "field_number": 1}],
+                        "Girone B": [{"field_name": "Impianto Sud", "field_number": 1}],
+                    },
+                },
+                {
+                    "id": "phase-2",
+                    "name": "Finali",
+                    "phase_type": "KNOCKOUT",
+                    "bracket_mode": "standard",
+                    "knockout_field_assignments": [
+                        {"field_name": "Impianto Finale", "field_number": 1},
+                    ],
+                },
+            ],
+        },
+    )
+
+    program = await get_age_group_program(age_group.id, db)
+    assert program is not None
+    all_phases = [phase for day in program.days for phase in day.phases]
+    knockout_phase = next(phase for phase in all_phases if phase.phase_type == "KNOCKOUT")
+
+    assert knockout_phase.phase_start_at is not None
+    assert knockout_phase.estimated_end_at is not None
+    assert knockout_phase.estimated_end_at > knockout_phase.phase_start_at
