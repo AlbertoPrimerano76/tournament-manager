@@ -12,7 +12,7 @@ import { useAdminOrganizations, useCreateOrganization } from '@/api/organization
 import { useAdminTeams, useCreateTeam, useEnrollTournamentTeam, useUnenrollTournamentTeam, useUpdateTeam } from '@/api/teams'
 import { useOrganizationFields } from '@/api/fields'
 import ImageUpload from '@/components/shared/ImageUpload'
-import AgeGroupProgramView from '@/components/program/AgeGroupProgramView'
+import AgeGroupProgramView, { AdminAllMatchesEditorView } from '@/components/program/AgeGroupProgramView'
 import { Calendar, MapPin, Globe, Pencil, Trash2, X, Plus, Eye, EyeOff, Users, Save, ArrowRight, ExternalLink, Sparkles, AlertTriangle, Clock3, Download } from 'lucide-react'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
@@ -2448,18 +2448,35 @@ function AgeGroupOperationsPanel({ ageGroup }: { ageGroup: AgeGroup }) {
   const { data: program } = useAdminAgeGroupProgram(ageGroup.id)
   const structure = normalizeStructureConfig(ageGroup.structure_config)
   const totalMatches = program ? countProgramMatches(program) : 0
+  const [activePanel, setActivePanel] = useState<'tabellini' | 'modifica'>('tabellini')
 
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 bg-slate-50 px-5 py-5">
-        <p className="text-sm text-slate-600">
-          Apri solo le partite da aggiornare. Filtri, risultati e ritardi sono raccolti qui per lavorare velocemente sul campo.
-        </p>
         <div className="mt-4 grid gap-3 md:grid-cols-4">
           <InfoField label="Squadre" value={`${participants?.length ?? 0}`} />
           <InfoField label="Partite" value={program ? `${totalMatches}` : '0'} />
           <InfoField label="Fasi" value={`${structure.phases.length}`} />
           <InfoField label="Durata" value={structure.schedule.match_duration_minutes ? `${structure.schedule.match_duration_minutes} min` : 'Da definire'} />
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {([
+            { id: 'tabellini' as const, label: 'Tabellini e ritardi' },
+            { id: 'modifica' as const, label: 'Modifica partite' },
+          ]).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActivePanel(tab.id)}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                activePanel === tab.id
+                  ? 'bg-slate-900 text-white'
+                  : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -2469,15 +2486,25 @@ function AgeGroupOperationsPanel({ ageGroup }: { ageGroup: AgeGroup }) {
             Aggiungi prima le squadre partecipanti, poi genera gironi e partite.
           </div>
         ) : program ? (
-          <AgeGroupProgramView
-            program={program}
-            mode="admin"
-            variant="operations"
-            playingFields={structure.schedule.playing_fields}
-            participants={participants ?? []}
-            matchDurationMinutes={structure.schedule.match_duration_minutes ?? 12}
-            intervalMinutes={structure.schedule.interval_minutes ?? 8}
-          />
+          activePanel === 'tabellini' ? (
+            <AgeGroupProgramView
+              program={program}
+              mode="admin"
+              variant="operations"
+              playingFields={structure.schedule.playing_fields}
+              participants={participants ?? []}
+              matchDurationMinutes={structure.schedule.match_duration_minutes ?? 12}
+              intervalMinutes={structure.schedule.interval_minutes ?? 8}
+            />
+          ) : (
+            <AdminAllMatchesEditorView
+              program={program}
+              playingFields={structure.schedule.playing_fields}
+              participants={participants ?? []}
+              matchDurationMinutes={structure.schedule.match_duration_minutes ?? 12}
+              intervalMinutes={structure.schedule.interval_minutes ?? 8}
+            />
+          )
         ) : (
           <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-500">
             Nessun programma generato per questa categoria.
