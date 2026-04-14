@@ -206,17 +206,26 @@ def _build_group_section(group: ProgramGroupResponse, tournament_timezone: str =
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
 
+    sched_cell_style = ParagraphStyle(
+        "ProgramSchedCell",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=9,
+        leading=11,
+        textColor=colors.HexColor("#0f172a"),
+    )
+
     schedule_rows = [["Ora", "Campo", "Partita"]]
     for match in matches:
         schedule_rows.append([
             _format_time(match.scheduled_at, tournament_timezone),
-            _short_field_label(match),
+            Paragraph(_escape_pdf_text(_short_field_label(match)), sched_cell_style),
             f"{_escape_pdf_text(match.home_label)} - {_escape_pdf_text(match.away_label)}",
         ])
     if len(schedule_rows) == 1:
         schedule_rows.append(["Da definire", "-", "Partite non ancora programmate"])
 
-    schedule_table = Table(schedule_rows, repeatRows=1, colWidths=[20 * mm, 44 * mm, 122 * mm])
+    schedule_table = Table(schedule_rows, repeatRows=1, colWidths=[20 * mm, 56 * mm, 110 * mm])
     schedule_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#dbeafe")),
         ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0f172a")),
@@ -341,7 +350,7 @@ def _build_knockout_section(phase: ProgramPhaseResponse, tournament_timezone: st
                 Paragraph("Partite non ancora programmate", empty_style),
             ])
 
-        table = Table(rows, repeatRows=1, colWidths=[22 * mm, 44 * mm, 120 * mm])
+        table = Table(rows, repeatRows=1, colWidths=[22 * mm, 56 * mm, 108 * mm])
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#fef3c7")),
             ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0f172a")),
@@ -398,11 +407,15 @@ def _short_field_label(match: ProgramMatchResponse) -> str:
     if not match.field_name:
         return "-"
     compact_name = re.sub(r"\s+", " ", match.field_name).strip()
-    if len(compact_name) > 28:
-        compact_name = f"{compact_name[:25].rstrip()}..."
-    if match.field_number is None:
-        return compact_name
-    return f"{compact_name} #{match.field_number}"
+    suffix = f" #{match.field_number}" if match.field_number is not None else ""
+    full = f"{compact_name}{suffix}"
+    if len(full) <= 26:
+        return full
+    # Truncate the name portion to fit within 26 chars total
+    avail = 26 - len(suffix) - 3  # room for "..."
+    if avail > 0:
+        return f"{compact_name[:avail].rstrip()}...{suffix}"
+    return f"{full[:23].rstrip()}..."
 
 
 def _format_time(value, tournament_timezone: str, fallback: str = "Da definire") -> str:
