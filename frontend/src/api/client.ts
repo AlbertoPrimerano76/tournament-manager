@@ -11,6 +11,12 @@ function clearAuthState() {
   localStorage.removeItem('auth_user_email')
 }
 
+function redirectToLogin() {
+  if (window.location.pathname !== '/admin/login') {
+    window.location.href = '/admin/login'
+  }
+}
+
 // Attach access token to every request
 apiClient.interceptors.request.use((config) => {
   if ((config as { skipAuth?: boolean }).skipAuth) return config
@@ -23,8 +29,9 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (res) => res,
   async (error) => {
-    const original = error.config as { _retry?: boolean; skipAuthRefresh?: boolean; headers: { Authorization?: string } }
-    if (error.response?.status === 401 && !original._retry && !original.skipAuthRefresh) {
+    const original = error.config as { _retry?: boolean; skipAuthRefresh?: boolean; headers?: { Authorization?: string } } | undefined
+    const status = error.response?.status
+    if ((status === 401 || status === 403) && original && !original._retry && !original.skipAuthRefresh) {
       original._retry = true
       const refresh = localStorage.getItem('refresh_token')
       if (refresh) {
@@ -36,12 +43,16 @@ apiClient.interceptors.response.use(
           )
           localStorage.setItem('access_token', res.data.access_token)
           localStorage.setItem('refresh_token', res.data.refresh_token)
+          original.headers = original.headers ?? {}
           original.headers.Authorization = `Bearer ${res.data.access_token}`
           return apiClient(original)
         } catch {
           clearAuthState()
-          window.location.href = '/admin/login'
+          redirectToLogin()
         }
+      } else {
+        clearAuthState()
+        redirectToLogin()
       }
     }
     return Promise.reject(error)

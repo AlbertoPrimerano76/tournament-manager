@@ -26,6 +26,21 @@ function clearStoredAuth() {
   localStorage.removeItem(AUTH_EMAIL_KEY)
 }
 
+function decodeAccessToken(token: string): { sub: string; role: string; exp?: number } | null {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    if (!payload?.sub || !payload?.role) {
+      return null
+    }
+    if (typeof payload.exp === 'number' && payload.exp * 1000 <= Date.now()) {
+      return null
+    }
+    return payload
+  } catch {
+    return null
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -34,10 +49,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token = localStorage.getItem(ACCESS_TOKEN_KEY)
     const email = localStorage.getItem(AUTH_EMAIL_KEY) ?? ''
     if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]))
+      const payload = decodeAccessToken(token)
+      if (payload) {
         setUser({ id: payload.sub, email, role: payload.role, organization_id: null })
-      } catch {
+      } else {
         clearStoredAuth()
       }
     }
@@ -49,7 +64,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(ACCESS_TOKEN_KEY, res.data.access_token)
     localStorage.setItem(REFRESH_TOKEN_KEY, res.data.refresh_token)
     localStorage.setItem(AUTH_EMAIL_KEY, email)
-    const payload = JSON.parse(atob(res.data.access_token.split('.')[1]))
+    const payload = decodeAccessToken(res.data.access_token)
+    if (!payload) {
+      clearStoredAuth()
+      throw new Error('Token di accesso non valido')
+    }
     setUser({ id: payload.sub, email, role: payload.role, organization_id: null })
   }
 
