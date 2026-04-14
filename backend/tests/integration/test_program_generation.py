@@ -1713,6 +1713,16 @@ async def test_group_blocks_schedule_top_finals_last_and_propagate_results(clien
                     "qualifiers_per_group": 5,
                     "best_extra_teams": 0,
                     "next_phase_type": "KNOCKOUT",
+                    "advancement_routes": [
+                        {
+                            "target_phase_id": "phase-2",
+                            "source_mode": "group_rank",
+                            "source_groups": [],
+                            "rank_from": 1,
+                            "rank_to": 5,
+                            "target_slots": [],
+                        },
+                    ],
                     "bracket_mode": "standard",
                     "notes": "",
                     "group_field_assignments": {
@@ -1730,6 +1740,7 @@ async def test_group_blocks_schedule_top_finals_last_and_propagate_results(clien
                     "phase_type": "KNOCKOUT",
                     "group_sizes": "",
                     "bracket_mode": "group_blocks",
+                    "group_block_size": 4,
                     "notes": "",
                     "knockout_field_assignments": [
                         {"field_name": "Impianto Finale", "field_number": 1},
@@ -1751,6 +1762,17 @@ async def test_group_blocks_schedule_top_finals_last_and_propagate_results(clien
         knockout_phase.matches,
         key=lambda match: ((match.bracket_round_order or 0), (match.bracket_position or 0)),
     )
+    assert [match.bracket_round for match in ordered_matches] == [
+        "Piazzamento 1a · Semifinali",
+        "Piazzamento 1a · Semifinali",
+        "Piazzamento 5a · Semifinali",
+        "Piazzamento 5a · Semifinali",
+        "Piazzamento 9a · Finale",
+        "Piazzamento 5a · Finale 3°/4° posto",
+        "Piazzamento 5a · Finale 1°/2° posto",
+        "Piazzamento 1a · Finale 3°/4° posto",
+        "Piazzamento 1a · Finale 1°/2° posto",
+    ]
 
     assert ordered_matches[-2].bracket_round == "Piazzamento 1a · Finale 3°/4° posto"
     assert ordered_matches[-1].bracket_round == "Piazzamento 1a · Finale 1°/2° posto"

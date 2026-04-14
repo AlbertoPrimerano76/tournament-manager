@@ -1647,6 +1647,7 @@ type StructurePhase = {
   phase_date: string
   start_time: string
   placement_start_rank: number | null
+  group_block_size: number | null
   round_trip_mode: 'single' | 'double'
   knockout_progression: 'full_bracket' | 'single_round'
   num_groups: number | null
@@ -1768,6 +1769,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_date: '',
           start_time: '',
           placement_start_rank: null,
+          group_block_size: null,
           round_trip_mode: 'single',
           knockout_progression: 'full_bracket',
           num_groups: 1,
@@ -1806,6 +1808,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_date: '',
           start_time: '',
           placement_start_rank: null,
+          group_block_size: null,
           round_trip_mode: 'single',
           knockout_progression: 'full_bracket',
           num_groups: 2,
@@ -1827,6 +1830,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_date: '',
           start_time: '',
           placement_start_rank: 1,
+          group_block_size: null,
           round_trip_mode: 'single',
           knockout_progression: 'full_bracket',
           num_groups: null,
@@ -1865,6 +1869,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_date: '',
           start_time: '',
           placement_start_rank: null,
+          group_block_size: null,
           round_trip_mode: 'single',
           knockout_progression: 'full_bracket',
           num_groups: 4,
@@ -1886,6 +1891,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_date: '',
           start_time: '',
           placement_start_rank: 1,
+          group_block_size: 4,
           round_trip_mode: 'single',
           knockout_progression: 'full_bracket',
           num_groups: null,
@@ -1924,6 +1930,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_date: '',
           start_time: '',
           placement_start_rank: null,
+          group_block_size: null,
           round_trip_mode: 'single',
           knockout_progression: 'full_bracket',
           num_groups: 2,
@@ -1945,6 +1952,7 @@ const BUILTIN_TEMPLATES: Array<{
           phase_date: '',
           start_time: '',
           placement_start_rank: 1,
+          group_block_size: 4,
           round_trip_mode: 'single',
           knockout_progression: 'full_bracket',
           num_groups: null,
@@ -3712,6 +3720,19 @@ function AgeGroupConfigurationPanel({
                               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
                             />
                           </FormField>
+                          {phase.bracket_mode === 'group_blocks' && (
+                            <FormField label="Dimensione blocco">
+                              <select
+                                value={phase.group_block_size ?? 4}
+                                onChange={(e) => setPhase(index, { group_block_size: Number(e.target.value) })}
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                              >
+                                <option value={4}>Blocchi da 4</option>
+                                <option value={8}>Blocchi da 8</option>
+                                <option value={16}>Blocchi da 16</option>
+                              </select>
+                            </FormField>
+                          )}
                           {phase.placement_start_rank && (
                             <div className="rounded-[1.2rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 sm:col-span-2">
                               Questa fase parte dal {phase.placement_start_rank}° posto. Esempio: con 4 squadre assegnerà {phase.placement_start_rank}°-{phase.placement_start_rank + 3}°.
@@ -3719,7 +3740,7 @@ function AgeGroupConfigurationPanel({
                           )}
                           {phase.bracket_mode === 'group_blocks' && (
                             <div className="rounded-[1.2rem] border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900 sm:col-span-2">
-                              Con 2 gironi crea blocchi 1-4, 5-8, 9-12 e così via. In ogni blocco le semifinali sono incrociate: 1A-2B e 1B-2A, poi finale 3/4 e finale 1/2.
+                              Con 2 gironi crea blocchi da {phase.group_block_size ?? 4}: 1-4, 5-8, 9-12 e così via. Le ultime due partite dell'intera fase restano sempre finale 3/4 e finale 1/2 del blocco principale.
                             </div>
                           )}
                           {phase.knockout_progression === 'single_round' && (
@@ -4688,6 +4709,7 @@ function serializeStructureForComparison(structure: StructureConfig) {
       phase_date: phase.phase_date,
       start_time: phase.start_time,
       placement_start_rank: phase.placement_start_rank,
+      group_block_size: phase.group_block_size,
       round_trip_mode: phase.round_trip_mode,
       knockout_progression: phase.knockout_progression,
       num_groups: phase.num_groups,
@@ -4891,6 +4913,9 @@ function validateStructureConfig(structure: StructureConfig): string[] {
         errors.push(`${phaseLabel}: i blocchi 1-4, 5-8 richiedono almeno una fase a gironi che instradi qui le squadre.`)
       } else if ((linkedGroupStage.num_groups ?? 0) !== 2) {
         errors.push(`${phaseLabel}: i blocchi 1-4, 5-8 funzionano solo con una fase sorgente a 2 gironi.`)
+      }
+      if (phase.group_block_size !== null && (phase.group_block_size < 4 || !_isPowerOfTwoUi(phase.group_block_size))) {
+        errors.push(`${phaseLabel}: la dimensione blocco deve essere 4, 8, 16...`)
       }
     }
     if (phase.phase_type === 'KNOCKOUT' && phase.bracket_mode === 'standard') {
@@ -5162,6 +5187,9 @@ function normalizePhase(value: unknown, index: number): StructurePhase {
     placement_start_rank: typeof (input as { placement_start_rank?: unknown }).placement_start_rank === 'number'
       ? ((input as { placement_start_rank?: number }).placement_start_rank ?? null)
       : null,
+    group_block_size: typeof (input as { group_block_size?: unknown }).group_block_size === 'number'
+      ? ((input as { group_block_size?: number }).group_block_size ?? null)
+      : null,
     round_trip_mode: input.round_trip_mode === 'double' ? 'double' : 'single',
     knockout_progression: input.knockout_progression === 'single_round' ? 'single_round' : 'full_bracket',
     num_groups: typeof input.num_groups === 'number' ? input.num_groups : null,
@@ -5247,6 +5275,7 @@ function makeEmptyPhase(index: number, tournamentStartDate?: string | null): Str
     phase_date: tournamentStartDate ?? '',
     start_time: '',
     placement_start_rank: null,
+    group_block_size: null,
     round_trip_mode: 'single',
     knockout_progression: 'full_bracket',
     num_groups: null,

@@ -787,7 +787,14 @@ def _queue_knockout_phase_advancements(
     return queued
 
 
-def _build_group_block_buckets(entries: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
+def _group_block_size(phase_config: dict[str, Any] | None, default: int = 4) -> int:
+    raw_size = (phase_config or {}).get("group_block_size")
+    if isinstance(raw_size, int) and raw_size >= 4 and _is_power_of_two(raw_size):
+        return raw_size
+    return default
+
+
+def _build_group_block_buckets(entries: list[dict[str, Any]], block_size: int = 4) -> list[tuple[str, list[dict[str, Any]]]]:
     group_names = sorted({
         str(entry.get("group_name"))
         for entry in entries
@@ -807,21 +814,23 @@ def _build_group_block_buckets(entries: list[dict[str, Any]]) -> list[tuple[str,
     carry_matches: list[tuple[str, list[dict[str, Any]]]] = []
     ordered_ranks = sorted(grouped_by_rank.keys())
     bucket_start_rank = 1
+    ranks_per_bucket = max(block_size // len(group_names), 1)
 
     while bucket_start_rank <= (ordered_ranks[-1] if ordered_ranks else 0):
-        current_rank_entries = grouped_by_rank.get(bucket_start_rank, {})
-        next_rank_entries = grouped_by_rank.get(bucket_start_rank + 1, {})
-        bucket_entries = [
-            current_rank_entries.get(group_names[0]),
-            current_rank_entries.get(group_names[1]),
-            next_rank_entries.get(group_names[0]),
-            next_rank_entries.get(group_names[1]),
-        ]
+        bucket_entries: list[dict[str, Any]] = []
+        for rank in range(bucket_start_rank, bucket_start_rank + ranks_per_bucket):
+            rank_entries = grouped_by_rank.get(rank, {})
+            bucket_entries.extend(
+                entry
+                for group_name in group_names
+                for entry in [rank_entries.get(group_name)]
+                if entry
+            )
         bucket_entries = [entry for entry in bucket_entries if entry]
         if bucket_entries:
             placement_rank = ((bucket_start_rank - 1) * len(group_names)) + 1
             carry_matches.append((f"Piazzamento {_ordinal_it(placement_rank)}", bucket_entries))
-        bucket_start_rank += 2
+        bucket_start_rank += ranks_per_bucket
 
     return carry_matches or [("Tabellone principale", entries)]
 
@@ -875,6 +884,24 @@ def _build_knockout_block_rounds(
     bucket_name: str,
     bucket_entries: list[dict[str, Any]],
 ) -> list[tuple[str, list[tuple[dict[str, Any], dict[str, Any] | None]], list[dict[str, Any]]]]:
+    if len(bucket_entries) > 4:
+        direct_pairs = _build_cross_group_direct_pairs(bucket_entries) or _pair_seed_entries(bucket_entries)
+        round_entries = [{"label": f"Vincente {bucket_name} · {_knockout_round_name(len(bucket_entries))} {index + 1}"} for index, _ in enumerate(direct_pairs)]
+        rounds = [
+            (f"{bucket_name} · {_knockout_round_name(len(bucket_entries))}", direct_pairs, bucket_entries),
+        ]
+
+        current_size = len(round_entries)
+        while current_size >= 2:
+            if current_size == 1:
+                break
+            round_name = f"{bucket_name} · {_knockout_round_name(current_size)}"
+            pairs = _pair_seed_entries(round_entries)
+            rounds.append((round_name, pairs, bucket_entries))
+            round_entries = [{"label": f"Vincente {round_name} {index + 1}"} for index, _ in enumerate(pairs)]
+            current_size = len(round_entries)
+        return rounds
+
     if len(bucket_entries) == 4:
         semifinal_round_name = f"{bucket_name} · Semifinali"
         semifinals = [
@@ -925,7 +952,9 @@ def _ordered_group_block_rounds(
         return []
 
     top_bucket_name = carry_matches[0][0]
-    first_round_batches: list[list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]]] = []
+    top_progression_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
+    lower_progression_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
+    middle_single_finals: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
     lower_third_place_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
     lower_final_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
     top_third_place_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
@@ -935,20 +964,33 @@ def _ordered_group_block_rounds(
         block_rounds = _build_knockout_block_rounds(bucket_name, bucket_entries)
         if not block_rounds:
             continue
-        first_round_batches.append([(1, round_name, pairs) for round_name, pairs, _ in block_rounds[:1]])
+        if len(block_rounds) == 1:
+            middle_single_finals.append((2, block_rounds[0][0], block_rounds[0][1]))
+            continue
         if len(block_rounds) >= 3:
             target_third = top_third_place_rounds if bucket_name == top_bucket_name else lower_third_place_rounds
             target_final = top_final_rounds if bucket_name == top_bucket_name else lower_final_rounds
+            target_progression = top_progression_rounds if bucket_name == top_bucket_name else lower_progression_rounds
+            for order, (round_name, pairs, _) in enumerate(block_rounds[:1], start=1):
+                target_progression.append((order, round_name, pairs))
             target_third.append((2 if bucket_name != top_bucket_name else 4, block_rounds[1][0], block_rounds[1][1]))
             target_final.append((3 if bucket_name != top_bucket_name else 5, block_rounds[2][0], block_rounds[2][1]))
+            continue
+        target_progression = top_progression_rounds if bucket_name == top_bucket_name else lower_progression_rounds
+        for order, (round_name, pairs, _) in enumerate(block_rounds[:-1], start=1):
+            target_progression.append((order, round_name, pairs))
+        final_target = top_final_rounds if bucket_name == top_bucket_name else lower_final_rounds
+        final_target.append((len(block_rounds), block_rounds[-1][0], block_rounds[-1][1]))
 
     ordered_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
-    max_first_rounds = max((len(batch) for batch in first_round_batches), default=0)
-    for batch_index in range(max_first_rounds):
-        for batch in first_round_batches:
-            if batch_index < len(batch):
-                ordered_rounds.append(batch[batch_index])
-
+    max_progression_order = max(
+        [order for order, _, _ in top_progression_rounds + lower_progression_rounds],
+        default=0,
+    )
+    for progression_order in range(1, max_progression_order + 1):
+        ordered_rounds.extend([item for item in top_progression_rounds if item[0] == progression_order])
+        ordered_rounds.extend([item for item in lower_progression_rounds if item[0] == progression_order])
+    ordered_rounds.extend(middle_single_finals)
     ordered_rounds.extend(lower_third_place_rounds)
     ordered_rounds.extend(lower_final_rounds)
     ordered_rounds.extend(top_third_place_rounds)
@@ -1134,6 +1176,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                 "bracket_mode": phase_config.get("bracket_mode", "standard"),
                 "knockout_progression": phase_config.get("knockout_progression", "full_bracket"),
                 "placement_start_rank": phase_config.get("placement_start_rank"),
+                "group_block_size": _group_block_size(phase_config),
                 "next_phase_type": phase_config.get("next_phase_type") or "",
             },
         )
@@ -1275,7 +1318,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             for rank in ordered_ranks:
                 carry_matches.append((f"Piazzamento {_ordinal_it(rank)}", buckets[rank]))
         elif bracket_mode == "group_blocks":
-            carry_matches = _build_group_block_buckets(current_entries)
+            carry_matches = _build_group_block_buckets(current_entries, _group_block_size(phase_config))
         else:
             carry_matches = [(_phase_bucket_name(phase_config), current_entries)]
 
@@ -1565,6 +1608,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                 "bracket_mode": phase_config.get("bracket_mode", "standard"),
                 "knockout_progression": phase_config.get("knockout_progression", "full_bracket"),
                 "placement_start_rank": phase_config.get("placement_start_rank"),
+                "group_block_size": _group_block_size(phase_config),
                 "next_phase_type": phase_config.get("next_phase_type") or "",
             },
         )
@@ -1689,7 +1733,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             for rank in ordered_ranks:
                 carry_matches.append((f"Piazzamento {_ordinal_it(rank)}", buckets[rank]))
         elif bracket_mode == "group_blocks":
-            carry_matches = _build_group_block_buckets(current_entries)
+            carry_matches = _build_group_block_buckets(current_entries, _group_block_size(phase_config))
         else:
             carry_matches = [(_phase_bucket_name(phase_config), current_entries)]
 
