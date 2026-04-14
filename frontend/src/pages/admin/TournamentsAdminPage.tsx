@@ -1655,7 +1655,7 @@ type StructurePhase = {
   best_extra_teams: number | null
   next_phase_type: '' | 'GROUP_STAGE' | 'KNOCKOUT'
   advancement_routes: AdvancementRoute[]
-  bracket_mode: 'standard' | 'placement' | 'group_blocks'
+  bracket_mode: 'standard' | 'group_blocks'
   group_field_assignments: Record<string, PlayingFieldConfig[]>
   knockout_field_assignments: PlayingFieldConfig[]
   referee_group_assignments: Record<string, string[]>
@@ -1873,7 +1873,7 @@ const BUILTIN_TEMPLATES: Array<{
           best_extra_teams: 1,
           next_phase_type: 'KNOCKOUT',
           advancement_routes: [],
-          bracket_mode: 'placement',
+          bracket_mode: 'group_blocks',
           group_field_assignments: {},
           knockout_field_assignments: [],
           referee_group_assignments: {},
@@ -1894,7 +1894,7 @@ const BUILTIN_TEMPLATES: Array<{
           best_extra_teams: null,
           next_phase_type: '',
           advancement_routes: [],
-          bracket_mode: 'placement',
+          bracket_mode: 'group_blocks',
           group_field_assignments: {},
           knockout_field_assignments: [],
           referee_group_assignments: {},
@@ -3579,9 +3579,7 @@ function AgeGroupConfigurationPanel({
                     <div className={`flex items-center justify-between gap-3 border-b px-4 py-3 ${
                       activePhase.phase_type === 'GROUP_STAGE'
                         ? 'border-sky-200 bg-sky-50'
-                        : activePhase.bracket_mode === 'placement'
-                          ? 'border-fuchsia-200 bg-fuchsia-50'
-                          : activePhase.bracket_mode === 'group_blocks'
+                        : activePhase.bracket_mode === 'group_blocks'
                             ? 'border-violet-200 bg-violet-50'
                             : 'border-rose-200 bg-rose-50'
                     }`}>
@@ -3690,9 +3688,8 @@ function AgeGroupConfigurationPanel({
                               onChange={(e) => setPhase(index, { bracket_mode: e.target.value as StructurePhase['bracket_mode'] })}
                               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
                             >
-                              <option value="standard">Eliminazione standard</option>
-                              <option value="placement">Tabelloni piazzamento mini rugby</option>
-                              <option value="group_blocks">2 gironi: blocchi 1-4, 5-8, 9-12</option>
+                              <option value="standard">Diretta incrociata</option>
+                              <option value="group_blocks">Blocchi di piazzamento</option>
                             </select>
                           </FormField>
                           <FormField label="Sviluppo fase">
@@ -3722,7 +3719,7 @@ function AgeGroupConfigurationPanel({
                           )}
                           {phase.bracket_mode === 'group_blocks' && (
                             <div className="rounded-[1.2rem] border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900 sm:col-span-2">
-                              Questa modalità crea per ogni blocco: semifinali incrociate, finale 1-2 e finale 3-4. Lo stesso schema si ripete per 5-8, 9-12 e gli altri piazzamenti.
+                              Con 2 gironi crea blocchi 1-4, 5-8, 9-12 e così via. In ogni blocco le semifinali sono incrociate: 1A-2B e 1B-2A, poi finale 3/4 e finale 1/2.
                             </div>
                           )}
                           {phase.knockout_progression === 'single_round' && (
@@ -3732,7 +3729,7 @@ function AgeGroupConfigurationPanel({
                           )}
                           {phase.knockout_progression === 'full_bracket' && (
                             <div className="rounded-[1.2rem] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 sm:col-span-2">
-                              Usa questa opzione anche per una finale secca. Se arrivano 2 squadre, viene generata una sola partita e la fase termina qui.
+                              Le qualificate vengono incrociate tra coppie di gironi: 1A contro ultima dell'altro girone, 2A contro penultima, e così via. Se arrivano solo 2 squadre viene generata una finale secca.
                             </div>
                           )}
                         </div>
@@ -4403,14 +4400,12 @@ function VisualTemplateMini({ config }: { config: StructureConfig }) {
           <div className={`min-w-[118px] rounded-2xl border px-3 py-2 ${
             phase.phase_type === 'GROUP_STAGE'
               ? 'border-sky-200 bg-sky-50'
-              : phase.bracket_mode === 'placement'
-                ? 'border-fuchsia-200 bg-fuchsia-50'
-                : phase.bracket_mode === 'group_blocks'
+              : phase.bracket_mode === 'group_blocks'
                   ? 'border-violet-200 bg-violet-50'
                 : 'border-rose-200 bg-rose-50'
           }`}>
             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
-              {phase.phase_type === 'GROUP_STAGE' ? 'Gironi' : phase.bracket_mode === 'placement' ? 'Piazzamenti' : phase.bracket_mode === 'group_blocks' ? 'Blocchi' : 'Finali'}
+              {phase.phase_type === 'GROUP_STAGE' ? 'Gironi' : phase.bracket_mode === 'group_blocks' ? 'Blocchi' : 'Diretta'}
             </p>
             <p className="mt-1 text-sm font-semibold text-slate-900">{phase.name}</p>
           </div>
@@ -4530,6 +4525,10 @@ function estimateKnockoutMatches(phase: StructurePhase): number {
 function _nextPowerOfTwoUi(value: number): number {
   if (value <= 1) return 1
   return 2 ** Math.ceil(Math.log2(value))
+}
+
+function _isPowerOfTwoUi(value: number): boolean {
+  return value > 0 && (value & (value - 1)) === 0
 }
 
 function estimateSuggestedPhaseStart(
@@ -4894,6 +4893,21 @@ function validateStructureConfig(structure: StructureConfig): string[] {
         errors.push(`${phaseLabel}: i blocchi 1-4, 5-8 funzionano solo con una fase sorgente a 2 gironi.`)
       }
     }
+    if (phase.phase_type === 'KNOCKOUT' && phase.bracket_mode === 'standard') {
+      const expectedIncomingTeams = estimateIncomingTeamsForPhase(structure, index)
+      const linkedGroupStages = structure.phases
+        .slice(0, index)
+        .filter((candidate) => candidate.phase_type === 'GROUP_STAGE' && candidate.advancement_routes.some((route) => route.target_phase_id === phase.id))
+      if (expectedIncomingTeams !== null && expectedIncomingTeams > 2 && !_isPowerOfTwoUi(expectedIncomingTeams)) {
+        errors.push(`${phaseLabel}: l'eliminazione diretta richiede 4, 8, 16 squadre qualificate oppure 2 per la finale secca.`)
+      }
+      if (linkedGroupStages.length > 0) {
+        const totalSourceGroups = linkedGroupStages.reduce((total, candidate) => total + Math.max(candidate.num_groups ?? buildGroupNames(candidate).length, 0), 0)
+        if (totalSourceGroups % 2 !== 0) {
+          errors.push(`${phaseLabel}: l'eliminazione diretta incrociata richiede un numero pari di gironi sorgente.`)
+        }
+      }
+    }
     if (phase.phase_type === 'KNOCKOUT' && phase.placement_start_rank !== null && phase.placement_start_rank <= 0) {
       errors.push(`${phaseLabel}: la classifica assegnata deve partire da un numero maggiore di zero.`)
     }
@@ -5138,6 +5152,7 @@ function normalizePlayingFieldConfig(value: unknown, index: number): PlayingFiel
 
 function normalizePhase(value: unknown, index: number): StructurePhase {
   const input = (value && typeof value === 'object') ? value as Partial<StructurePhase> : {}
+  const rawBracketMode = (input as { bracket_mode?: unknown }).bracket_mode
   return {
     id: typeof input.id === 'string' ? input.id : `phase-${index}`,
     name: typeof input.name === 'string' && input.name ? input.name : `Fase ${index}`,
@@ -5155,11 +5170,9 @@ function normalizePhase(value: unknown, index: number): StructurePhase {
     best_extra_teams: typeof input.best_extra_teams === 'number' ? input.best_extra_teams : null,
     next_phase_type: input.next_phase_type === 'GROUP_STAGE' || input.next_phase_type === 'KNOCKOUT' ? input.next_phase_type : '',
     advancement_routes: normalizeAdvancementRoutes((input as { advancement_routes?: unknown }).advancement_routes),
-    bracket_mode: input.bracket_mode === 'placement'
-      ? 'placement'
-      : input.bracket_mode === 'group_blocks'
-        ? 'group_blocks'
-        : 'standard',
+    bracket_mode: rawBracketMode === 'group_blocks' || rawBracketMode === 'placement'
+      ? 'group_blocks'
+      : 'standard',
     group_field_assignments: normalizeGroupFieldAssignments((input as { group_field_assignments?: unknown }).group_field_assignments),
     knockout_field_assignments: normalizePlayingFieldAssignments((input as { knockout_field_assignments?: unknown }).knockout_field_assignments),
     referee_group_assignments: normalizeRefereeGroupAssignments((input as { referee_group_assignments?: unknown }).referee_group_assignments),

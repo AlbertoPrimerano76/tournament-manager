@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.core.deps import require_editor, require_scorer, ensure_match_access
 from app.models.match import Match, MatchStatus
 from app.models.phase import Phase
+from app.services.program_builder import decode_seed_note
 from app.models.team import TournamentTeam
 from app.models.tournament import TournamentAgeGroup
 from app.models.user import User, UserRole
@@ -43,61 +44,71 @@ def _round_index(phase_matches: list[Match], match: Match) -> int | None:
     return None
 
 
-def _find_next_knockout_match(phase_matches: list[Match], match: Match) -> Match | None:
-    if match.bracket_round_order is None:
-        return None
+def _source_match_labels(phase_matches: list[Match], match: Match) -> set[str]:
+    labels: set[str] = set()
+    if match.bracket_round:
+        labels.add(match.bracket_round)
     round_index = _round_index(phase_matches, match)
-    if round_index is None:
-        return None
-    next_round_matches = _round_matches(phase_matches, match.bracket_round_order + 1)
-    if not next_round_matches:
-        return None
-    target_index = round_index // 2
-    if target_index >= len(next_round_matches):
-        return None
-    return next_round_matches[target_index]
+    if match.bracket_round and round_index is not None:
+        labels.add(f"{match.bracket_round} {round_index + 1}")
+    return labels
 
 
-def _set_next_knockout_slot(phase_matches: list[Match], next_match: Match, source_match: Match, team_id: str | None) -> bool:
-    round_index = _round_index(phase_matches, source_match)
-    if round_index is None:
-        return False
-    if round_index % 2 == 0:
-        if next_match.home_team_id == team_id:
-            return False
-        next_match.home_team_id = team_id
-        return True
-    if next_match.away_team_id == team_id:
-        return False
-    next_match.away_team_id = team_id
-    return True
+def _apply_seed_reference(match: Match, labels: set[str], team_id: str | None) -> bool:
+    seed_home, seed_away, _ = decode_seed_note(match.notes)
+    changed = False
+    if seed_home in labels and match.home_team_id != team_id:
+        match.home_team_id = team_id
+        changed = True
+    if seed_away in labels and match.away_team_id != team_id:
+        match.away_team_id = team_id
+        changed = True
+    return changed
+
+
+def _propagate_knockout_outcomes(
+    phase_matches: list[Match],
+    source_match: Match,
+    winner_team_id: str | None,
+    loser_team_id: str | None,
+) -> None:
+    if source_match.bracket_round_order is None:
+        return
+
+    source_labels = _source_match_labels(phase_matches, source_match)
+    if not source_labels:
+        return
+
+    winner_labels = {f"Vincente {label}" for label in source_labels}
+    loser_labels = {f"Perdente {label}" for label in source_labels}
+
+    future_matches = sorted(
+        [
+            match
+            for match in phase_matches
+            if match.id != source_match.id
+            and (match.bracket_round_order or 0) > (source_match.bracket_round_order or 0)
+        ],
+        key=lambda item: ((item.bracket_round_order or 0), (item.bracket_position or 0), item.id),
+    )
+
+    for future_match in future_matches:
+        changed = False
+        changed = _apply_seed_reference(future_match, winner_labels, winner_team_id) or changed
+        changed = _apply_seed_reference(future_match, loser_labels, loser_team_id) or changed
+        if not changed:
+            continue
+        if _match_has_locked_result(future_match):
+            _clear_match_result_data(future_match)
+        _propagate_knockout_outcomes(phase_matches, future_match, None, None)
 
 
 def _clear_knockout_descendants(phase_matches: list[Match], source_match: Match) -> None:
-    next_match = _find_next_knockout_match(phase_matches, source_match)
-    if not next_match:
-        return
-    changed = _set_next_knockout_slot(phase_matches, next_match, source_match, None)
-    if not changed:
-        return
-    _clear_match_result_data(next_match)
-    _clear_knockout_descendants(phase_matches, next_match)
+    _propagate_knockout_outcomes(phase_matches, source_match, None, None)
 
 
-def _propagate_knockout_winner(phase_matches: list[Match], source_match: Match, winner_team_id: str | None) -> None:
-    next_match = _find_next_knockout_match(phase_matches, source_match)
-    if not next_match:
-        return
-    changed = _set_next_knockout_slot(phase_matches, next_match, source_match, winner_team_id)
-    if not changed:
-        return
-    if winner_team_id is None:
-        _clear_match_result_data(next_match)
-        _clear_knockout_descendants(phase_matches, next_match)
-        return
-    if _match_has_locked_result(next_match):
-        _clear_match_result_data(next_match)
-        _clear_knockout_descendants(phase_matches, next_match)
+def _propagate_knockout_result(phase_matches: list[Match], source_match: Match, winner_team_id: str | None, loser_team_id: str | None) -> None:
+    _propagate_knockout_outcomes(phase_matches, source_match, winner_team_id, loser_team_id)
 
 
 def _match_has_locked_result(match: Match) -> bool:
@@ -410,11 +421,14 @@ async def enter_score(
 
         if match.group_id is None:
             winner_team_id: str | None = None
+            loser_team_id: str | None = None
             if body.home_score > body.away_score:
                 winner_team_id = match.home_team_id
+                loser_team_id = match.away_team_id
             elif body.away_score > body.home_score:
                 winner_team_id = match.away_team_id
-            _propagate_knockout_winner(phase_matches, match, winner_team_id)
+                loser_team_id = match.home_team_id
+            _propagate_knockout_result(phase_matches, match, winner_team_id, loser_team_id)
 
     await db.commit()
     await db.refresh(match)

@@ -13,7 +13,7 @@ from app.models.organization import Organization
 from app.models.phase import Group, GroupTeam, Phase, PhaseType
 from app.models.team import Team, TournamentTeam
 from app.models.tournament import Tournament, TournamentAgeGroup, AgeGroup
-from app.services.program_builder import generate_age_group_program
+from app.services.program_builder import decode_seed_note, generate_age_group_program
 
 
 def make_formula_configs() -> list[tuple[str, dict, dict[str, int]]]:
@@ -1024,8 +1024,11 @@ async def test_knockout_results_propagate_winners_to_next_round(client: AsyncCli
         for team in knockout_phase.tournament_age_group.tournament_teams
         if team.id == semifinal_one.home_team_id
     )
-    assert final_program_match["home_label"] == winning_team_name
-    assert "Vincente" not in final_program_match["home_label"]
+    assert winning_team_name in {final_program_match["home_label"], final_program_match["away_label"]}
+    if final_program_match["home_team_id"] == semifinal_one.home_team_id:
+        assert "Vincente" not in final_program_match["home_label"]
+    if final_program_match["away_team_id"] == semifinal_one.home_team_id:
+        assert "Vincente" not in final_program_match["away_label"]
 
 
 @pytest.mark.asyncio
@@ -1547,3 +1550,256 @@ async def test_single_group_uses_three_parallel_fields_without_team_overlap(db: 
     assert int((second_slot_time - first_slot_time).total_seconds() / 60) == 20
     assert all(match.referee for match in first_slot_matches)
     assert len({match.referee for match in first_slot_matches}) == len(first_slot_matches)
+
+
+@pytest.mark.asyncio
+async def test_direct_knockout_crosses_group_qualifiers(db: AsyncSession):
+    _, age_group = await create_tournament_with_teams(
+        db,
+        slug_suffix=f"direct-cross-{uuid.uuid4().hex[:6]}",
+        structure_config={
+            "expected_teams": 20,
+            "notes": "",
+            "schedule": {
+                "start_time": "09:30",
+                "match_duration_minutes": 12,
+                "interval_minutes": 8,
+                "playing_fields": [
+                    {"field_name": "Impianto Nord", "field_number": 1},
+                    {"field_name": "Impianto Sud", "field_number": 1},
+                    {"field_name": "Impianto Finale", "field_number": 1},
+                ],
+            },
+            "phases": [
+                {
+                    "id": "phase-1",
+                    "name": "Gironi iniziali",
+                    "phase_type": "GROUP_STAGE",
+                    "num_groups": 2,
+                    "group_sizes": "10,10",
+                    "qualifiers_per_group": 2,
+                    "best_extra_teams": 0,
+                    "next_phase_type": "KNOCKOUT",
+                    "bracket_mode": "standard",
+                    "notes": "",
+                    "group_field_assignments": {
+                        "Girone A": [{"field_name": "Impianto Nord", "field_number": 1}],
+                        "Girone B": [{"field_name": "Impianto Sud", "field_number": 1}],
+                    },
+                    "referee_group_assignments": {
+                        "Girone A": ["Girone B"],
+                        "Girone B": ["Girone A"],
+                    },
+                },
+                {
+                    "id": "phase-2",
+                    "name": "Finali",
+                    "phase_type": "KNOCKOUT",
+                    "group_sizes": "",
+                    "bracket_mode": "standard",
+                    "notes": "",
+                    "knockout_field_assignments": [
+                        {"field_name": "Impianto Finale", "field_number": 1},
+                    ],
+                },
+            ],
+        },
+    )
+
+    await generate_age_group_program(age_group.id, db)
+
+    result = await db.execute(
+        select(Phase)
+        .options(selectinload(Phase.matches))
+        .where(Phase.tournament_age_group_id == age_group.id, Phase.phase_type == PhaseType.KNOCKOUT)
+    )
+    knockout_phase = result.scalar_one()
+    first_round_matches = sorted(
+        [match for match in knockout_phase.matches if match.bracket_round_order == 1],
+        key=lambda match: match.bracket_position or 0,
+    )
+
+    first_home, first_away, _ = decode_seed_note(first_round_matches[0].notes)
+    second_home, second_away, _ = decode_seed_note(first_round_matches[1].notes)
+
+    assert (first_home, first_away) == ("1a Girone A", "2a Girone B")
+    assert (second_home, second_away) == ("1a Girone B", "2a Girone A")
+
+
+@pytest.mark.asyncio
+async def test_direct_knockout_rejects_non_power_of_two_qualifiers(db: AsyncSession):
+    _, age_group = await create_tournament_with_teams(
+        db,
+        slug_suffix=f"direct-invalid-{uuid.uuid4().hex[:6]}",
+        structure_config={
+            "expected_teams": 20,
+            "notes": "",
+            "schedule": {
+                "start_time": "09:30",
+                "match_duration_minutes": 12,
+                "interval_minutes": 8,
+                "playing_fields": [
+                    {"field_name": "Impianto Nord", "field_number": 1},
+                    {"field_name": "Impianto Sud", "field_number": 1},
+                    {"field_name": "Impianto Finale", "field_number": 1},
+                ],
+            },
+            "phases": [
+                {
+                    "id": "phase-1",
+                    "name": "Gironi iniziali",
+                    "phase_type": "GROUP_STAGE",
+                    "num_groups": 2,
+                    "group_sizes": "10,10",
+                    "qualifiers_per_group": 3,
+                    "best_extra_teams": 0,
+                    "next_phase_type": "KNOCKOUT",
+                    "bracket_mode": "standard",
+                    "notes": "",
+                    "group_field_assignments": {
+                        "Girone A": [{"field_name": "Impianto Nord", "field_number": 1}],
+                        "Girone B": [{"field_name": "Impianto Sud", "field_number": 1}],
+                    },
+                    "referee_group_assignments": {
+                        "Girone A": ["Girone B"],
+                        "Girone B": ["Girone A"],
+                    },
+                },
+                {
+                    "id": "phase-2",
+                    "name": "Finali",
+                    "phase_type": "KNOCKOUT",
+                    "group_sizes": "",
+                    "bracket_mode": "standard",
+                    "notes": "",
+                    "knockout_field_assignments": [
+                        {"field_name": "Impianto Finale", "field_number": 1},
+                    ],
+                },
+            ],
+        },
+    )
+
+    with pytest.raises(ValueError, match="4, 8, 16"):
+        await generate_age_group_program(age_group.id, db)
+
+
+@pytest.mark.asyncio
+async def test_group_blocks_schedule_top_finals_last_and_propagate_results(client: AsyncClient, db: AsyncSession):
+    headers = await ensure_admin_headers(client)
+    _, age_group = await create_tournament_with_teams(
+        db,
+        slug_suffix=f"group-blocks-{uuid.uuid4().hex[:6]}",
+        structure_config={
+            "expected_teams": 20,
+            "notes": "",
+            "schedule": {
+                "start_time": "09:30",
+                "match_duration_minutes": 12,
+                "interval_minutes": 8,
+                "playing_fields": [
+                    {"field_name": "Impianto Nord", "field_number": 1},
+                    {"field_name": "Impianto Sud", "field_number": 1},
+                    {"field_name": "Impianto Finale", "field_number": 1},
+                ],
+            },
+            "phases": [
+                {
+                    "id": "phase-1",
+                    "name": "Gironi iniziali",
+                    "phase_type": "GROUP_STAGE",
+                    "num_groups": 2,
+                    "group_sizes": "10,10",
+                    "qualifiers_per_group": 5,
+                    "best_extra_teams": 0,
+                    "next_phase_type": "KNOCKOUT",
+                    "bracket_mode": "standard",
+                    "notes": "",
+                    "group_field_assignments": {
+                        "Girone A": [{"field_name": "Impianto Nord", "field_number": 1}],
+                        "Girone B": [{"field_name": "Impianto Sud", "field_number": 1}],
+                    },
+                    "referee_group_assignments": {
+                        "Girone A": ["Girone B"],
+                        "Girone B": ["Girone A"],
+                    },
+                },
+                {
+                    "id": "phase-2",
+                    "name": "Piazzamenti",
+                    "phase_type": "KNOCKOUT",
+                    "group_sizes": "",
+                    "bracket_mode": "group_blocks",
+                    "notes": "",
+                    "knockout_field_assignments": [
+                        {"field_name": "Impianto Finale", "field_number": 1},
+                    ],
+                },
+            ],
+        },
+    )
+
+    await generate_age_group_program(age_group.id, db)
+
+    result = await db.execute(
+        select(Phase)
+        .options(selectinload(Phase.matches))
+        .where(Phase.tournament_age_group_id == age_group.id, Phase.phase_type == PhaseType.KNOCKOUT)
+    )
+    knockout_phase = result.scalar_one()
+    ordered_matches = sorted(
+        knockout_phase.matches,
+        key=lambda match: ((match.bracket_round_order or 0), (match.bracket_position or 0)),
+    )
+
+    assert ordered_matches[-2].bracket_round == "Piazzamento 1a · Finale 3°/4° posto"
+    assert ordered_matches[-1].bracket_round == "Piazzamento 1a · Finale 1°/2° posto"
+
+    semifinals = sorted(
+        [match for match in knockout_phase.matches if match.bracket_round == "Piazzamento 1a · Semifinali"],
+        key=lambda match: match.bracket_position or 0,
+    )
+    team_result = await db.execute(
+        select(TournamentTeam.id)
+        .where(TournamentTeam.tournament_age_group_id == age_group.id)
+        .order_by(TournamentTeam.id.asc())
+        .limit(4)
+    )
+    tournament_team_ids = [team_id for team_id, in team_result.all()]
+    semifinals[0].home_team_id = tournament_team_ids[0]
+    semifinals[0].away_team_id = tournament_team_ids[1]
+    semifinals[1].home_team_id = tournament_team_ids[2]
+    semifinals[1].away_team_id = tournament_team_ids[3]
+    await db.commit()
+
+    first_semifinal_resp = await client.post(
+        f"/api/v1/admin/matches/{semifinals[0].id}/score",
+        headers=headers,
+        json={"home_score": 3, "away_score": 1, "status": "COMPLETED"},
+    )
+    assert first_semifinal_resp.status_code == 200
+
+    second_semifinal_resp = await client.post(
+        f"/api/v1/admin/matches/{semifinals[1].id}/score",
+        headers=headers,
+        json={"home_score": 2, "away_score": 1, "status": "COMPLETED"},
+    )
+    assert second_semifinal_resp.status_code == 200
+
+    refreshed_result = await db.execute(
+        select(Phase)
+        .options(selectinload(Phase.matches))
+        .where(Phase.id == knockout_phase.id)
+    )
+    refreshed_phase = refreshed_result.scalar_one()
+    third_place_match = next(match for match in refreshed_phase.matches if match.bracket_round == "Piazzamento 1a · Finale 3°/4° posto")
+    final_match = next(match for match in refreshed_phase.matches if match.bracket_round == "Piazzamento 1a · Finale 1°/2° posto")
+
+    assert {third_place_match.home_team_id, third_place_match.away_team_id} == {
+        semifinals[0].away_team_id,
+        semifinals[1].away_team_id,
+    }
+    assert {final_match.home_team_id, final_match.away_team_id} == {
+        semifinals[0].home_team_id,
+        semifinals[1].home_team_id,
+    }
