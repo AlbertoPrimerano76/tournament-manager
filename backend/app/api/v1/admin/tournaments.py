@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
-from app.core.deps import require_editor, require_admin, require_scorer, ensure_tournament_access, ensure_age_group_access, get_assigned_age_group_ids
+from app.core.deps import require_creator, require_editor, require_admin, require_scorer, ensure_tournament_access, ensure_age_group_access, get_assigned_age_group_ids
 from app.models.tournament import Tournament, TournamentAgeGroup
 from app.models.organization import Organization
 from app.models.team import TournamentTeam
@@ -229,7 +229,7 @@ async def delete_tournament(
 @router.post("/tournaments/{tournament_id}/reset-results")
 async def reset_tournament_results(
     tournament_id: str,
-    user: User = Depends(require_editor),
+    user: User = Depends(require_creator),
     db: AsyncSession = Depends(get_db),
 ):
     await ensure_tournament_access(user, tournament_id, db)

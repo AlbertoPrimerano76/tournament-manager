@@ -202,3 +202,44 @@ async def test_reset_tournament_results_restores_scores_and_schedule(client: Asy
     assert refreshed_match.actual_end_at is None
     assert refreshed_match.scheduled_at == initial_schedule
     assert refreshed_match.original_scheduled_at == initial_schedule
+
+
+@pytest.mark.asyncio
+async def test_scorekeeper_cannot_reset_tournament_results(client: AsyncClient, db: AsyncSession):
+    admin_headers = await login_first_admin(client)
+    organization, tournament, age_group_u10, _ = await seed_tournament_context(db)
+
+    team_a = Team(organization_id=organization.id, tournament_id=tournament.id, name="Lions")
+    team_b = Team(organization_id=organization.id, tournament_id=tournament.id, name="Tigers")
+    db.add_all([team_a, team_b])
+    await db.commit()
+    await db.refresh(team_a)
+    await db.refresh(team_b)
+
+    db.add_all([
+        TournamentTeam(tournament_age_group_id=age_group_u10.id, team_id=team_a.id),
+        TournamentTeam(tournament_age_group_id=age_group_u10.id, team_id=team_b.id),
+    ])
+    await db.commit()
+
+    create_user_resp = await client.post("/api/v1/admin/users", json={
+        "email": "scorekeeper-reset@test.com",
+        "password": "TestPass123!",
+        "role": "SCORE_KEEPER",
+        "assigned_tournament_ids": [tournament.id],
+        "assigned_age_group_ids": [],
+    }, headers=admin_headers)
+    assert create_user_resp.status_code == 201
+
+    scorer_login_resp = await client.post("/api/v1/admin/auth/login", json={
+        "email": "scorekeeper-reset@test.com",
+        "password": "TestPass123!",
+    })
+    assert scorer_login_resp.status_code == 200
+    scorer_headers = {"Authorization": f"Bearer {scorer_login_resp.json()['access_token']}"}
+
+    reset_resp = await client.post(
+        f"/api/v1/admin/tournaments/{tournament.id}/reset-results",
+        headers=scorer_headers,
+    )
+    assert reset_resp.status_code == 403
