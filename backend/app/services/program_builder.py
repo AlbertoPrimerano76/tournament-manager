@@ -794,14 +794,20 @@ def _group_block_size(phase_config: dict[str, Any] | None, default: int = 4) -> 
     return default
 
 
-def _build_group_block_buckets(entries: list[dict[str, Any]], block_size: int = 4) -> list[tuple[str, list[dict[str, Any]]]]:
+def _placement_bucket_label(start_rank: int, end_rank: int) -> str:
+    if start_rank >= end_rank:
+        return f"Piazzamento {start_rank}"
+    return f"Piazzamento {start_rank}-{end_rank}"
+
+
+def _build_group_block_buckets(entries: list[dict[str, Any]], block_size: int = 4) -> list[tuple[str, int, int, list[dict[str, Any]]]]:
     group_names = sorted({
         str(entry.get("group_name"))
         for entry in entries
         if entry.get("group_name")
     })
     if len(group_names) != 2:
-        return [("Tabellone principale", entries)]
+        return [("Tabellone principale", 1, len(entries), entries)]
 
     grouped_by_rank: dict[int, dict[str, dict[str, Any]]] = defaultdict(dict)
     for entry in entries:
@@ -811,7 +817,7 @@ def _build_group_block_buckets(entries: list[dict[str, Any]], block_size: int = 
             continue
         grouped_by_rank[rank][group_name] = entry
 
-    carry_matches: list[tuple[str, list[dict[str, Any]]]] = []
+    carry_matches: list[tuple[str, int, int, list[dict[str, Any]]]] = []
     ordered_ranks = sorted(grouped_by_rank.keys())
     bucket_start_rank = 1
     ranks_per_bucket = max(block_size // len(group_names), 1)
@@ -829,10 +835,11 @@ def _build_group_block_buckets(entries: list[dict[str, Any]], block_size: int = 
         bucket_entries = [entry for entry in bucket_entries if entry]
         if bucket_entries:
             placement_rank = ((bucket_start_rank - 1) * len(group_names)) + 1
-            carry_matches.append((f"Piazzamento {_ordinal_it(placement_rank)}", bucket_entries))
+            end_rank = placement_rank + len(bucket_entries) - 1
+            carry_matches.append((_placement_bucket_label(placement_rank, end_rank), placement_rank, end_rank, bucket_entries))
         bucket_start_rank += ranks_per_bucket
 
-    return carry_matches or [("Tabellone principale", entries)]
+    return carry_matches or [("Tabellone principale", 1, len(entries), entries)]
 
 
 def _build_cross_group_direct_pairs(bucket_entries: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any] | None]] | None:
@@ -882,6 +889,7 @@ def _build_cross_group_direct_pairs(bucket_entries: list[dict[str, Any]]) -> lis
 
 def _build_knockout_block_rounds(
     bucket_name: str,
+    start_rank: int,
     bucket_entries: list[dict[str, Any]],
 ) -> list[tuple[str, list[tuple[dict[str, Any], dict[str, Any] | None]], list[dict[str, Any]]]]:
     if len(bucket_entries) > 4:
@@ -908,6 +916,8 @@ def _build_knockout_block_rounds(
             (bucket_entries[0], bucket_entries[3]),
             (bucket_entries[1], bucket_entries[2]),
         ]
+        final_label = f"{_placement_bucket_label(start_rank, start_rank + 1)} · Finale"
+        consolation_label = f"{_placement_bucket_label(start_rank + 2, start_rank + 3)} · Finale"
         return [
             (semifinal_round_name, semifinals, [
                 {"label": f"Vincente {semifinal_round_name} 1"},
@@ -916,12 +926,12 @@ def _build_knockout_block_rounds(
                 {"label": f"Perdente {semifinal_round_name} 2"},
             ]),
             (
-                f"{bucket_name} · Finale 3°/4° posto",
+                consolation_label,
                 [({"label": f"Perdente {semifinal_round_name} 1"}, {"label": f"Perdente {semifinal_round_name} 2"})],
                 bucket_entries,
             ),
             (
-                f"{bucket_name} · Finale 1°/2° posto",
+                final_label,
                 [({"label": f"Vincente {semifinal_round_name} 1"}, {"label": f"Vincente {semifinal_round_name} 2"})],
                 bucket_entries,
             ),
@@ -946,7 +956,7 @@ def _build_knockout_block_rounds(
 
 
 def _ordered_group_block_rounds(
-    carry_matches: list[tuple[str, list[dict[str, Any]]]],
+    carry_matches: list[tuple[str, int, int, list[dict[str, Any]]]],
 ) -> list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]]:
     if not carry_matches:
         return []
@@ -960,8 +970,8 @@ def _ordered_group_block_rounds(
     top_third_place_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
     top_final_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
 
-    for bucket_name, bucket_entries in carry_matches:
-        block_rounds = _build_knockout_block_rounds(bucket_name, bucket_entries)
+    for bucket_name, start_rank, _, bucket_entries in carry_matches:
+        block_rounds = _build_knockout_block_rounds(bucket_name, start_rank, bucket_entries)
         if not block_rounds:
             continue
         if len(block_rounds) == 1:
@@ -998,6 +1008,8 @@ def _ordered_group_block_rounds(
     return ordered_rounds
 
 
+
+
 async def _sync_future_age_group_matches(age_group: TournamentAgeGroup, phases_config: list[dict[str, Any]], db: AsyncSession) -> TournamentAgeGroup:
     match_slot_length = _slot_delta(age_group)
     previous_phase_end: datetime | None = None
@@ -1010,6 +1022,8 @@ async def _sync_future_age_group_matches(age_group: TournamentAgeGroup, phases_c
         if phase.phase_type == PhaseType.GROUP_STAGE:
             groups = sorted(phase.groups, key=lambda item: item.group_order)
             phase_lane_slot_counters: dict[tuple[str | None, int | None], int] = defaultdict(int)
+            group_plans: list[dict[str, Any]] = []
+            max_chunks = 0
             for group_index, group in enumerate(groups):
                 group_name = group.name
                 lanes = _group_lanes(age_group, phase_config, group_name, group_index, len(groups)) or [{"field_name": None, "field_number": None}]
@@ -1017,20 +1031,42 @@ async def _sync_future_age_group_matches(age_group: TournamentAgeGroup, phases_c
                     [item for item in phase.matches if item.group_id == group.id],
                     key=lambda item: (item.bracket_position or 0, item.scheduled_at or datetime.max),
                 )
-                for match_index, match in enumerate(matches):
-                    lane = lanes[match_index % len(lanes)]
-                    lane_counter_key = _lane_key(lane)
-                    slot_index = phase_lane_slot_counters[lane_counter_key]
-                    if _match_has_recorded_result(match):
-                        phase_lane_slot_counters[lane_counter_key] = slot_index + 1
+                chunks = [matches[index:index + len(lanes)] for index in range(0, len(matches), len(lanes))]
+                max_chunks = max(max_chunks, len(chunks))
+                group_plans.append({"lanes": lanes, "chunks": chunks})
+
+            for chunk_index in range(max_chunks):
+                chunk_level_plans: list[dict[str, Any]] = []
+                max_chunk_depth = 0
+                for plan in group_plans:
+                    if chunk_index >= len(plan["chunks"]):
                         continue
-                    slot_time = phase_start + (match_slot_length * slot_index) if phase_start else None
-                    match.scheduled_at = slot_time
-                    match.field_name = lane.get("field_name")
-                    match.field_number = lane.get("field_number")
-                    if slot_time:
-                        phase_end = max(phase_end or slot_time, slot_time + match_slot_length)
-                    phase_lane_slot_counters[lane_counter_key] = slot_index + 1
+                    chunk_matches = plan["chunks"][chunk_index]
+                    lanes = plan["lanes"]
+                    subchunks = [chunk_matches[index:index + len(lanes)] for index in range(0, len(chunk_matches), len(lanes))]
+                    max_chunk_depth = max(max_chunk_depth, len(subchunks))
+                    chunk_level_plans.append({"lanes": lanes, "subchunks": subchunks})
+                for subchunk_index in range(max_chunk_depth):
+                    for plan in chunk_level_plans:
+                        if subchunk_index >= len(plan["subchunks"]):
+                            continue
+                        chunk_matches = plan["subchunks"][subchunk_index]
+                        lanes = plan["lanes"]
+                        chunk_lanes = [lanes[lane_index % len(lanes)] for lane_index in range(len(chunk_matches))]
+                        slot_index = max(phase_lane_slot_counters[_lane_key(lane)] for lane in chunk_lanes) if chunk_lanes else 0
+                        slot_time = phase_start + (match_slot_length * slot_index) if phase_start else None
+                        for lane_index, match in enumerate(chunk_matches):
+                            lane = lanes[lane_index % len(lanes)]
+                            lane_counter_key = _lane_key(lane)
+                            if _match_has_recorded_result(match):
+                                phase_lane_slot_counters[lane_counter_key] = slot_index + 1
+                                continue
+                            match.scheduled_at = slot_time
+                            match.field_name = lane.get("field_name")
+                            match.field_number = lane.get("field_number")
+                            if slot_time:
+                                phase_end = max(phase_end or slot_time, slot_time + match_slot_length)
+                            phase_lane_slot_counters[lane_counter_key] = slot_index + 1
         else:
             lanes = _knockout_lanes(age_group, phase_config) or [{"field_name": None, "field_number": None}]
             matches = sorted(
@@ -1193,13 +1229,12 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                 len(current_entries),
             )
             groups: list[Group] = []
-            entry_cursor = 0
             slot_labels_by_group: dict[str, list[str]] = {}
             phase_group_team_ids: dict[str, list[str]] = {}
             phase_group_name_to_id: dict[str, str] = {}
             created_group_matches: list[Match] = []
-            phase_lane_slot_counters: dict[tuple[str | None, int | None], int] = defaultdict(int)
             grouped_entries = _distribute_entries_across_groups(current_entries, group_sizes)
+            group_plans: list[dict[str, Any]] = []
 
             for group_index, group_size in enumerate(group_sizes):
                 group_name = _group_name(group_index)
@@ -1213,8 +1248,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                 groups.append(group)
                 phase_group_name_to_id[group_name] = group.id
 
-                group_entries = grouped_entries[group_index] if group_index < len(grouped_entries) else current_entries[entry_cursor: entry_cursor + group_size]
-                entry_cursor += group_size
+                group_entries = grouped_entries[group_index] if group_index < len(grouped_entries) else []
                 slot_labels_by_group[group.id] = [entry["label"] for entry in group_entries]
                 phase_group_team_ids[group.id] = [
                     entry["tournament_team_id"]
@@ -1227,13 +1261,38 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                         db.add(GroupTeam(group_id=group.id, tournament_team_id=entry["tournament_team_id"]))
                 await db.flush()
 
-                lanes = _group_lanes(age_group, phase_config, group_name, group_index, len(group_sizes)) or [{"field_name": None, "field_number": None}]
-                rounds = _group_stage_rounds(group_entries, phase_config)
-                match_index = 0
+                group_plans.append({
+                    "group": group,
+                    "lanes": _group_lanes(age_group, phase_config, group_name, group_index, len(group_sizes)) or [{"field_name": None, "field_number": None}],
+                    "rounds": _group_stage_rounds(group_entries, phase_config),
+                })
 
-                for round_pairs in rounds:
-                    for chunk_start in range(0, len(round_pairs), len(lanes)):
-                        round_chunk = round_pairs[chunk_start: chunk_start + len(lanes)]
+            phase_lane_slot_counters: dict[tuple[str | None, int | None], int] = defaultdict(int)
+            phase_group_match_indexes: dict[str, int] = defaultdict(int)
+            max_rounds = max((len(plan["rounds"]) for plan in group_plans), default=0)
+            for round_index in range(max_rounds):
+                round_chunk_plans: list[dict[str, Any]] = []
+                max_chunks = 0
+                for plan in group_plans:
+                    rounds = plan["rounds"]
+                    if round_index >= len(rounds):
+                        continue
+                    lanes = plan["lanes"]
+                    round_pairs = rounds[round_index]
+                    chunks = [round_pairs[index:index + len(lanes)] for index in range(0, len(round_pairs), len(lanes))]
+                    max_chunks = max(max_chunks, len(chunks))
+                    round_chunk_plans.append({
+                        "group": plan["group"],
+                        "lanes": lanes,
+                        "chunks": chunks,
+                    })
+                for chunk_index in range(max_chunks):
+                    for plan in round_chunk_plans:
+                        if chunk_index >= len(plan["chunks"]):
+                            continue
+                        group = plan["group"]
+                        lanes = plan["lanes"]
+                        round_chunk = plan["chunks"][chunk_index]
                         chunk_lanes = [lanes[lane_index % len(lanes)] for lane_index in range(len(round_chunk))]
                         slot_index = max(phase_lane_slot_counters[_lane_key(lane)] for lane in chunk_lanes) if chunk_lanes else 0
                         slot_time = phase_start + (match_slot_length * slot_index) if phase_start else None
@@ -1254,12 +1313,12 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                                     home_entry["label"],
                                     away_entry["label"],
                                 ),
-                                bracket_position=match_index + 1,
+                                bracket_position=phase_group_match_indexes[group.id] + 1,
                             )
                             db.add(match)
                             created_group_matches.append(match)
                             total_created_matches += 1
-                            match_index += 1
+                            phase_group_match_indexes[group.id] += 1
                             if slot_time:
                                 phase_end = max(phase_end or slot_time, slot_time + match_slot_length)
                             phase_lane_slot_counters[lane_counter_key] = slot_index + 1
@@ -1314,13 +1373,15 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             for entry in current_entries:
                 buckets[int(entry.get("rank") or 1)].append(entry)
             ordered_ranks = sorted(buckets.keys())
-            carry_matches: list[tuple[str, list[dict[str, Any]]]] = []
+            carry_matches: list[tuple[str, int, int, list[dict[str, Any]]]] = []
             for rank in ordered_ranks:
-                carry_matches.append((f"Piazzamento {_ordinal_it(rank)}", buckets[rank]))
+                bucket_entries = buckets[rank]
+                end_rank = rank + len(bucket_entries) - 1
+                carry_matches.append((_placement_bucket_label(rank, end_rank), rank, end_rank, bucket_entries))
         elif bracket_mode == "group_blocks":
             carry_matches = _build_group_block_buckets(current_entries, _group_block_size(phase_config))
         else:
-            carry_matches = [(_phase_bucket_name(phase_config), current_entries)]
+            carry_matches = [(_phase_bucket_name(phase_config), 1, len(current_entries), current_entries)]
 
         next_entries: list[dict[str, Any]] = []
         knockout_winner_entries: list[dict[str, Any]] = []
@@ -1364,7 +1425,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                         phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
                     knockout_slot_index += 1
 
-        for bucket_name, bucket_entries in carry_matches:
+        for bucket_name, _, _, bucket_entries in carry_matches:
             if not bucket_entries:
                 continue
             if bracket_mode != "group_blocks":
@@ -1625,13 +1686,12 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                 len(current_entries),
             )
             groups: list[Group] = []
-            entry_cursor = 0
             slot_labels_by_group: dict[str, list[str]] = {}
             phase_group_team_ids: dict[str, list[str]] = {}
             phase_group_name_to_id: dict[str, str] = {}
             created_group_matches: list[Match] = []
-            phase_lane_slot_counters: dict[tuple[str | None, int | None], int] = defaultdict(int)
             grouped_entries = _distribute_entries_across_groups(current_entries, group_sizes)
+            group_plans: list[dict[str, Any]] = []
 
             for group_index, group_size in enumerate(group_sizes):
                 group_name = _group_name(group_index)
@@ -1641,8 +1701,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                 groups.append(group)
                 phase_group_name_to_id[group_name] = group.id
 
-                group_entries = grouped_entries[group_index] if group_index < len(grouped_entries) else current_entries[entry_cursor: entry_cursor + group_size]
-                entry_cursor += group_size
+                group_entries = grouped_entries[group_index] if group_index < len(grouped_entries) else []
                 slot_labels_by_group[group.id] = [entry["label"] for entry in group_entries]
                 phase_group_team_ids[group.id] = [
                     entry["tournament_team_id"]
@@ -1655,13 +1714,38 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                         db.add(GroupTeam(group_id=group.id, tournament_team_id=entry["tournament_team_id"]))
                 await db.flush()
 
-                lanes = _group_lanes(age_group, phase_config, group_name, group_index, len(group_sizes)) or [{"field_name": None, "field_number": None}]
-                rounds = _group_stage_rounds(group_entries, phase_config)
-                match_index = 0
+                group_plans.append({
+                    "group": group,
+                    "lanes": _group_lanes(age_group, phase_config, group_name, group_index, len(group_sizes)) or [{"field_name": None, "field_number": None}],
+                    "rounds": _group_stage_rounds(group_entries, phase_config),
+                })
 
-                for round_pairs in rounds:
-                    for chunk_start in range(0, len(round_pairs), len(lanes)):
-                        round_chunk = round_pairs[chunk_start: chunk_start + len(lanes)]
+            phase_lane_slot_counters: dict[tuple[str | None, int | None], int] = defaultdict(int)
+            phase_group_match_indexes: dict[str, int] = defaultdict(int)
+            max_rounds = max((len(plan["rounds"]) for plan in group_plans), default=0)
+            for round_index in range(max_rounds):
+                round_chunk_plans: list[dict[str, Any]] = []
+                max_chunks = 0
+                for plan in group_plans:
+                    rounds = plan["rounds"]
+                    if round_index >= len(rounds):
+                        continue
+                    lanes = plan["lanes"]
+                    round_pairs = rounds[round_index]
+                    chunks = [round_pairs[index:index + len(lanes)] for index in range(0, len(round_pairs), len(lanes))]
+                    max_chunks = max(max_chunks, len(chunks))
+                    round_chunk_plans.append({
+                        "group": plan["group"],
+                        "lanes": lanes,
+                        "chunks": chunks,
+                    })
+                for chunk_index in range(max_chunks):
+                    for plan in round_chunk_plans:
+                        if chunk_index >= len(plan["chunks"]):
+                            continue
+                        group = plan["group"]
+                        lanes = plan["lanes"]
+                        round_chunk = plan["chunks"][chunk_index]
                         chunk_lanes = [lanes[lane_index % len(lanes)] for lane_index in range(len(round_chunk))]
                         slot_index = max(phase_lane_slot_counters[_lane_key(lane)] for lane in chunk_lanes) if chunk_lanes else 0
                         slot_time = phase_start + (match_slot_length * slot_index) if phase_start else None
@@ -1682,12 +1766,12 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                                     home_entry["label"],
                                     away_entry["label"],
                                 ),
-                                bracket_position=match_index + 1,
+                                bracket_position=phase_group_match_indexes[group.id] + 1,
                             )
                             db.add(match)
                             created_group_matches.append(match)
                             total_created_matches += 1
-                            match_index += 1
+                            phase_group_match_indexes[group.id] += 1
                             if slot_time:
                                 phase_end = max(phase_end or slot_time, slot_time + match_slot_length)
                             phase_lane_slot_counters[lane_counter_key] = slot_index + 1
@@ -1729,13 +1813,15 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             for entry in current_entries:
                 buckets[int(entry.get("rank") or 1)].append(entry)
             ordered_ranks = sorted(buckets.keys())
-            carry_matches: list[tuple[str, list[dict[str, Any]]]] = []
+            carry_matches: list[tuple[str, int, int, list[dict[str, Any]]]] = []
             for rank in ordered_ranks:
-                carry_matches.append((f"Piazzamento {_ordinal_it(rank)}", buckets[rank]))
+                bucket_entries = buckets[rank]
+                end_rank = rank + len(bucket_entries) - 1
+                carry_matches.append((_placement_bucket_label(rank, end_rank), rank, end_rank, bucket_entries))
         elif bracket_mode == "group_blocks":
             carry_matches = _build_group_block_buckets(current_entries, _group_block_size(phase_config))
         else:
-            carry_matches = [(_phase_bucket_name(phase_config), current_entries)]
+            carry_matches = [(_phase_bucket_name(phase_config), 1, len(current_entries), current_entries)]
 
         next_entries: list[dict[str, Any]] = []
         knockout_winner_entries: list[dict[str, Any]] = []
@@ -1778,7 +1864,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                         phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
                     knockout_slot_index += 1
 
-        for bucket_name, bucket_entries in carry_matches:
+        for bucket_name, _, _, bucket_entries in carry_matches:
             if not bucket_entries:
                 continue
             if bracket_mode != "group_blocks":
