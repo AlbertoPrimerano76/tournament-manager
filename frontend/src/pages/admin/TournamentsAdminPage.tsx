@@ -3779,11 +3779,18 @@ function AgeGroupConfigurationPanel({
                               Questa fase genera un solo turno. Poi puoi mandare vincenti e perdenti verso nuove fasi: semifinali, finale 1-2, finale 3-4, piazzamenti, altri gironi.
                             </div>
                           )}
-                          {phase.knockout_progression === 'full_bracket' && (
-                            <div className="rounded-[1.2rem] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 sm:col-span-2">
-                              Le qualificate vengono incrociate tra coppie di gironi: 1A contro ultima dell'altro girone, 2A contro penultima, e così via. Se arrivano solo 2 squadre viene generata una finale secca.
-                            </div>
-                          )}
+                          {phase.knockout_progression === 'full_bracket' && (() => {
+                            const linkedGroupStages = structure.phases.slice(0, index).filter((p) => p.phase_type === 'GROUP_STAGE' && p.advancement_routes.some((r) => r.target_phase_id === phase.id))
+                            const totalSourceGroups = linkedGroupStages.reduce((total, p) => total + Math.max(p.num_groups ?? buildGroupNames(p).length, 0), 0)
+                            const description = totalSourceGroups >= 2
+                              ? `Le qualificate vengono incrociate tra coppie di gironi: 1° di un girone contro l'ultima dell'altro, 2° contro penultima, e così via. Con 2 squadre viene generata una finale secca.`
+                              : `Le qualificate vengono abbinate per classifica: 1° contro ultima, 2° contro penultima. Con 4 squadre: semifinali (1°-4° e 2°-3°), finale 3°/4° e finale. Con 2 squadre: finale secca.`
+                            return (
+                              <div className="rounded-[1.2rem] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 sm:col-span-2">
+                                {description}
+                              </div>
+                            )
+                          })()}
                         </div>
                       )}
 
