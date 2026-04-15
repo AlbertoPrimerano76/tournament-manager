@@ -17,21 +17,26 @@ function redirectToLogin() {
   }
 }
 
-// Attach access token to every request
+function isAdminApiRequest(url?: string) {
+  return typeof url === 'string' && url.startsWith('/api/v1/admin')
+}
+
+// Attach access token only to admin requests
 apiClient.interceptors.request.use((config) => {
   if ((config as { skipAuth?: boolean }).skipAuth) return config
+  if (!isAdminApiRequest(config.url)) return config
   const token = localStorage.getItem('access_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 
-// Auto-refresh on 401
+// Auto-refresh only for admin requests
 apiClient.interceptors.response.use(
   (res) => res,
   async (error) => {
-    const original = error.config as { _retry?: boolean; skipAuthRefresh?: boolean; headers?: { Authorization?: string } } | undefined
+    const original = error.config as { _retry?: boolean; skipAuthRefresh?: boolean; headers?: { Authorization?: string }; url?: string } | undefined
     const status = error.response?.status
-    if ((status === 401 || status === 403) && original && !original._retry && !original.skipAuthRefresh) {
+    if ((status === 401 || status === 403) && original && isAdminApiRequest(original.url) && !original._retry && !original.skipAuthRefresh) {
       original._retry = true
       const refresh = localStorage.getItem('refresh_token')
       if (refresh) {
