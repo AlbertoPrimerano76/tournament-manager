@@ -1386,14 +1386,16 @@ function ProgramMatchCard({
                       ))}
                     </select>
                   </label>
-                  <label className="text-xs font-semibold text-slate-500">
-                    Arbitro
-                    <input
-                      value={referee}
-                      onChange={(e) => setReferee(e.target.value)}
-                      className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-                    />
-                  </label>
+                  {match.home_team_id && match.away_team_id && (
+                    <label className="text-xs font-semibold text-slate-500">
+                      Arbitro
+                      <input
+                        value={referee}
+                        onChange={(e) => setReferee(e.target.value)}
+                        className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                      />
+                    </label>
+                  )}
                 </>
               )}
             </div>
