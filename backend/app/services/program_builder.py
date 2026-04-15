@@ -1606,11 +1606,6 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             next_entries.extend(bucket_entries)
 
         await db.flush()
-        _assign_cross_group_referees(
-            created_knockout_matches,
-            {"all": [team.id for team in participants]},
-            participants,
-        )
 
         current_entries = next_entries
         queued_knockout_advancements = _queue_knockout_phase_advancements(
@@ -2038,7 +2033,6 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             next_entries.extend(bucket_entries)
 
         await db.flush()
-        _assign_cross_group_referees(created_knockout_matches, {"all": [team.id for team in participants]}, participants)
         current_entries = next_entries
         queued_knockout_advancements = _queue_knockout_phase_advancements(
             phase_order_number,
