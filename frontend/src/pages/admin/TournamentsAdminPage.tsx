@@ -3825,7 +3825,7 @@ function AgeGroupConfigurationPanel({
                         </div>
                       )}
 
-                      {phase.phase_type === 'GROUP_STAGE' && (
+                      {phase.phase_type === 'GROUP_STAGE' && !structure.phases.slice(0, index).some((p) => p.advancement_routes.some((r) => r.target_phase_id === phase.id)) && (
                         <div className="mt-4 rounded-[1.3rem] border border-slate-200 bg-slate-50 p-4">
                           <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Arbitraggio per girone</p>
                           <p className="mt-1 text-sm text-slate-600">
@@ -4930,9 +4930,10 @@ function validateStructureConfig(structure: StructureConfig): string[] {
         if (assignments.length === 0) {
           errors.push(`${phaseLabel}: assegna almeno un campo a ${groupName}.`)
         }
+        const receivesFromPreviousPhase = structure.phases.slice(0, index).some((p) => p.advancement_routes.some((r) => r.target_phase_id === phase.id))
         const refereeAssignments = phase.referee_group_assignments[groupName] ?? []
         const hasAnyRefereeSource = refereeAssignments.length > 0
-        if ((phase.num_groups ?? 0) > 1 && !hasAnyRefereeSource) {
+        if (!receivesFromPreviousPhase && (phase.num_groups ?? 0) > 1 && !hasAnyRefereeSource) {
           errors.push(`${phaseLabel}: assegna almeno una fonte arbitri a ${groupName} (stesso girone o un altro girone).`)
         }
       }
@@ -4985,7 +4986,7 @@ function validateStructureConfig(structure: StructureConfig): string[] {
       }
       if (linkedGroupStages.length > 0) {
         const totalSourceGroups = linkedGroupStages.reduce((total, candidate) => total + Math.max(candidate.num_groups ?? buildGroupNames(candidate).length, 0), 0)
-        if (totalSourceGroups % 2 !== 0) {
+        if (totalSourceGroups >= 2 && totalSourceGroups % 2 !== 0) {
           errors.push(`${phaseLabel}: l'eliminazione diretta incrociata richiede un numero pari di gironi sorgente.`)
         }
       }
