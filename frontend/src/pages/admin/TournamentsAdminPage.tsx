@@ -5,7 +5,7 @@ import {
   useAdminTournaments, useCreateTournament, useUpdateTournament, useDeleteTournament,
   useAdminTournamentAgeGroups, useCreateAgeGroup, useDeleteAgeGroup,
   useAgeGroupParticipants, useStructureTemplates, useUpdateAgeGroupStructure,
-  useUpdateAgeGroup, useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, useGenerateAgeGroupProgram, useDeleteAgeGroupProgram, useResetTournamentResults, downloadAdminAgeGroupProgramPdf, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate, type AgeGroupScoringRules, type TournamentParticipant,
+  useUpdateAgeGroup, useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, useGenerateAgeGroupProgram, useDeleteAgeGroupProgram, useResetTournamentResults, downloadAdminAgeGroupProgramPdf, downloadAdminAgeGroupProgramExcel, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate, type AgeGroupScoringRules, type TournamentParticipant,
 } from '@/api/tournaments'
 import { apiClient } from '@/api/client'
 import { useAdminOrganizations, useCreateOrganization } from '@/api/organizations'
@@ -2290,6 +2290,7 @@ function AgeGroupConfigurationScreen({
   const { data: program } = useAdminAgeGroupProgram(ageGroupId)
   const [activeStep, setActiveStep] = useState<CategoryWizardStep>('squadre')
   const [isPdfDownloading, setIsPdfDownloading] = useState(false)
+  const [isXlsxDownloading, setIsXlsxDownloading] = useState(false)
 
   if (isLoading) {
     return <div className="py-12 text-center text-sm text-slate-500">Caricamento categoria...</div>
@@ -2316,6 +2317,15 @@ function AgeGroupConfigurationScreen({
       await downloadAdminAgeGroupProgramPdf(ageGroup!.id)
     } finally {
       setIsPdfDownloading(false)
+    }
+  }
+
+  async function handleDownloadExcel() {
+    setIsXlsxDownloading(true)
+    try {
+      await downloadAdminAgeGroupProgramExcel(ageGroup!.id)
+    } finally {
+      setIsXlsxDownloading(false)
     }
   }
 
@@ -2346,15 +2356,26 @@ function AgeGroupConfigurationScreen({
           </div>
           <div className="flex flex-wrap gap-2">
             {program?.generated && (
-              <button
-                type="button"
-                onClick={() => void handleDownloadPdf()}
-                disabled={isPdfDownloading}
-                className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:opacity-50"
-              >
-                <Download className="h-4 w-4" />
-                {isPdfDownloading ? 'Download...' : 'PDF calendario'}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => void handleDownloadExcel()}
+                  disabled={isXlsxDownloading}
+                  className="inline-flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-800 transition-colors hover:bg-green-100 disabled:opacity-50"
+                >
+                  <Download className="h-4 w-4" />
+                  {isXlsxDownloading ? 'Download...' : 'Excel gironi'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDownloadPdf()}
+                  disabled={isPdfDownloading}
+                  className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+                >
+                  <Download className="h-4 w-4" />
+                  {isPdfDownloading ? 'Download...' : 'PDF calendario'}
+                </button>
+              </>
             )}
             <Link
               to={`/admin/tornei/${tournament.id}/calendario`}
@@ -2833,6 +2854,16 @@ function AgeGroupConfigurationPanel({
     }
   }
 
+  async function handleDownloadProgramExcel() {
+    setSaveError('')
+    try {
+      await downloadAdminAgeGroupProgramExcel(ageGroup.id)
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setSaveError(msg ?? 'Errore durante il download Excel')
+    }
+  }
+
   async function handleSaveAsTemplate() {
     if (!templateName.trim()) return
     await createTemplate.mutateAsync({
@@ -3194,6 +3225,16 @@ function AgeGroupConfigurationPanel({
                         >
                           Vai alle partite
                         </Link>
+                      )}
+                      {program?.generated && (
+                        <button
+                          type="button"
+                          onClick={() => void handleDownloadProgramExcel()}
+                          className="inline-flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-800 transition-colors hover:bg-green-100"
+                        >
+                          <Download className="h-4 w-4" />
+                          Excel gironi
+                        </button>
                       )}
                       {program?.generated && (
                         <button

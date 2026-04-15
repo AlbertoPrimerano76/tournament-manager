@@ -27,6 +27,7 @@ from app.schemas.tournament_template import TournamentTemplateCreate, Tournament
 from app.schemas.program import AgeGroupProgramResponse, GroupTeamMoveRequest, MatchParticipantsUpdate
 from app.services.program_builder import generate_age_group_program, get_age_group_program, regenerate_age_group_from_phase, reset_and_generate_age_group_program, reset_age_group_program
 from app.services.program_pdf import build_age_group_program_pdf
+from app.services.program_excel import build_age_group_program_excel
 
 router = APIRouter()
 
@@ -486,6 +487,40 @@ async def download_admin_age_group_program_pdf(
     return Response(
         content=payload,
         media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/age-groups/{ag_id}/program.xlsx")
+async def download_admin_age_group_program_excel(
+    ag_id: str,
+    user: User = Depends(require_scorer),
+    db: AsyncSession = Depends(get_db),
+):
+    await ensure_age_group_access(user, ag_id, db)
+    age_group_result = await db.execute(
+        select(TournamentAgeGroup)
+        .options(selectinload(TournamentAgeGroup.tournament))
+        .where(TournamentAgeGroup.id == ag_id)
+    )
+    age_group = age_group_result.scalar_one_or_none()
+    if not age_group or not age_group.tournament:
+        raise HTTPException(status_code=404, detail="Age group not found")
+
+    program = await get_age_group_program(ag_id, db)
+    if not program:
+        raise HTTPException(status_code=404, detail="Age group not found")
+
+    try:
+        payload, filename = build_age_group_program_excel(age_group.tournament.name, program, age_group.tournament.timezone)
+    except ModuleNotFoundError as exc:
+        if exc.name == "openpyxl":
+            raise HTTPException(status_code=503, detail="Export Excel non disponibile sul server")
+        raise
+
+    return Response(
+        content=payload,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

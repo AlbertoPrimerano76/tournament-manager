@@ -721,6 +721,22 @@ export async function downloadPublicAgeGroupProgramPdf(ageGroupId: string) {
   triggerBlobDownload(res.data, filename)
 }
 
+export async function downloadAdminAgeGroupProgramExcel(ageGroupId: string) {
+  const res = await apiClient.get(`/api/v1/admin/age-groups/${ageGroupId}/program.xlsx`, {
+    responseType: 'blob',
+  })
+  const filename = getAttachmentFilename(res.headers['content-disposition']) ?? `gironi-${ageGroupId}.xlsx`
+  triggerBlobDownload(res.data, filename)
+}
+
+export async function downloadPublicAgeGroupProgramExcel(ageGroupId: string) {
+  const res = await apiClient.get(`/api/v1/age-groups/${ageGroupId}/program.xlsx`, {
+    responseType: 'blob',
+  })
+  const filename = getAttachmentFilename(res.headers['content-disposition']) ?? `gironi-${ageGroupId}.xlsx`
+  triggerBlobDownload(res.data, filename)
+}
+
 function getAttachmentFilename(contentDisposition?: string) {
   if (!contentDisposition) return null
   const match = /filename="([^"]+)"/i.exec(contentDisposition)
