@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import AppLogo from '@/components/AppLogo'
 
@@ -10,6 +10,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const from = (location.state as { from?: string } | null)?.from || '/admin'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -17,7 +19,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await login(email, password)
-      navigate('/admin')
+      navigate(from, { replace: true })
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Email o password non validi')
     } finally {

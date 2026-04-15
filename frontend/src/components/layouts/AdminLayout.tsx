@@ -14,9 +14,9 @@ export default function AdminLayout() {
 
   useEffect(() => {
     if (!isLoading && !user) {
-      navigate('/admin/login')
+      navigate('/admin/login', { state: { from: location.pathname } })
     }
-  }, [user, isLoading, navigate])
+  }, [user, isLoading, navigate, location.pathname])
 
   if (isLoading || !user) return null
   const pageMeta = getAdminPageMeta(location.pathname)
