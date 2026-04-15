@@ -207,7 +207,7 @@ async def warmup_public_cache() -> None:
                         previous_slugs=x.previous_slugs or [], description=x.description,
                     ).model_dump(mode="json") for x in result]
 
-                await public_api_cache.get_or_set("public:tournaments:list:all:all", PUBLIC_TTL, _load_list, PUBLIC_STALE)
+                await public_api_cache.get_json_bytes_or_set("public:tournaments:list:all:all", PUBLIC_TTL, _load_list, PUBLIC_STALE)
 
                 # --- tournament detail
                 async def _load_detail(t=t):
@@ -226,7 +226,7 @@ async def warmup_public_cache() -> None:
                         previous_slugs=t.previous_slugs or [], description=t.description,
                     ).model_dump(mode="json")
 
-                await public_api_cache.get_or_set(f"public:tournaments:detail:{slug}", PUBLIC_TTL, _load_detail, PUBLIC_STALE)
+                await public_api_cache.get_json_bytes_or_set(f"public:tournaments:detail:{slug}", PUBLIC_TTL, _load_detail, PUBLIC_STALE)
 
                 # --- age groups
                 async def _load_ag(t=t, db=db):
@@ -236,16 +236,21 @@ async def warmup_public_cache() -> None:
                     )).scalars().all()
                     return [AgeGroupResponse.model_validate(ag).model_dump(mode="json") for ag in result]
 
-                age_groups_data = await public_api_cache.get_or_set(
+                await public_api_cache.get_json_bytes_or_set(
                     f"public:tournaments:age-groups:{slug}", PUBLIC_TTL, _load_ag, PUBLIC_STALE
                 )
 
-                # --- tournament program
+                # --- tournament program (skip if not yet generated)
                 async def _load_prog(slug=slug, db=db):
                     prog = await get_tournament_program(slug, db)
-                    return prog.model_dump(mode="json") if prog else None
+                    if not prog:
+                        raise ValueError("no program")
+                    return prog.model_dump(mode="json")
 
-                await public_api_cache.get_or_set(f"public:tournaments:program:{slug}", PROGRAM_TTL, _load_prog, PROGRAM_STALE)
+                try:
+                    await public_api_cache.get_json_bytes_or_set(f"public:tournaments:program:{slug}", PROGRAM_TTL, _load_prog, PROGRAM_STALE)
+                except ValueError:
+                    pass
 
                 # --- fields
                 from app.models.field import Field as FieldModel
@@ -257,7 +262,7 @@ async def warmup_public_cache() -> None:
                     )).scalars().all()
                     return [{col.name: getattr(f, col.name) for col in f.__table__.columns} for f in result]
 
-                await public_api_cache.get_or_set(f"public:tournaments:fields:{slug}", PUBLIC_TTL, _load_fields, PUBLIC_STALE)
+                await public_api_cache.get_json_bytes_or_set(f"public:tournaments:fields:{slug}", PUBLIC_TTL, _load_fields, PUBLIC_STALE)
 
                 # --- org
                 if org_slug and t.organization:
@@ -265,7 +270,7 @@ async def warmup_public_cache() -> None:
                     async def _load_org(org=org):
                         from app.schemas.organization import OrganizationResponse
                         return OrganizationResponse.model_validate(org).model_dump(mode="json")
-                    await public_api_cache.get_or_set(f"public:organizations:{org_slug}", PUBLIC_TTL, _load_org, PUBLIC_STALE)
+                    await public_api_cache.get_json_bytes_or_set(f"public:organizations:{org_slug}", PUBLIC_TTL, _load_org, PUBLIC_STALE)
 
                 # --- per-age-group: standings + program
                 age_groups_result = (await db.execute(
@@ -313,13 +318,18 @@ async def warmup_public_cache() -> None:
                                     }
                         return response
 
-                    await public_api_cache.get_or_set(f"public:age-groups:standings:{ag_id}", PROGRAM_TTL, _load_standings, PROGRAM_STALE)
+                    await public_api_cache.get_json_bytes_or_set(f"public:age-groups:standings:{ag_id}", PROGRAM_TTL, _load_standings, PROGRAM_STALE)
 
                     async def _load_ag_prog(ag_id=ag_id, db=db):
                         prog = await get_age_group_program(ag_id, db)
-                        return prog.model_dump(mode="json") if prog else None
+                        if not prog:
+                            raise ValueError("no program")
+                        return prog.model_dump(mode="json")
 
-                    await public_api_cache.get_or_set(f"public:age-groups:program:{ag_id}", PROGRAM_TTL, _load_ag_prog, PROGRAM_STALE)
+                    try:
+                        await public_api_cache.get_json_bytes_or_set(f"public:age-groups:program:{ag_id}", PROGRAM_TTL, _load_ag_prog, PROGRAM_STALE)
+                    except ValueError:
+                        pass
 
         logger.info("public_cache_warmup: completed — %d tournaments warmed", len(tournaments))
 
