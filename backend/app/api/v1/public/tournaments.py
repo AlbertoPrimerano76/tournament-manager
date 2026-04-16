@@ -304,7 +304,10 @@ async def download_public_age_group_program_pdf(age_group_id: str, db: AsyncSess
 async def download_public_age_group_program_excel(age_group_id: str, db: AsyncSession = Depends(get_db)):
     age_group_result = await db.execute(
         select(TournamentAgeGroup)
-        .options(selectinload(TournamentAgeGroup.tournament))
+        .options(
+            selectinload(TournamentAgeGroup.tournament)
+            .selectinload(Tournament.organization)
+        )
         .join(Tournament, Tournament.id == TournamentAgeGroup.tournament_id)
         .where(TournamentAgeGroup.id == age_group_id, Tournament.is_published == True)
     )
@@ -316,8 +319,15 @@ async def download_public_age_group_program_excel(age_group_id: str, db: AsyncSe
     if not program:
         raise HTTPException(status_code=404, detail="Age group not found")
 
+    t = age_group.tournament
     try:
-        payload, filename = build_age_group_program_excel(age_group.tournament.name, program, age_group.tournament.timezone)
+        payload, filename = build_age_group_program_excel(
+            t.name,
+            program,
+            t.timezone,
+            organization_logo_url=t.organization.logo_url if t.organization else None,
+            tournament_logo_url=t.logo_url,
+        )
     except ModuleNotFoundError as exc:
         if exc.name == "openpyxl":
             raise HTTPException(status_code=503, detail="Export Excel non disponibile sul server")
