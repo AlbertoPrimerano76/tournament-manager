@@ -725,11 +725,39 @@ function GroupSeedingControl({
     return slots
   }
 
+  /**
+   * "Incrocio gironi" (cross-group mix) for exactly 2 source groups.
+   *
+   * Pattern: the winner of each group stays in their own numbered group for
+   * the next phase; 2nd/3rd place teams cross over to the opposite group.
+   *
+   * Example — Phase 1 has Group A and Group B, 3 teams each.
+   * Phase 2 Group A = {1° A, 2° B, 3° B}
+   * Phase 2 Group B = {1° B, 2° A, 3° A}
+   *
+   * This works because entries arrive ordered: A1, A2, A3, B1, B2, B3.
+   * Mapping: rank 1 → same target group; rank 2+ → opposite target group.
+   */
+  function computeIncrocio(): string[] {
+    if (numGroups !== 2) return []
+    const teamsPerGroup = Math.ceil(totalTeams / numGroups)
+    const slots: string[] = []
+    for (let i = 0; i < totalTeams; i++) {
+      const srcGroupIdx = Math.floor(i / teamsPerGroup)
+      const rankInGroup = (i % teamsPerGroup) + 1
+      // Rank 1 (winner) stays in same-lettered target group; rest cross over
+      const tgtGroupIdx = rankInGroup === 1 ? srcGroupIdx : numGroups - 1 - srcGroupIdx
+      slots.push(`${String.fromCharCode(65 + tgtGroupIdx)}${rankInGroup}`)
+    }
+    return slots
+  }
+
   const currentSlots = targetSlots.length === totalTeams ? targetSlots : []
-  const isAuto = currentSlots.length === 0
+  const isAuto       = currentSlots.length === 0
   const isSerpentina = !isAuto && currentSlots.join(',') === computeSerpentina().join(',')
-  const isBlocchi = !isAuto && currentSlots.join(',') === computeBlocchi().join(',')
-  const isCustom = !isAuto && !isSerpentina && !isBlocchi
+  const isBlocchi    = !isAuto && currentSlots.join(',') === computeBlocchi().join(',')
+  const isIncrocio   = numGroups === 2 && !isAuto && currentSlots.join(',') === computeIncrocio().join(',')
+  const isCustom     = !isAuto && !isSerpentina && !isBlocchi && !isIncrocio
 
   const groupLabels = Array.from({ length: numGroups }, (_, i) => String.fromCharCode(65 + i))
 
@@ -765,7 +793,30 @@ function GroupSeedingControl({
             Per blocco
           </button>
         )}
+        {numGroups === 2 && (
+          <button
+            type="button"
+            onClick={() => onChange(computeIncrocio())}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${isIncrocio ? 'bg-violet-700 text-white' : 'border border-violet-200 bg-white text-violet-700 hover:bg-violet-100'}`}
+          >
+            Incrocio gironi
+          </button>
+        )}
       </div>
+
+      {isIncrocio && (
+        <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-800">
+          <p className="font-bold">Incrocio gironi attivo</p>
+          <p className="mt-1">
+            I vincitori restano nel girone con la propria lettera; 2° e 3° posto incrociano:
+          </p>
+          <ul className="mt-1 space-y-0.5 pl-3">
+            <li>Girone A (fase 2): 1° A · 2° B · 3° B</li>
+            <li>Girone B (fase 2): 1° B · 2° A · 3° A</li>
+          </ul>
+        </div>
+      )}
+
       {!isAuto && (
         <div className="mt-3 space-y-1.5">
           {sourceEntries.map((entry, i) => {
