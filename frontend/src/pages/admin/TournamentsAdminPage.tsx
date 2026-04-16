@@ -5278,8 +5278,8 @@ function validateStructureConfig(structure: StructureConfig): string[] {
       } else if ((linkedGroupStage.num_groups ?? 0) !== 2) {
         errors.push(`${phaseLabel}: i blocchi 1-4, 5-8 funzionano solo con una fase sorgente a 2 gironi.`)
       }
-      if (phase.group_block_size !== null && (phase.group_block_size < 4 || !_isPowerOfTwoUi(phase.group_block_size))) {
-        errors.push(`${phaseLabel}: la dimensione blocco deve essere 4, 8, 16...`)
+      if (phase.group_block_size !== null && (phase.group_block_size < 2 || (phase.group_block_size !== 2 && !_isPowerOfTwoUi(phase.group_block_size)))) {
+        errors.push(`${phaseLabel}: la dimensione blocco deve essere 2, 4, 8, 16...`)
       }
     }
     if (phase.phase_type === 'KNOCKOUT' && phase.bracket_mode === 'standard') {
