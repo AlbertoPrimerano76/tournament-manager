@@ -464,3 +464,244 @@ def build_age_group_program_excel(
     wb.save(buffer)
     filename = f"gironi-{_safe_filename(age_group_label)}.xlsx"
     return buffer.getvalue(), filename
+
+
+# ── Full tournament Excel (all age groups, one workbook) ──────────────────────
+
+def build_full_tournament_excel(
+    tournament_name: str,
+    programs: list[AgeGroupProgramResponse],
+    tournament_timezone: str = "Europe/Rome",
+    organization_logo_url: str | None = None,
+    tournament_logo_url: str | None = None,
+) -> tuple[bytes, str]:
+    from openpyxl import Workbook
+
+    image_cache: dict = {}
+    org_logo        = _fetch_image_bytes(organization_logo_url, image_cache)
+    tournament_logo = _fetch_image_bytes(tournament_logo_url, image_cache)
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    for program in programs:
+        age_group_label = program.display_name or program.age_group
+        prefix = age_group_label[:10]
+        for day in program.days:
+            for phase in day.phases:
+                if phase.groups:
+                    for gi, group in enumerate(phase.groups):
+                        sheet_name = _safe_sheet_name(
+                            f"{prefix} · G{gi + 1}" if len(phase.groups) > 1 else f"{prefix} · {phase.name}"
+                        )
+                        ws = wb.create_sheet(title=sheet_name)
+                        _write_group_sheet(
+                            ws, tournament_name, age_group_label, group,
+                            gi + 1, phase.name, tournament_timezone,
+                            org_logo, tournament_logo, image_cache,
+                        )
+                if phase.knockout_matches:
+                    sheet_name = _safe_sheet_name(f"{prefix} · {phase.name}")
+                    ws = wb.create_sheet(title=sheet_name)
+                    _write_knockout_sheet(
+                        ws, tournament_name, age_group_label, phase,
+                        tournament_timezone, org_logo, tournament_logo,
+                    )
+
+    if not wb.sheetnames:
+        wb.create_sheet("Programma")
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    filename = f"programma-completo-{_safe_filename(tournament_name)}.xlsx"
+    return buffer.getvalue(), filename
+
+
+# ── Campo calendar Excel (all matches grouped by field) ───────────────────────
+
+_CAMPO_NCOLS = 8
+
+def _write_campo_sheet(
+    ws,
+    tournament_name: str,
+    field_label_str: str,
+    entries: list[dict],
+    tournament_timezone: str,
+    org_logo: bytes | None,
+    tournament_logo: bytes | None,
+) -> None:
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    col_widths = {"A": 8, "B": 30, "C": 8, "D": 26, "E": 4, "F": 26, "G": 20, "H": 22}
+    for col_letter, width in col_widths.items():
+        ws.column_dimensions[col_letter].width = width
+
+    # ── Row 1: header ─────────────────────────────────────────────────────────
+    ws.row_dimensions[1].height = 52
+    navy_fill = PatternFill("solid", fgColor="1E3A5F")
+    thin = Side(style="thin", color="2D5A8E")
+    for col in range(1, _CAMPO_NCOLS + 1):
+        c = ws.cell(row=1, column=col)
+        c.fill = navy_fill
+        c.border = Border(bottom=thin)
+
+    title_cell = ws.cell(row=1, column=2, value=tournament_name.upper())
+    title_cell.font = Font(bold=True, size=18, color="FFFFFF", name="Calibri")
+    title_cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws.merge_cells(start_row=1, start_column=2, end_row=1, end_column=7)
+    _add_image(ws, org_logo, "A1", 42, 42)
+    _add_image(ws, tournament_logo, "H1", 42, 42)
+
+    # ── Row 2: field name ─────────────────────────────────────────────────────
+    ws.row_dimensions[2].height = 22
+    field_fill = PatternFill("solid", fgColor="1D4ED8")
+    for col in range(1, _CAMPO_NCOLS + 1):
+        ws.cell(row=2, column=col).fill = field_fill
+    fc = ws.cell(row=2, column=1, value=field_label_str.upper())
+    fc.font = Font(bold=True, size=12, color="FFFFFF", name="Calibri")
+    fc.alignment = Alignment(horizontal="center", vertical="center")
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=_CAMPO_NCOLS)
+
+    # ── Row 3: accent bar ─────────────────────────────────────────────────────
+    ws.row_dimensions[3].height = 5
+    accent = PatternFill("solid", fgColor="F59E0B")
+    for col in range(1, _CAMPO_NCOLS + 1):
+        ws.cell(row=3, column=col).fill = accent
+
+    # ── Row 4: column headers ─────────────────────────────────────────────────
+    headers = ["ORA", "CATEGORIA / GIRONE", "CAMPO", "SQUADRA CASA", "vs", "SQUADRA OSPITE", "ARBITRO", "PT/PT"]
+    for ci, hdr in enumerate(headers, start=1):
+        ws.cell(row=4, column=ci, value=hdr)
+    from openpyxl.styles import Font as Fnt, PatternFill as PF, Alignment as Al, Border as Bd, Side as Sd
+    header_fill = PF("solid", fgColor="DBEAFE")
+    bthin = Sd(style="thin", color="93C5FD")
+    bborder = Bd(left=bthin, right=bthin, top=bthin, bottom=Sd(style="medium", color="3B82F6"))
+    ws.row_dimensions[4].height = 18
+    for col in range(1, _CAMPO_NCOLS + 1):
+        c = ws.cell(row=4, column=col)
+        c.fill = header_fill
+        c.border = bborder
+        c.font = Fnt(bold=True, size=9, color="1E3A5F", name="Calibri")
+        c.alignment = Al(horizontal="center", vertical="center")
+
+    # ── Match rows ────────────────────────────────────────────────────────────
+    thin_s = Sd(style="thin", color="CBD5E1")
+    row_border = Bd(left=thin_s, right=thin_s, top=thin_s, bottom=thin_s)
+    for i, entry in enumerate(sorted(entries, key=lambda e: e.get("time_sort", ""))):
+        r = 5 + i
+        ws.row_dimensions[r].height = 18
+        alt_fill = PF("solid", fgColor="F0F4FF" if i % 2 == 0 else "FFFFFF")
+        score = ""
+        if entry.get("home_score") is not None and entry.get("away_score") is not None:
+            score = f"{entry['home_score']} – {entry['away_score']}"
+        row_vals = [
+            entry.get("time", ""),
+            entry.get("context", ""),
+            entry.get("field", ""),
+            entry.get("home", ""),
+            "vs",
+            entry.get("away", ""),
+            entry.get("referee", ""),
+            score,
+        ]
+        for ci, val in enumerate(row_vals, start=1):
+            c = ws.cell(row=r, column=ci, value=val)
+            c.fill = alt_fill
+            c.border = row_border
+            c.font = Fnt(size=9, name="Calibri")
+            c.alignment = Al(vertical="center")
+        ws.cell(row=r, column=1).alignment = Al(horizontal="center", vertical="center")
+        ws.cell(row=r, column=5).alignment = Al(horizontal="center", vertical="center")
+        ws.cell(row=r, column=8).alignment = Al(horizontal="center", vertical="center")
+
+
+def build_tournament_campo_calendar_excel(
+    tournament_name: str,
+    programs: list[AgeGroupProgramResponse],
+    tournament_timezone: str = "Europe/Rome",
+    organization_logo_url: str | None = None,
+    tournament_logo_url: str | None = None,
+) -> tuple[bytes, str]:
+    from openpyxl import Workbook
+    from zoneinfo import ZoneInfo
+
+    image_cache: dict = {}
+    org_logo        = _fetch_image_bytes(organization_logo_url, image_cache)
+    tournament_logo = _fetch_image_bytes(tournament_logo_url, image_cache)
+
+    try:
+        tz = ZoneInfo(tournament_timezone)
+    except Exception:
+        tz = ZoneInfo("Europe/Rome")
+
+    # Collect all matches keyed by field
+    field_entries: dict[str, list[dict]] = {}
+    field_labels: dict[str, str] = {}
+
+    for program in programs:
+        ag_label = program.display_name or program.age_group
+        for day in program.days:
+            for phase in day.phases:
+                all_matches: list = []
+                for group in phase.groups:
+                    for m in group.matches:
+                        all_matches.append((m, f"{ag_label} · {group.name}"))
+                for m in phase.knockout_matches:
+                    rnd = m.bracket_round or phase.name
+                    all_matches.append((m, f"{ag_label} · {rnd}"))
+
+                for match, context in all_matches:
+                    if not match.field_name:
+                        continue
+                    key = f"{match.field_name}::{match.field_number if match.field_number is not None else ''}"
+                    if key not in field_entries:
+                        field_entries[key] = []
+                        if match.field_number is not None:
+                            field_labels[key] = f"{match.field_name} · Campo {match.field_number}"
+                        else:
+                            field_labels[key] = match.field_name
+
+                    time_str = ""
+                    time_sort = ""
+                    if match.scheduled_at:
+                        try:
+                            if getattr(match.scheduled_at, "tzinfo", None) is None:
+                                time_str = match.scheduled_at.strftime("%H:%M")
+                                time_sort = match.scheduled_at.isoformat()
+                            else:
+                                local = match.scheduled_at.astimezone(tz)
+                                time_str = local.strftime("%H:%M")
+                                time_sort = local.isoformat()
+                        except Exception:
+                            pass
+
+                    field_entries[key].append({
+                        "time": time_str,
+                        "time_sort": time_sort,
+                        "context": context,
+                        "field": f"Campo {match.field_number}" if match.field_number is not None else "",
+                        "home": match.home_label or "",
+                        "away": match.away_label or "",
+                        "referee": match.referee or "",
+                        "home_score": match.home_score,
+                        "away_score": match.away_score,
+                    })
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    for key in sorted(field_entries.keys()):
+        sheet_name = _safe_sheet_name(field_labels.get(key, key))
+        ws = wb.create_sheet(title=sheet_name)
+        _write_campo_sheet(
+            ws, tournament_name, field_labels.get(key, key),
+            field_entries[key], tournament_timezone, org_logo, tournament_logo,
+        )
+
+    if not wb.sheetnames:
+        wb.create_sheet("Calendario")
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    filename = f"calendario-impianti-{_safe_filename(tournament_name)}.xlsx"
+    return buffer.getvalue(), filename

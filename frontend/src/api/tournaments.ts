@@ -737,6 +737,38 @@ export async function downloadPublicAgeGroupProgramExcel(ageGroupId: string) {
   triggerBlobDownload(res.data, filename)
 }
 
+export async function downloadAdminTournamentFullExcel(tournamentId: string) {
+  const res = await apiClient.get(`/api/v1/admin/tournaments/${tournamentId}/full-program.xlsx`, {
+    responseType: 'blob',
+  })
+  const filename = getAttachmentFilename(res.headers['content-disposition']) ?? `programma-completo.xlsx`
+  triggerBlobDownload(res.data, filename)
+}
+
+export async function downloadAdminTournamentFullPdf(tournamentId: string) {
+  const res = await apiClient.get(`/api/v1/admin/tournaments/${tournamentId}/full-program.pdf`, {
+    responseType: 'blob',
+  })
+  const filename = getAttachmentFilename(res.headers['content-disposition']) ?? `programma-completo.pdf`
+  triggerBlobDownload(res.data, filename)
+}
+
+export async function downloadAdminTournamentCampoCalendarExcel(tournamentId: string) {
+  const res = await apiClient.get(`/api/v1/admin/tournaments/${tournamentId}/campo-calendar.xlsx`, {
+    responseType: 'blob',
+  })
+  const filename = getAttachmentFilename(res.headers['content-disposition']) ?? `calendario-impianti.xlsx`
+  triggerBlobDownload(res.data, filename)
+}
+
+export async function downloadAdminTournamentCampoCalendarPdf(tournamentId: string) {
+  const res = await apiClient.get(`/api/v1/admin/tournaments/${tournamentId}/campo-calendar.pdf`, {
+    responseType: 'blob',
+  })
+  const filename = getAttachmentFilename(res.headers['content-disposition']) ?? `calendario-impianti.pdf`
+  triggerBlobDownload(res.data, filename)
+}
+
 function getAttachmentFilename(contentDisposition?: string) {
   if (!contentDisposition) return null
   const match = /filename="([^"]+)"/i.exec(contentDisposition)

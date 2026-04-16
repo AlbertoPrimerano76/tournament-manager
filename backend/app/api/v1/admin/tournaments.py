@@ -29,8 +29,8 @@ from app.schemas.structure import (
 from app.schemas.tournament_template import TournamentTemplateCreate, TournamentTemplateResponse
 from app.schemas.program import AgeGroupProgramResponse, GroupTeamMoveRequest, MatchParticipantsUpdate
 from app.services.program_builder import generate_age_group_program, get_age_group_program, regenerate_age_group_from_phase, reset_and_generate_age_group_program, reset_age_group_program
-from app.services.program_pdf import build_age_group_program_pdf
-from app.services.program_excel import build_age_group_program_excel
+from app.services.program_pdf import build_age_group_program_pdf, build_full_tournament_pdf, build_tournament_campo_calendar_pdf
+from app.services.program_excel import build_age_group_program_excel, build_full_tournament_excel, build_tournament_campo_calendar_excel
 
 router = APIRouter()
 
@@ -537,6 +537,134 @@ async def download_admin_age_group_program_excel(
     return Response(
         content=payload,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+async def _load_tournament_programs(tournament_id: str, user: User, db: AsyncSession):
+    """Load tournament + all age groups + all programs. Returns (tournament, programs_list)."""
+    t_result = await db.execute(
+        select(Tournament)
+        .options(selectinload(Tournament.organization))
+        .where(Tournament.id == tournament_id)
+    )
+    tournament = t_result.scalar_one_or_none()
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+
+    ag_result = await db.execute(
+        select(TournamentAgeGroup).where(TournamentAgeGroup.tournament_id == tournament_id)
+    )
+    age_groups = ag_result.scalars().all()
+
+    programs = []
+    for ag in age_groups:
+        prog = await get_age_group_program(ag.id, db)
+        if prog and prog.generated:
+            programs.append(prog)
+    return tournament, programs
+
+
+@router.get("/tournaments/{tournament_id}/full-program.xlsx")
+async def download_full_tournament_excel(
+    tournament_id: str,
+    user: User = Depends(require_scorer),
+    db: AsyncSession = Depends(get_db),
+):
+    tournament, programs = await _load_tournament_programs(tournament_id, user, db)
+    try:
+        payload, filename = build_full_tournament_excel(
+            tournament.name,
+            programs,
+            tournament.timezone,
+            organization_logo_url=tournament.organization.logo_url if tournament.organization else None,
+            tournament_logo_url=tournament.logo_url,
+        )
+    except ModuleNotFoundError as exc:
+        if exc.name == "openpyxl":
+            raise HTTPException(status_code=503, detail="Export Excel non disponibile sul server")
+        raise
+    except Exception as exc:
+        logger.exception("Full tournament Excel failed for %s", tournament_id)
+        raise HTTPException(status_code=500, detail=f"Errore generazione Excel: {type(exc).__name__}: {exc}")
+    return Response(
+        content=payload,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/tournaments/{tournament_id}/full-program.pdf")
+async def download_full_tournament_pdf(
+    tournament_id: str,
+    user: User = Depends(require_scorer),
+    db: AsyncSession = Depends(get_db),
+):
+    tournament, programs = await _load_tournament_programs(tournament_id, user, db)
+    try:
+        payload, filename = build_full_tournament_pdf(tournament.name, programs, tournament.timezone)
+    except ModuleNotFoundError as exc:
+        if exc.name == "reportlab":
+            raise HTTPException(status_code=503, detail="Export PDF non disponibile sul server")
+        raise
+    except Exception as exc:
+        logger.exception("Full tournament PDF failed for %s", tournament_id)
+        raise HTTPException(status_code=500, detail=f"Errore generazione PDF: {type(exc).__name__}: {exc}")
+    return Response(
+        content=payload,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/tournaments/{tournament_id}/campo-calendar.xlsx")
+async def download_campo_calendar_excel(
+    tournament_id: str,
+    user: User = Depends(require_scorer),
+    db: AsyncSession = Depends(get_db),
+):
+    tournament, programs = await _load_tournament_programs(tournament_id, user, db)
+    try:
+        payload, filename = build_tournament_campo_calendar_excel(
+            tournament.name,
+            programs,
+            tournament.timezone,
+            organization_logo_url=tournament.organization.logo_url if tournament.organization else None,
+            tournament_logo_url=tournament.logo_url,
+        )
+    except ModuleNotFoundError as exc:
+        if exc.name == "openpyxl":
+            raise HTTPException(status_code=503, detail="Export Excel non disponibile sul server")
+        raise
+    except Exception as exc:
+        logger.exception("Campo calendar Excel failed for %s", tournament_id)
+        raise HTTPException(status_code=500, detail=f"Errore generazione Excel: {type(exc).__name__}: {exc}")
+    return Response(
+        content=payload,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/tournaments/{tournament_id}/campo-calendar.pdf")
+async def download_campo_calendar_pdf(
+    tournament_id: str,
+    user: User = Depends(require_scorer),
+    db: AsyncSession = Depends(get_db),
+):
+    tournament, programs = await _load_tournament_programs(tournament_id, user, db)
+    try:
+        payload, filename = build_tournament_campo_calendar_pdf(tournament.name, programs, tournament.timezone)
+    except ModuleNotFoundError as exc:
+        if exc.name == "reportlab":
+            raise HTTPException(status_code=503, detail="Export PDF non disponibile sul server")
+        raise
+    except Exception as exc:
+        logger.exception("Campo calendar PDF failed for %s", tournament_id)
+        raise HTTPException(status_code=500, detail=f"Errore generazione PDF: {type(exc).__name__}: {exc}")
+    return Response(
+        content=payload,
+        media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

@@ -5,7 +5,7 @@ import {
   useAdminTournaments, useCreateTournament, useUpdateTournament, useDeleteTournament,
   useAdminTournamentAgeGroups, useCreateAgeGroup, useDeleteAgeGroup,
   useAgeGroupParticipants, useStructureTemplates, useUpdateAgeGroupStructure,
-  useUpdateAgeGroup, useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, useGenerateAgeGroupProgram, useDeleteAgeGroupProgram, useResetTournamentResults, downloadAdminAgeGroupProgramPdf, downloadAdminAgeGroupProgramExcel, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate, type AgeGroupScoringRules, type TournamentParticipant,
+  useUpdateAgeGroup, useCreateStructureTemplate, useCreateTournamentTemplate, useTournamentTemplates, useAdminAgeGroupProgram, useGenerateAgeGroupProgram, useDeleteAgeGroupProgram, useResetTournamentResults, downloadAdminAgeGroupProgramPdf, downloadAdminAgeGroupProgramExcel, downloadAdminTournamentFullExcel, downloadAdminTournamentFullPdf, downloadAdminTournamentCampoCalendarExcel, downloadAdminTournamentCampoCalendarPdf, Tournament, EVENT_TYPE_LABELS, type AgeGroup, type AgeGroupProgram, type ProgramMatch, type StructureTemplate, type TournamentTemplate, type AgeGroupScoringRules, type TournamentParticipant,
 } from '@/api/tournaments'
 import { apiClient } from '@/api/client'
 import { useAdminOrganizations, useCreateOrganization } from '@/api/organizations'
@@ -445,6 +445,7 @@ function TournamentRow({ tournament: t, onEdit, onOperations, onCategories, canE
 
 function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const isScoreKeeper = user?.role === 'SCORE_KEEPER'
   const resetTournamentResults = useResetTournamentResults()
   const [resetMessage, setResetMessage] = useState('')
@@ -481,6 +482,13 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
             <p className="mt-1 text-sm text-slate-500">{tournament.name}</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link
+              to={`/admin/tornei/${tournament.id}/calendario`}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 transition-colors hover:bg-sky-100"
+            >
+              <Calendar className="h-4 w-4" />
+              Calendario impianti
+            </Link>
             {!isScoreKeeper && (
               <button
                 type="button"
@@ -492,6 +500,13 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
                 {resetTournamentResults.isPending ? 'Reset in corso...' : 'Reset risultati torneo'}
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => navigate('/admin/tornei')}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Torna ai tornei
+            </button>
           </div>
         </div>
       </div>
@@ -510,6 +525,9 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
         <div className="border-b border-slate-200 px-6 py-5">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Operatività</p>
           <h2 className="mt-1 text-2xl font-black text-slate-950">Risultati per Categoria</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            Inserisci i risultati delle partite per ogni categoria. Puoi aggiornare i punteggi e segnare le partite come completate.
+          </p>
         </div>
         <div className="p-6">
           <AgeGroupsOperationsPanel tournament={tournament} />
@@ -521,6 +539,32 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
 
 function TournamentCategoriesScreen({ tournament }: { tournament: Tournament }) {
   const navigate = useNavigate()
+  const [isFullXlsDl, setIsFullXlsDl] = useState(false)
+  const [isFullPdfDl, setIsFullPdfDl] = useState(false)
+  const [dlError, setDlError] = useState('')
+
+  async function handleFullXls() {
+    setIsFullXlsDl(true); setDlError('')
+    try { await downloadAdminTournamentFullExcel(tournament.id) }
+    catch (err: unknown) {
+      const d = (err as { response?: { data?: unknown } })?.response?.data
+      let msg: string | undefined
+      if (d instanceof Blob) { try { msg = JSON.parse(await d.text())?.detail } catch { /* ignore */ } }
+      else msg = (d as { detail?: string } | undefined)?.detail
+      setDlError(msg ?? 'Errore download')
+    } finally { setIsFullXlsDl(false) }
+  }
+  async function handleFullPdf() {
+    setIsFullPdfDl(true); setDlError('')
+    try { await downloadAdminTournamentFullPdf(tournament.id) }
+    catch (err: unknown) {
+      const d = (err as { response?: { data?: unknown } })?.response?.data
+      let msg: string | undefined
+      if (d instanceof Blob) { try { msg = JSON.parse(await d.text())?.detail } catch { /* ignore */ } }
+      else msg = (d as { detail?: string } | undefined)?.detail
+      setDlError(msg ?? 'Errore download')
+    } finally { setIsFullPdfDl(false) }
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -539,11 +583,21 @@ function TournamentCategoriesScreen({ tournament }: { tournament: Tournament }) 
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => navigate(`/admin/tornei/${tournament.id}/gestione`)}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+              onClick={() => void handleFullXls()}
+              disabled={isFullXlsDl}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-800 transition-colors hover:bg-green-100 disabled:opacity-50"
             >
-              <ClipboardList className="h-4 w-4" />
-              Risultati
+              <Download className="h-4 w-4" />
+              {isFullXlsDl ? 'Download...' : 'Excel completo'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleFullPdf()}
+              disabled={isFullPdfDl}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+            >
+              <Download className="h-4 w-4" />
+              {isFullPdfDl ? 'Download...' : 'PDF completo'}
             </button>
             <button
               type="button"
@@ -554,6 +608,7 @@ function TournamentCategoriesScreen({ tournament }: { tournament: Tournament }) 
             </button>
           </div>
         </div>
+        {dlError && <p className="mt-3 text-xs font-medium text-red-600">{dlError}</p>}
       </div>
 
       <section className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
@@ -649,6 +704,33 @@ function AgeGroupOperationsCard({ tournament, group }: { tournament: Tournament;
 }
 
 function TournamentFieldScheduleScreen({ tournament }: { tournament: Tournament }) {
+  const [isCampoXlsDl, setIsCampoXlsDl] = useState(false)
+  const [isCampoPdfDl, setIsCampoPdfDl] = useState(false)
+  const [dlError, setDlError] = useState('')
+
+  async function handleCampoXls() {
+    setIsCampoXlsDl(true); setDlError('')
+    try { await downloadAdminTournamentCampoCalendarExcel(tournament.id) }
+    catch (err: unknown) {
+      const d = (err as { response?: { data?: unknown } })?.response?.data
+      let msg: string | undefined
+      if (d instanceof Blob) { try { msg = JSON.parse(await d.text())?.detail } catch { /* ignore */ } }
+      else msg = (d as { detail?: string } | undefined)?.detail
+      setDlError(msg ?? 'Errore download')
+    } finally { setIsCampoXlsDl(false) }
+  }
+  async function handleCampoPdf() {
+    setIsCampoPdfDl(true); setDlError('')
+    try { await downloadAdminTournamentCampoCalendarPdf(tournament.id) }
+    catch (err: unknown) {
+      const d = (err as { response?: { data?: unknown } })?.response?.data
+      let msg: string | undefined
+      if (d instanceof Blob) { try { msg = JSON.parse(await d.text())?.detail } catch { /* ignore */ } }
+      else msg = (d as { detail?: string } | undefined)?.detail
+      setDlError(msg ?? 'Errore download')
+    } finally { setIsCampoPdfDl(false) }
+  }
+
   return (
     <div className="mx-auto max-w-6xl space-y-5">
       <div className="rounded-[2rem] border border-white/80 bg-white/85 p-6 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
@@ -664,6 +746,24 @@ function TournamentFieldScheduleScreen({ tournament }: { tournament: Tournament 
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void handleCampoXls()}
+              disabled={isCampoXlsDl}
+              className="inline-flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-800 transition-colors hover:bg-green-100 disabled:opacity-50"
+            >
+              <Download className="h-4 w-4" />
+              {isCampoXlsDl ? 'Download...' : 'Excel impianti'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleCampoPdf()}
+              disabled={isCampoPdfDl}
+              className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+            >
+              <Download className="h-4 w-4" />
+              {isCampoPdfDl ? 'Download...' : 'PDF impianti'}
+            </button>
             <Link
               to={`/admin/tornei/${tournament.id}/gestione`}
               className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
@@ -672,6 +772,7 @@ function TournamentFieldScheduleScreen({ tournament }: { tournament: Tournament 
             </Link>
           </div>
         </div>
+        {dlError && <p className="mt-3 text-xs font-medium text-red-600">{dlError}</p>}
       </div>
 
       <TournamentFieldSchedulePanel tournament={tournament} />
@@ -1671,6 +1772,7 @@ type StructurePhase = {
   knockout_progression: 'full_bracket' | 'single_round'
   num_groups: number | null
   group_sizes: string
+  group_custom_names: string[]
   qualifiers_per_group: number | null
   best_extra_teams: number | null
   next_phase_type: '' | 'GROUP_STAGE' | 'KNOCKOUT'
@@ -1793,6 +1895,7 @@ const BUILTIN_TEMPLATES: Array<{
           knockout_progression: 'full_bracket',
           num_groups: 1,
           group_sizes: '',
+          group_custom_names: [],
           qualifiers_per_group: null,
           best_extra_teams: null,
           next_phase_type: '',
@@ -1832,6 +1935,7 @@ const BUILTIN_TEMPLATES: Array<{
           knockout_progression: 'full_bracket',
           num_groups: 2,
           group_sizes: '4,4',
+          group_custom_names: [],
           qualifiers_per_group: 2,
           best_extra_teams: 0,
           next_phase_type: 'KNOCKOUT',
@@ -1854,6 +1958,7 @@ const BUILTIN_TEMPLATES: Array<{
           knockout_progression: 'full_bracket',
           num_groups: null,
           group_sizes: '',
+          group_custom_names: [],
           qualifiers_per_group: null,
           best_extra_teams: null,
           next_phase_type: '',
@@ -1893,6 +1998,7 @@ const BUILTIN_TEMPLATES: Array<{
           knockout_progression: 'full_bracket',
           num_groups: 4,
           group_sizes: '4,4,4,4',
+          group_custom_names: [],
           qualifiers_per_group: 1,
           best_extra_teams: 1,
           next_phase_type: 'KNOCKOUT',
@@ -1915,6 +2021,7 @@ const BUILTIN_TEMPLATES: Array<{
           knockout_progression: 'full_bracket',
           num_groups: null,
           group_sizes: '',
+          group_custom_names: [],
           qualifiers_per_group: null,
           best_extra_teams: null,
           next_phase_type: '',
@@ -1954,6 +2061,7 @@ const BUILTIN_TEMPLATES: Array<{
           knockout_progression: 'full_bracket',
           num_groups: 2,
           group_sizes: '6,6',
+          group_custom_names: [],
           qualifiers_per_group: null,
           best_extra_teams: null,
           next_phase_type: 'KNOCKOUT',
@@ -1976,6 +2084,7 @@ const BUILTIN_TEMPLATES: Array<{
           knockout_progression: 'full_bracket',
           num_groups: null,
           group_sizes: '',
+          group_custom_names: [],
           qualifiers_per_group: null,
           best_extra_teams: null,
           next_phase_type: '',
@@ -2094,12 +2203,24 @@ function AgeGroupUnifiedCard({
   const completedMatches = countProgramMatches(program, (match) => match.status === 'COMPLETED')
   const totalMatches = countProgramMatches(program)
   const [confirmingRemove, setConfirmingRemove] = useState(false)
+  const [isPdfDl, setIsPdfDl] = useState(false)
+  const [isXlsDl, setIsXlsDl] = useState(false)
+  const agLabel = group.display_name || group.age_group
+
+  async function handleDlPdf() {
+    setIsPdfDl(true)
+    try { await downloadAdminAgeGroupProgramPdf(group.id) } finally { setIsPdfDl(false) }
+  }
+  async function handleDlXls() {
+    setIsXlsDl(true)
+    try { await downloadAdminAgeGroupProgramExcel(group.id) } finally { setIsXlsDl(false) }
+  }
 
   return (
     <div className="rounded-[1.45rem] border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
-          <p className="text-base font-black text-slate-900">{group.display_name || group.age_group}</p>
+          <p className="text-base font-black text-slate-900">{agLabel}</p>
           <p className="mt-1 text-sm text-slate-500">Formula, squadre e operatività della categoria in un solo punto.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <StatusPill label={hasFormula ? 'Formula pronta' : 'Formula da completare'} tone={hasFormula ? 'emerald' : 'amber'} />
@@ -2114,16 +2235,30 @@ function AgeGroupUnifiedCard({
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
           >
             <Pencil className="h-4 w-4" />
-            Wizard / Configura
+            Configura
           </button>
-          <button
-            type="button"
-            onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${group.id}/gestione`)}
-            className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
-          >
-            <ClipboardList className="h-4 w-4" />
-            Risultati
-          </button>
+          {hasProgram && (
+            <>
+              <button
+                type="button"
+                onClick={() => void handleDlXls()}
+                disabled={isXlsDl}
+                className="inline-flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm font-semibold text-green-800 transition-colors hover:bg-green-100 disabled:opacity-50"
+              >
+                <Download className="h-3.5 w-3.5" />
+                {isXlsDl ? '...' : `Excel ${agLabel}`}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDlPdf()}
+                disabled={isPdfDl}
+                className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+              >
+                <Download className="h-3.5 w-3.5" />
+                {isPdfDl ? '...' : `PDF ${agLabel}`}
+              </button>
+            </>
+          )}
           <button
             type="button"
             disabled={isPending}
@@ -2390,7 +2525,7 @@ function AgeGroupConfigurationScreen({
                   className="inline-flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-800 transition-colors hover:bg-green-100 disabled:opacity-50"
                 >
                   <Download className="h-4 w-4" />
-                  {isXlsxDownloading ? 'Download...' : 'Excel gironi'}
+                  {isXlsxDownloading ? 'Download...' : `Excel ${ageGroup!.display_name || ageGroup!.age_group}`}
                 </button>
                 {xlsxError && (
                   <p className="w-full text-xs font-medium text-red-600">{xlsxError}</p>
@@ -2402,7 +2537,7 @@ function AgeGroupConfigurationScreen({
                   className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:opacity-50"
                 >
                   <Download className="h-4 w-4" />
-                  {isPdfDownloading ? 'Download...' : 'PDF calendario'}
+                  {isPdfDownloading ? 'Download...' : `PDF ${ageGroup!.display_name || ageGroup!.age_group}`}
                 </button>
               </>
             )}
@@ -2996,6 +3131,27 @@ function AgeGroupConfigurationPanel({
           : phase
       )),
     }))
+  }
+
+  function addAdvancementRouteToExisting(phaseIndex: number, targetPhaseId: string) {
+    setStructure((current) => {
+      const sourcePhase = current.phases[phaseIndex]
+      return {
+        ...current,
+        phases: current.phases.map((phase, i) => (
+          i !== phaseIndex ? phase : {
+            ...phase,
+            advancement_routes: [
+              ...(phase.advancement_routes ?? []),
+              makeAdvancementRoute({
+                targetPhaseId,
+                sourceMode: sourcePhase?.phase_type === 'KNOCKOUT' ? 'knockout_winner' : 'group_rank',
+              }),
+            ],
+          }
+        )),
+      }
+    })
   }
 
   function toggleAdvancementRouteGroup(phaseIndex: number, routeId: string, groupName: string) {
@@ -3794,6 +3950,29 @@ function AgeGroupConfigurationPanel({
                               {estimateGroupStageMatches(phase) ?? 0} incontri
                             </p>
                           </div>
+                          {(phase.num_groups ?? 0) > 0 && (
+                            <div className="sm:col-span-2">
+                              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Nomi gironi (opzionale)</p>
+                              <p className="mt-1 mb-3 text-xs text-slate-500">Lascia vuoto per usare Girone A, B, C… — I nomi personalizzati sostituiscono le etichette predefinite.</p>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {buildGroupNames(phase).map((defaultName, gi) => (
+                                  <FormField key={gi} label={defaultName}>
+                                    <input
+                                      value={phase.group_custom_names?.[gi] ?? ''}
+                                      onChange={(e) => {
+                                        const names = [...(phase.group_custom_names ?? [])]
+                                        while (names.length <= gi) names.push('')
+                                        names[gi] = e.target.value
+                                        setPhase(index, { group_custom_names: names })
+                                      }}
+                                      placeholder={defaultName}
+                                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                                    />
+                                  </FormField>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="grid gap-4 sm:grid-cols-2">
@@ -3834,6 +4013,7 @@ function AgeGroupConfigurationPanel({
                                 onChange={(e) => setPhase(index, { group_block_size: Number(e.target.value) })}
                                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
                               >
+                                <option value={2}>Blocchi da 2 (solo finali)</option>
                                 <option value={4}>Blocchi da 4</option>
                                 <option value={8}>Blocchi da 8</option>
                                 <option value={16}>Blocchi da 16</option>
@@ -3968,14 +4148,34 @@ function AgeGroupConfigurationPanel({
                                 Qui scegli solo quali squadre passano. La fase collegata la configuri dopo.
                               </p>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => addAdvancementRoute(index)}
-                              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
-                            >
-                              <Plus className="h-4 w-4" />
-                              Aggiungi instradamento e crea fase
-                            </button>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => addAdvancementRoute(index)}
+                                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                              >
+                                <Plus className="h-4 w-4" />
+                                Nuova fase
+                              </button>
+                              {(() => {
+                                const existingTargets = structure.phases.filter(
+                                  (p, pi) => pi > index && !phase.advancement_routes.some((r) => r.target_phase_id === p.id)
+                                )
+                                if (existingTargets.length === 0) return null
+                                return (
+                                  <select
+                                    defaultValue=""
+                                    onChange={(e) => { if (e.target.value) addAdvancementRouteToExisting(index, e.target.value) }}
+                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                                  >
+                                    <option value="" disabled>Collega a fase esistente…</option>
+                                    {existingTargets.map((p) => (
+                                      <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                  </select>
+                                )
+                              })()}
+                            </div>
                           </div>
 
                           {phase.advancement_routes.length === 0 ? (
@@ -4134,14 +4334,34 @@ function AgeGroupConfigurationPanel({
                                 Decidi dove vanno le vincenti e le perdenti di questo turno singolo.
                               </p>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => addAdvancementRoute(index)}
-                              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
-                            >
-                              <Plus className="h-4 w-4" />
-                              Aggiungi instradamento e crea fase
-                            </button>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => addAdvancementRoute(index)}
+                                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                              >
+                                <Plus className="h-4 w-4" />
+                                Nuova fase
+                              </button>
+                              {(() => {
+                                const existingTargets = structure.phases.filter(
+                                  (p, pi) => pi > index && !phase.advancement_routes.some((r) => r.target_phase_id === p.id)
+                                )
+                                if (existingTargets.length === 0) return null
+                                return (
+                                  <select
+                                    defaultValue=""
+                                    onChange={(e) => { if (e.target.value) addAdvancementRouteToExisting(index, e.target.value) }}
+                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                                  >
+                                    <option value="" disabled>Collega a fase esistente…</option>
+                                    {existingTargets.map((p) => (
+                                      <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                  </select>
+                                )
+                              })()}
+                            </div>
                           </div>
 
                           {phase.advancement_routes.length === 0 ? (
@@ -4609,7 +4829,10 @@ function parseGroupSizes(input: string): number[] {
 function buildGroupNames(phase: StructurePhase): string[] {
   const sizes = parseGroupSizes(phase.group_sizes)
   const groupsCount = Math.max(phase.num_groups ?? sizes.length, sizes.length, 1)
-  return Array.from({ length: groupsCount }, (_, index) => `Girone ${String.fromCharCode(65 + index)}`)
+  return Array.from({ length: groupsCount }, (_, index) => {
+    const custom = phase.group_custom_names?.[index]?.trim()
+    return custom || `Girone ${String.fromCharCode(65 + index)}`
+  })
 }
 
 function buildAutoGroupFieldAssignments(
@@ -5335,6 +5558,9 @@ function normalizePhase(value: unknown, index: number): StructurePhase {
     knockout_progression: input.knockout_progression === 'single_round' ? 'single_round' : 'full_bracket',
     num_groups: typeof input.num_groups === 'number' ? input.num_groups : null,
     group_sizes: typeof input.group_sizes === 'string' ? input.group_sizes : '',
+    group_custom_names: Array.isArray((input as { group_custom_names?: unknown }).group_custom_names)
+      ? ((input as { group_custom_names?: unknown[] }).group_custom_names ?? []).map((v) => typeof v === 'string' ? v : '')
+      : [],
     qualifiers_per_group: typeof input.qualifiers_per_group === 'number' ? input.qualifiers_per_group : null,
     best_extra_teams: typeof input.best_extra_teams === 'number' ? input.best_extra_teams : null,
     next_phase_type: input.next_phase_type === 'GROUP_STAGE' || input.next_phase_type === 'KNOCKOUT' ? input.next_phase_type : '',
@@ -5421,6 +5647,7 @@ function makeEmptyPhase(index: number, tournamentStartDate?: string | null): Str
     knockout_progression: 'full_bracket',
     num_groups: null,
     group_sizes: '',
+    group_custom_names: [],
     qualifiers_per_group: null,
     best_extra_teams: null,
     next_phase_type: '',

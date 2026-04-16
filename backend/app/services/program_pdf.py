@@ -650,3 +650,245 @@ def _load_image_bytes(source: str | None) -> bytes | None:
     except Exception:
         return None
     return None
+
+
+# ── Full tournament PDF (all age groups concatenated) ─────────────────────────
+
+def build_full_tournament_pdf(
+    tournament_name: str,
+    programs: list["AgeGroupProgramResponse"],
+    tournament_timezone: str = "Europe/Rome",
+) -> tuple[bytes, str]:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, PageBreak
+
+    buffer = BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        topMargin=14 * mm,
+        bottomMargin=14 * mm,
+        leftMargin=12 * mm,
+        rightMargin=12 * mm,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "FullTitle",
+        parent=styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=20,
+        leading=24,
+        textColor=colors.HexColor("#0f172a"),
+        spaceAfter=2,
+    )
+    subtitle_style = ParagraphStyle(
+        "FullSubtitle",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=11,
+        leading=14,
+        textColor=colors.HexColor("#475569"),
+        spaceAfter=6,
+    )
+
+    story: list = []
+
+    for i, program in enumerate(programs):
+        if i > 0:
+            story.append(PageBreak())
+
+        field_map = _collect_field_map(program)
+        ag_label = program.display_name or program.age_group
+        story.append(Paragraph(_escape_pdf_text(tournament_name), title_style))
+        story.append(Paragraph(f"Calendario · {_escape_pdf_text(ag_label)}", subtitle_style))
+
+        if field_map:
+            story.append(_build_field_legend(field_map))
+            story.append(Spacer(1, 8 * mm))
+
+        for day in program.days:
+            story.extend(_build_day_section(day.label, day.phases, tournament_timezone, field_map))
+            story.append(Spacer(1, 4))
+
+    if not story:
+        story.append(Paragraph(_escape_pdf_text(tournament_name), title_style))
+        story.append(Paragraph("Nessun programma disponibile.", subtitle_style))
+
+    document.build(story)
+    filename = f"programma-completo-{_safe_filename(tournament_name)}.pdf"
+    return buffer.getvalue(), filename
+
+
+# ── Campo calendar PDF (all matches grouped by field) ─────────────────────────
+
+def build_tournament_campo_calendar_pdf(
+    tournament_name: str,
+    programs: list["AgeGroupProgramResponse"],
+    tournament_timezone: str = "Europe/Rome",
+) -> tuple[bytes, str]:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, PageBreak, Table, TableStyle
+    from zoneinfo import ZoneInfo
+
+    try:
+        tz = ZoneInfo(tournament_timezone)
+    except Exception:
+        tz = ZoneInfo("Europe/Rome")
+
+    # Collect all matches grouped by field
+    field_entries: dict[str, list[dict]] = {}
+    field_labels: dict[str, str] = {}
+
+    for program in programs:
+        ag_label = program.display_name or program.age_group
+        for day in program.days:
+            for phase in day.phases:
+                all_matches: list = []
+                for group in phase.groups:
+                    for m in group.matches:
+                        all_matches.append((m, f"{ag_label} · {group.name}"))
+                for m in phase.knockout_matches:
+                    rnd = m.bracket_round or phase.name
+                    all_matches.append((m, f"{ag_label} · {rnd}"))
+
+                for match, context in all_matches:
+                    if not match.field_name:
+                        continue
+                    key = f"{match.field_name}::{match.field_number if match.field_number is not None else ''}"
+                    if key not in field_entries:
+                        field_entries[key] = []
+                        if match.field_number is not None:
+                            field_labels[key] = f"{match.field_name} · Campo {match.field_number}"
+                        else:
+                            field_labels[key] = match.field_name
+
+                    time_str = ""
+                    time_sort = ""
+                    if match.scheduled_at:
+                        try:
+                            if getattr(match.scheduled_at, "tzinfo", None) is None:
+                                time_str = match.scheduled_at.strftime("%H:%M")
+                                time_sort = match.scheduled_at.isoformat()
+                            else:
+                                local = match.scheduled_at.astimezone(tz)
+                                time_str = local.strftime("%H:%M")
+                                time_sort = local.isoformat()
+                        except Exception:
+                            pass
+
+                    field_entries[key].append({
+                        "time": time_str,
+                        "time_sort": time_sort,
+                        "context": context,
+                        "home": match.home_label or "Da definire",
+                        "away": match.away_label or "Da definire",
+                        "referee": match.referee or "",
+                        "home_score": match.home_score,
+                        "away_score": match.away_score,
+                    })
+
+    buffer = BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        topMargin=14 * mm,
+        bottomMargin=14 * mm,
+        leftMargin=12 * mm,
+        rightMargin=12 * mm,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "CampoTitle",
+        parent=styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=22,
+        textColor=colors.HexColor("#0f172a"),
+        spaceAfter=2,
+    )
+    field_title_style = ParagraphStyle(
+        "FieldTitle",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=14,
+        leading=18,
+        textColor=colors.HexColor("#1D4ED8"),
+        spaceAfter=4,
+        spaceBefore=8,
+    )
+
+    COL_WIDTHS_CAMPO = [14 * mm, 50 * mm, 40 * mm, 5 * mm, 40 * mm, 28 * mm]
+
+    story: list = [
+        Paragraph(_escape_pdf_text(tournament_name), title_style),
+        Paragraph("Calendario Impianti", ParagraphStyle(
+            "CampoSubtitle",
+            parent=styles["BodyText"],
+            fontName="Helvetica",
+            fontSize=11,
+            leading=14,
+            textColor=colors.HexColor("#475569"),
+            spaceAfter=8,
+        )),
+    ]
+
+    for field_index, key in enumerate(sorted(field_entries.keys())):
+        if field_index > 0:
+            story.append(Spacer(1, 6 * mm))
+
+        label = field_labels.get(key, key)
+        story.append(Paragraph(_escape_pdf_text(label), field_title_style))
+
+        entries = sorted(field_entries[key], key=lambda e: e.get("time_sort", ""))
+
+        table_data: list[list] = [["ORA", "CATEGORIA / GIRONE", "CASA", "vs", "OSPITE", "ARBITRO"]]
+        for entry in entries:
+            score_str = ""
+            if entry.get("home_score") is not None and entry.get("away_score") is not None:
+                score_str = f"  {entry['home_score']}–{entry['away_score']}"
+            table_data.append([
+                entry["time"],
+                _escape_pdf_text(entry["context"]),
+                _escape_pdf_text(entry["home"]) + score_str,
+                "–",
+                _escape_pdf_text(entry["away"]),
+                _escape_pdf_text(entry["referee"]),
+            ])
+
+        table = Table(table_data, colWidths=COL_WIDTHS_CAMPO, repeatRows=1)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 8),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#F8FAFF"), colors.white]),
+            ("FONTSIZE", (0, 1), (-1, -1), 8),
+            ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+            ("ALIGN", (0, 0), (0, -1), "CENTER"),
+            ("ALIGN", (3, 0), (3, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+            ("ROWHEIGHT", (0, 0), (-1, -1), 16),
+        ]))
+        story.append(table)
+
+    if len(story) <= 2:
+        story.append(Paragraph("Nessuna partita con campo assegnato.", ParagraphStyle(
+            "NoneMsg",
+            parent=styles["BodyText"],
+            fontName="Helvetica",
+            fontSize=11,
+            textColor=colors.HexColor("#64748B"),
+        )))
+
+    document.build(story)
+    filename = f"calendario-impianti-{_safe_filename(tournament_name)}.pdf"
+    return buffer.getvalue(), filename

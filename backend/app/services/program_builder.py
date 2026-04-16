@@ -195,6 +195,18 @@ def _group_name(index: int) -> str:
     return f"Girone {chr(65 + index)}"
 
 
+def _group_name_from_config(index: int, phase_config: dict[str, Any] | None) -> str:
+    custom_names = (phase_config or {}).get("group_custom_names")
+    if (
+        isinstance(custom_names, list)
+        and index < len(custom_names)
+        and isinstance(custom_names[index], str)
+        and custom_names[index].strip()
+    ):
+        return custom_names[index].strip()
+    return _group_name(index)
+
+
 def _parse_start_time(raw_value: Any) -> time:
     if isinstance(raw_value, str):
         try:
@@ -948,7 +960,7 @@ def _queue_knockout_phase_advancements(
 
 def _group_block_size(phase_config: dict[str, Any] | None, default: int = 4) -> int:
     raw_size = (phase_config or {}).get("group_block_size")
-    if isinstance(raw_size, int) and raw_size >= 4 and _is_power_of_two(raw_size):
+    if isinstance(raw_size, int) and raw_size >= 2 and (raw_size == 2 or _is_power_of_two(raw_size)):
         return raw_size
     return default
 
@@ -1396,7 +1408,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             group_plans: list[dict[str, Any]] = []
 
             for group_index, group_size in enumerate(group_sizes):
-                group_name = _group_name(group_index)
+                group_name = _group_name_from_config(group_index, phase_config)
                 group = Group(
                     phase_id=phase.id,
                     name=group_name,
@@ -1848,7 +1860,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             group_plans: list[dict[str, Any]] = []
 
             for group_index, group_size in enumerate(group_sizes):
-                group_name = _group_name(group_index)
+                group_name = _group_name_from_config(group_index, phase_config)
                 group = Group(phase_id=phase.id, name=group_name, group_order=group_index)
                 db.add(group)
                 await db.flush()
@@ -2357,7 +2369,7 @@ def _build_placeholder_phase_from_config(
         slot_labels = _build_placeholder_group_slot_labels(phase_config, phases_config)
         groups: list[ProgramGroupResponse] = []
         for group_index in range(total_groups):
-            group_name = _group_name(group_index)
+            group_name = _group_name_from_config(group_index, phase_config)
             labels = slot_labels.get(group_name, [])
             if not labels:
                 fallback_size = group_sizes[group_index] if group_index < len(group_sizes) else 0
@@ -2432,7 +2444,7 @@ def _placeholder_entries_for_knockout_phase(
             continue
         source_phase_name = str(source_phase.get("name") or "Fase precedente")
         num_groups = int(source_phase.get("num_groups") or 0)
-        group_names = [_group_name(index) for index in range(max(num_groups, 0))]
+        group_names = [_group_name_from_config(index, source_phase) for index in range(max(num_groups, 0))]
         for route in source_phase.get("advancement_routes", []) if isinstance(source_phase.get("advancement_routes"), list) else []:
             if not isinstance(route, dict) or route.get("target_phase_id") != target_phase_id:
                 continue
