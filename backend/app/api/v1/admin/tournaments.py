@@ -1,6 +1,9 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from datetime import date
+
+logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -527,6 +530,9 @@ async def download_admin_age_group_program_excel(
         if exc.name == "openpyxl":
             raise HTTPException(status_code=503, detail="Export Excel non disponibile sul server")
         raise
+    except Exception as exc:
+        logger.exception("Excel generation failed for age_group %s", ag_id)
+        raise HTTPException(status_code=500, detail=f"Errore generazione Excel: {type(exc).__name__}: {exc}")
 
     return Response(
         content=payload,

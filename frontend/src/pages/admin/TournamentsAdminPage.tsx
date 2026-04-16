@@ -2306,6 +2306,7 @@ function AgeGroupConfigurationScreen({
   const [activeStep, setActiveStep] = useState<CategoryWizardStep>('squadre')
   const [isPdfDownloading, setIsPdfDownloading] = useState(false)
   const [isXlsxDownloading, setIsXlsxDownloading] = useState(false)
+  const [xlsxError, setXlsxError] = useState('')
 
   if (isLoading) {
     return <div className="py-12 text-center text-sm text-slate-500">Caricamento categoria...</div>
@@ -2337,8 +2338,18 @@ function AgeGroupConfigurationScreen({
 
   async function handleDownloadExcel() {
     setIsXlsxDownloading(true)
+    setXlsxError('')
     try {
       await downloadAdminAgeGroupProgramExcel(ageGroup!.id)
+    } catch (err: unknown) {
+      const errData = (err as { response?: { data?: unknown } })?.response?.data
+      let msg: string | undefined
+      if (errData instanceof Blob) {
+        try { msg = JSON.parse(await errData.text())?.detail } catch { /* ignore */ }
+      } else {
+        msg = (errData as { detail?: string } | undefined)?.detail
+      }
+      setXlsxError(msg ?? 'Errore durante il download Excel')
     } finally {
       setIsXlsxDownloading(false)
     }
@@ -2381,6 +2392,9 @@ function AgeGroupConfigurationScreen({
                   <Download className="h-4 w-4" />
                   {isXlsxDownloading ? 'Download...' : 'Excel gironi'}
                 </button>
+                {xlsxError && (
+                  <p className="w-full text-xs font-medium text-red-600">{xlsxError}</p>
+                )}
                 <button
                   type="button"
                   onClick={() => void handleDownloadPdf()}
@@ -2874,7 +2888,13 @@ function AgeGroupConfigurationPanel({
     try {
       await downloadAdminAgeGroupProgramExcel(ageGroup.id)
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      const errData = (err as { response?: { data?: unknown } })?.response?.data
+      let msg: string | undefined
+      if (errData instanceof Blob) {
+        try { msg = JSON.parse(await errData.text())?.detail } catch { /* ignore */ }
+      } else {
+        msg = (errData as { detail?: string } | undefined)?.detail
+      }
       setSaveError(msg ?? 'Errore durante il download Excel')
     }
   }
