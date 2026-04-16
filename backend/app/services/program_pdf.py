@@ -18,8 +18,8 @@ from app.schemas.program import (
 
 # ── Page geometry ──────────────────────────────────────────────────────────────
 # A4 = 210mm wide; with 12mm margins each side → 186mm usable
-# Schedule columns (mm): ORA | C | CASA | vs | OSPITE | Mt□ | Pt□ | Mt□ | Pt□ | ARB
-_COL_WIDTHS_SCHED = [13, 8, 42, 5, 42, 11, 11, 11, 11, 32]  # total = 186mm
+# Schedule columns (mm): ORA | C | CASA | vs | OSPITE | Pt□ | Pt□ | ARB
+_COL_WIDTHS_SCHED = [13, 8, 48, 5, 48, 16, 16, 32]  # total = 186mm
 
 # Column indices
 _C_ORA   = 0
@@ -27,11 +27,9 @@ _C_FIELD = 1
 _C_HOME  = 2
 _C_VS    = 3
 _C_AWAY  = 4
-_C_MT_H  = 5   # mete home (box)
-_C_PT_H  = 6   # punti home (box)
-_C_MT_A  = 7   # mete away (box)
-_C_PT_A  = 8   # punti away (box)
-_C_ARB   = 9
+_C_PT_H  = 5   # punti home (box)
+_C_PT_A  = 6   # punti away (box)
+_C_ARB   = 7
 
 
 def _safe_filename(value: str) -> str:
@@ -512,9 +510,7 @@ def _build_schedule_table(
         Paragraph("CASA", hdr_style),
         Paragraph("vs", hdr_style),
         Paragraph("OSPITE", hdr_style),
-        Paragraph("Mt\nCasa", hdr_style),
         Paragraph("Pt\nCasa", hdr_style),
-        Paragraph("Mt\nOsp.", hdr_style),
         Paragraph("Pt\nOsp.", hdr_style),
         Paragraph("ARBITRO", hdr_style),
     ]
@@ -524,16 +520,14 @@ def _build_schedule_table(
         rows.append([
             Paragraph("—", dim_style), Paragraph("—", dim_style),
             Paragraph("Partite non ancora programmate", dim_style),
-            "", "", "", "", "", "", "",
+            "", "", "", "", "",
         ])
     else:
         for match in matches:
             time_str = _format_time(match.scheduled_at, tournament_timezone, "—")
             code = _field_code(match, field_map)
             # Pre-fill scores if already entered
-            mt_h = str(match.home_tries) if match.home_tries is not None else ""
             pt_h = str(match.home_score) if match.home_score is not None else ""
-            mt_a = str(match.away_tries) if match.away_tries is not None else ""
             pt_a = str(match.away_score) if match.away_score is not None else ""
             arb  = _escape_pdf_text(match.referee or "")
 
@@ -543,9 +537,7 @@ def _build_schedule_table(
                 Paragraph(_escape_pdf_text(match.home_label), cell_style),
                 Paragraph("vs", center_cell),
                 Paragraph(_escape_pdf_text(match.away_label), cell_style),
-                Paragraph(mt_h, center_cell),
                 Paragraph(pt_h, center_cell),
-                Paragraph(mt_a, center_cell),
                 Paragraph(pt_a, center_cell),
                 Paragraph(arb, cell_style),
             ])
@@ -580,19 +572,14 @@ def _build_schedule_table(
         ("ALIGN", (_C_ORA,   1), (_C_ORA,   -1), "CENTER"),
         ("ALIGN", (_C_FIELD, 1), (_C_FIELD, -1), "CENTER"),
         ("ALIGN", (_C_VS,    1), (_C_VS,    -1), "CENTER"),
-        ("ALIGN", (_C_MT_H,  1), (_C_MT_H,  -1), "CENTER"),
         ("ALIGN", (_C_PT_H,  1), (_C_PT_H,  -1), "CENTER"),
-        ("ALIGN", (_C_MT_A,  1), (_C_MT_A,  -1), "CENTER"),
         ("ALIGN", (_C_PT_A,  1), (_C_PT_A,  -1), "CENTER"),
-        # Score box columns: thicker border + white background
-        ("BACKGROUND",    (_C_MT_H, 1), (_C_PT_A, -1), box_bg),
-        ("BOX",           (_C_MT_H, 1), (_C_MT_H, -1), 1.2, box_border),
+        # Score box columns: thicker border + white background + extra padding for handwriting
+        ("BACKGROUND",    (_C_PT_H, 1), (_C_PT_A, -1), box_bg),
         ("BOX",           (_C_PT_H, 1), (_C_PT_H, -1), 1.2, box_border),
-        ("BOX",           (_C_MT_A, 1), (_C_MT_A, -1), 1.2, box_border),
         ("BOX",           (_C_PT_A, 1), (_C_PT_A, -1), 1.2, box_border),
-        # Taller score box rows for handwriting
-        ("TOPPADDING",    (_C_MT_H, 1), (_C_PT_A, -1), 10),
-        ("BOTTOMPADDING", (_C_MT_H, 1), (_C_PT_A, -1), 10),
+        ("TOPPADDING",    (_C_PT_H, 1), (_C_PT_A, -1), 10),
+        ("BOTTOMPADDING", (_C_PT_H, 1), (_C_PT_A, -1), 10),
     ]
     table.setStyle(TableStyle(style_cmds))
     return table

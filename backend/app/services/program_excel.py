@@ -13,7 +13,7 @@ from app.schemas.program import (
 
 # ── Column layout (A=1 … O=15 in openpyxl 1-based, 0-based indices below) ─────
 #  A    B       C      D          E          F  G    H          I          J  K  L  M       N       O
-#  ORA  CAMPO   [img]  COD_HOME   NOME_HOME  -  vs   COD_AWAY   NOME_AWAY  -  -  -  METE_H  METE_A  ARBITRO
+#  ORA  CAMPO   [img]  COD_HOME   NOME_HOME  -  vs   COD_AWAY   NOME_AWAY  -  -  -  PT_H    PT_A    ARBITRO
 #
 # Column C (index 2) is a narrow image-lane used for team-crest thumbnails in
 # the team-roster block.  It stays empty in match rows.
@@ -26,8 +26,8 @@ _COL_NOM_HOME  = 4   # E
 _COL_VS        = 6   # G
 _COL_COD_AWAY  = 7   # H
 _COL_NOM_AWAY  = 8   # I
-_COL_METE_H    = 12  # M
-_COL_METE_A    = 13  # N
+_COL_PT_H      = 12  # M  punti casa
+_COL_PT_A      = 13  # N  punti ospite
 _COL_ARBITRO   = 14  # O
 
 # Header occupies rows 1-4 (logo row, subtitle, group name, spacer/border)
@@ -224,7 +224,7 @@ def _style_match_row(ws, row: int, alt: bool, row_height: int = 18) -> None:
         c.alignment = Alignment(vertical="center")
         c.font = Font(size=9, name="Calibri")
     for col in [_COL_ORA + 1, _COL_CAMPO + 1, _COL_IMG + 1, _COL_COD_HOME + 1, _COL_VS + 1,
-                _COL_COD_AWAY + 1, _COL_METE_H + 1, _COL_METE_A + 1]:
+                _COL_COD_AWAY + 1, _COL_PT_H + 1, _COL_PT_A + 1]:
         c = ws.cell(row=row, column=col)
         c.alignment = Alignment(horizontal="center", vertical="center")
     # Bold team codes
@@ -233,7 +233,7 @@ def _style_match_row(ws, row: int, alt: bool, row_height: int = 18) -> None:
     # Score cells — thick border, extra padding implied by row height
     from openpyxl.styles import Border as Brd, Side as Sd
     thick = Sd(style="medium", color="94A3B8")
-    for col in [_COL_METE_H + 1, _COL_METE_A + 1]:
+    for col in [_COL_PT_H + 1, _COL_PT_A + 1]:
         ws.cell(row=row, column=col).border = Brd(left=thick, right=thick, top=thick, bottom=thick)
 
 
@@ -307,8 +307,8 @@ def _write_group_sheet(
     header[_COL_VS]       = "vs"
     header[_COL_COD_AWAY] = ""
     header[_COL_NOM_AWAY] = "SQUADRA OSPITE"
-    header[_COL_METE_H]   = "METE"
-    header[_COL_METE_A]   = "METE"
+    header[_COL_PT_H]   = "PT"
+    header[_COL_PT_A]   = "PT"
     header[_COL_ARBITRO]  = "ARBITRO"
     ws.append(header)
     _style_section_header(ws, ws.max_row, "DBEAFE")
@@ -326,8 +326,8 @@ def _write_group_sheet(
         row_data[_COL_VS]        = "vs"
         row_data[_COL_COD_AWAY]  = a_code
         row_data[_COL_NOM_AWAY]  = a_name
-        row_data[_COL_METE_H]    = match.home_tries if match.home_tries is not None else ""
-        row_data[_COL_METE_A]    = match.away_tries if match.away_tries is not None else ""
+        row_data[_COL_PT_H]    = match.home_score if match.home_score is not None else ""
+        row_data[_COL_PT_A]    = match.away_score if match.away_score is not None else ""
         row_data[_COL_ARBITRO]   = match.referee or ""
         ws.append(row_data)
         _style_match_row(ws, ws.max_row, i % 2 == 1)
@@ -386,8 +386,8 @@ def _write_knockout_sheet(
         header[_COL_NOM_HOME] = "SQUADRA CASA"
         header[_COL_VS]       = "vs"
         header[_COL_NOM_AWAY] = "SQUADRA OSPITE"
-        header[_COL_METE_H]   = "METE"
-        header[_COL_METE_A]   = "METE"
+        header[_COL_PT_H]   = "PT"
+        header[_COL_PT_A]   = "PT"
         header[_COL_ARBITRO]  = "ARBITRO"
         ws.cell(row=current_row, column=1)  # ensure row exists before styling
         for ci, val in enumerate(header, start=1):
@@ -402,8 +402,8 @@ def _write_knockout_sheet(
             row_data[_COL_NOM_HOME] = match.home_label or ""
             row_data[_COL_VS]       = "vs"
             row_data[_COL_NOM_AWAY] = match.away_label or ""
-            row_data[_COL_METE_H]   = match.home_tries if match.home_tries is not None else ""
-            row_data[_COL_METE_A]   = match.away_tries if match.away_tries is not None else ""
+            row_data[_COL_PT_H]   = match.home_score if match.home_score is not None else ""
+            row_data[_COL_PT_A]   = match.away_score if match.away_score is not None else ""
             row_data[_COL_ARBITRO]  = match.referee or ""
             for ci, val in enumerate(row_data, start=1):
                 ws.cell(row=current_row, column=ci, value=val)
