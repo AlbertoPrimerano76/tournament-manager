@@ -1035,7 +1035,7 @@ function ProgramMatchCard({
   participants?: TournamentParticipant[]
   group?: ProgramGroup
   phase?: ProgramPhase
-  adminVariant?: 'full' | 'results' | 'delays'
+  adminVariant?: 'full' | 'results' | 'delays' | 'schedule'
   matchDurationMinutes?: number
   intervalMinutes?: number
   domId?: string
@@ -1279,7 +1279,7 @@ function ProgramMatchCard({
 
       {isEditable && (
         <div className="mt-3 space-y-3 border-t border-slate-200 pt-3">
-          {adminVariant === 'full' && (
+          {(adminVariant === 'full' || adminVariant === 'schedule') && (
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <div className="grid gap-3 md:grid-cols-2">
               <label className="text-xs font-semibold text-slate-500">
@@ -1329,31 +1329,46 @@ function ProgramMatchCard({
           </div>
           )}
 
-          {(adminVariant === 'full' || adminVariant === 'delays') && (
+          {(adminVariant === 'full' || adminVariant === 'delays' || adminVariant === 'schedule') && (
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className={`grid gap-3 ${adminVariant === 'delays' ? 'md:grid-cols-3' : 'md:grid-cols-2 xl:grid-cols-4'}`}>
+            <div className={`grid gap-3 ${adminVariant === 'delays' ? 'md:grid-cols-3' : adminVariant === 'schedule' ? 'md:grid-cols-2 xl:grid-cols-3' : 'md:grid-cols-2 xl:grid-cols-4'}`}>
               <label className="text-xs font-semibold text-slate-500">
-                Orario
-                <input
-                  type="datetime-local"
-                  value={scheduledAt}
-                  onChange={(e) => setScheduledAt(e.target.value)}
-                  className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-                />
-              </label>
-              <label className="text-xs font-semibold text-slate-500">
-                Ritardo
-                <div className="mt-1 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                Ora
+                {adminVariant === 'schedule' ? (
+                  // Time-only input for Passo 4 — keeps the existing date, only adjusts the hour
                   <input
-                    type="number"
-                    value={delayMinutes}
-                    onChange={(e) => setDelayMinutes(e.target.value)}
-                    placeholder="0"
-                    className="block min-w-0 flex-1 bg-transparent text-sm text-slate-900 focus:outline-none"
+                    type="time"
+                    value={scheduledAt.includes('T') ? scheduledAt.split('T')[1].slice(0, 5) : scheduledAt.slice(0, 5)}
+                    onChange={(e) => {
+                      const datePart = scheduledAt.includes('T') ? scheduledAt.split('T')[0] : new Date().toISOString().split('T')[0]
+                      setScheduledAt(`${datePart}T${e.target.value}`)
+                    }}
+                    className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                   />
-                  <span className="text-xs font-medium text-slate-500">min</span>
-                </div>
+                ) : (
+                  <input
+                    type="datetime-local"
+                    value={scheduledAt}
+                    onChange={(e) => setScheduledAt(e.target.value)}
+                    className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                  />
+                )}
               </label>
+              {adminVariant !== 'schedule' && (
+                <label className="text-xs font-semibold text-slate-500">
+                  Ritardo
+                  <div className="mt-1 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                    <input
+                      type="number"
+                      value={delayMinutes}
+                      onChange={(e) => setDelayMinutes(e.target.value)}
+                      placeholder="0"
+                      className="block min-w-0 flex-1 bg-transparent text-sm text-slate-900 focus:outline-none"
+                    />
+                    <span className="text-xs font-medium text-slate-500">min</span>
+                  </div>
+                </label>
+              )}
               {adminVariant === 'delays' && (
                 <label className="text-xs font-semibold text-slate-500">
                   Ora fine
@@ -1365,10 +1380,10 @@ function ProgramMatchCard({
                   />
                 </label>
               )}
-              {adminVariant === 'full' && (
+              {(adminVariant === 'full' || adminVariant === 'schedule') && (
                 <>
                   <label className="text-xs font-semibold text-slate-500">
-                    Campo definito
+                    Campo
                     <select
                       value={selectedPlayingField ? `${selectedPlayingField.field_name}::${selectedPlayingField.field_number ?? ''}` : ''}
                       onChange={(e) => {
@@ -1386,30 +1401,30 @@ function ProgramMatchCard({
                       ))}
                     </select>
                   </label>
-                  {match.home_team_id && match.away_team_id && (
-                    <label className="text-xs font-semibold text-slate-500">
-                      Arbitro
-                      <input
-                        value={referee}
-                        onChange={(e) => setReferee(e.target.value)}
-                        className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-                      />
-                    </label>
-                  )}
+                  <label className="text-xs font-semibold text-slate-500">
+                    Arbitro
+                    <input
+                      value={referee}
+                      onChange={(e) => setReferee(e.target.value)}
+                      className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                    />
+                  </label>
                 </>
               )}
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500">
-                <input
-                  type="checkbox"
-                  checked={propagateDelay}
-                  onChange={(e) => setPropagateDelay(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300"
-                />
-                Propaga il ritardo alle partite successive dello stesso campo
-              </label>
+              {adminVariant !== 'schedule' && (
+                <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500">
+                  <input
+                    type="checkbox"
+                    checked={propagateDelay}
+                    onChange={(e) => setPropagateDelay(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  Propaga il ritardo alle partite successive dello stesso campo
+                </label>
+              )}
               <button
                 type="button"
                 onClick={() => void handleSaveSchedule()}
@@ -1417,10 +1432,12 @@ function ProgramMatchCard({
                 className={`rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-50 ${
                   adminVariant === 'delays'
                     ? 'bg-slate-900 text-white'
-                    : 'border border-slate-200 bg-white text-slate-700'
+                    : adminVariant === 'schedule'
+                      ? 'bg-rugby-brand text-white'
+                      : 'border border-slate-200 bg-white text-slate-700'
                 }`}
               >
-                {adminVariant === 'delays' ? 'Salva ritardo e orario' : 'Salva programmazione'}
+                {adminVariant === 'delays' ? 'Salva ritardo e orario' : adminVariant === 'schedule' ? 'Salva partita' : 'Salva programmazione'}
               </button>
             </div>
 
@@ -1780,7 +1797,7 @@ export function AdminAllMatchesEditorView({
                       ageGroupId={program.age_group_id}
                       participants={participants}
                       group={group}
-                      adminVariant="full"
+                      adminVariant="schedule"
                       matchDurationMinutes={matchDurationMinutes}
                       intervalMinutes={intervalMinutes}
                     />
@@ -1803,7 +1820,7 @@ export function AdminAllMatchesEditorView({
                     playingFields={playingFields}
                     ageGroupId={program.age_group_id}
                     participants={participants}
-                    adminVariant="full"
+                    adminVariant="schedule"
                     matchDurationMinutes={matchDurationMinutes}
                     intervalMinutes={intervalMinutes}
                   />

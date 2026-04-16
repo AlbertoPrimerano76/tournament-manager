@@ -455,9 +455,32 @@ def _assign_cross_group_referees(
     referee_source_group_ids: dict[str, list[str]] | None = None,
     allow_same_group_primary_ids: set[str] | None = None,
 ) -> None:
-    participant_name_map = {team.id: team.team.name for team in participants}
-    referee_load: dict[str, int] = defaultdict(int)
-    referee_source_group_ids = referee_source_group_ids or {}
+    """Assign referees at organisation level.
+
+    Two teams belonging to the same organisation (e.g. "Rugby Livorno 1931 Verde"
+    and "Rugby Livorno 1931 Bianco") share an org_id.  Neither can referee the
+    other.  The referee label is the organisation name, not the individual team name.
+    When no cross-org candidate is available the field is left blank (to be set
+    manually on the day).
+    """
+    # team_id → org_id, org_id → display name
+    org_id_map:   dict[str, str] = {}
+    org_name_map: dict[str, str] = {}
+    for tt in participants:
+        if tt.team and tt.team.organization:
+            org_id_map[tt.id]  = tt.team.organization_id
+            org_name_map[tt.team.organization_id] = tt.team.organization.name
+        elif tt.team:
+            # Fallback: treat each team as its own pseudo-org (unique per team)
+            org_id_map[tt.id]  = tt.id
+            org_name_map[tt.id] = tt.team.name
+
+    # For load-balancing we track how many times each org has been assigned
+    org_load: dict[str, int] = defaultdict(int)
+    # Map team_id → team display name (used only for fallback label when org name missing)
+    participant_name_map = {tt.id: tt.team.name for tt in participants}
+
+    referee_source_group_ids   = referee_source_group_ids or {}
     allow_same_group_primary_ids = allow_same_group_primary_ids or set()
 
     matches_by_slot: dict[datetime | None, list[Match]] = defaultdict(list)
@@ -471,47 +494,71 @@ def _assign_cross_group_referees(
             for team_id in [match.home_team_id, match.away_team_id]
             if team_id
         }
-        assigned_referee_ids: set[str] = set()
-        external_referee_counter = 1
+        # Orgs whose teams are playing in this slot → cannot referee
+        busy_org_ids = {org_id_map[tid] for tid in busy_team_ids if tid in org_id_map}
+
+        # Orgs that have already been assigned as referee in this slot
+        assigned_org_ids: set[str] = set()
 
         for match in slot_matches:
+            home_org = org_id_map.get(match.home_team_id or "", "")
+            away_org = org_id_map.get(match.away_team_id or "", "")
+            playing_orgs = {home_org, away_org} - {""}
+
             same_group_team_ids = set(group_team_ids.get(match.group_id or "", []))
             allowed_source_group_ids = referee_source_group_ids.get(match.group_id or "", [])
-            cross_group_candidate_ids = [
-                team_id
-                for group_id, team_ids in group_team_ids.items()
-                if group_id != match.group_id and (not allowed_source_group_ids or group_id in allowed_source_group_ids)
-                for team_id in team_ids
-                if team_id not in busy_team_ids and team_id not in same_group_team_ids and team_id not in assigned_referee_ids
+
+            def _org_ok(tid: str) -> bool:
+                """True when *tid* belongs to an org that may referee this match."""
+                oid = org_id_map.get(tid, "")
+                return (
+                    oid not in playing_orgs
+                    and oid not in busy_org_ids
+                    and oid not in assigned_org_ids
+                )
+
+            # Priority 1: cross-group team from a different org
+            cross_group_candidates = [
+                tid
+                for gid, tids in group_team_ids.items()
+                if gid != match.group_id and (not allowed_source_group_ids or gid in allowed_source_group_ids)
+                for tid in tids
+                if _org_ok(tid)
             ]
 
-            fallback_same_group_ids = [
-                team_id
-                for team_id in same_group_team_ids
-                if team_id not in busy_team_ids and team_id not in assigned_referee_ids
+            # Priority 2: same-group team from a different org
+            same_group_candidates = [
+                tid for tid in same_group_team_ids if _org_ok(tid)
             ]
 
             if match.group_id and match.group_id in allow_same_group_primary_ids:
-                candidate_ids = cross_group_candidate_ids + fallback_same_group_ids
+                candidate_ids = cross_group_candidates + same_group_candidates
             else:
-                candidate_ids = cross_group_candidate_ids or fallback_same_group_ids
+                candidate_ids = cross_group_candidates or same_group_candidates
+
+            # Priority 3: any participant from a different org not busy in this slot
             if not candidate_ids:
-                remaining_global_ids = [
-                    team_id
-                    for team_id in participant_name_map.keys()
-                    if team_id not in busy_team_ids and team_id not in assigned_referee_ids
+                candidate_ids = [
+                    tid for tid in participant_name_map
+                    if _org_ok(tid)
                 ]
-                candidate_ids = remaining_global_ids
+
             if not candidate_ids:
-                match.referee = f"Staff torneo {external_referee_counter}"
-                external_referee_counter += 1
+                # No valid candidate — leave blank for manual assignment
+                match.referee = None
                 continue
 
-            candidate_ids.sort(key=lambda team_id: (referee_load[team_id], participant_name_map.get(team_id, "")))
+            # Pick the org with the lowest referee load, then alphabetical for stability
+            candidate_ids.sort(key=lambda tid: (
+                org_load.get(org_id_map.get(tid, ""), 0),
+                org_name_map.get(org_id_map.get(tid, ""), participant_name_map.get(tid, "")),
+            ))
             selected = candidate_ids[0]
-            match.referee = participant_name_map.get(selected)
-            referee_load[selected] += 1
-            assigned_referee_ids.add(selected)
+            selected_org = org_id_map.get(selected, "")
+            # Assign the organisation name as referee label
+            match.referee = org_name_map.get(selected_org) or participant_name_map.get(selected)
+            org_load[selected_org] += 1
+            assigned_org_ids.add(selected_org)
 
 
 def _match_end_time(match: Match, slot_delta: timedelta) -> datetime | None:
@@ -1250,7 +1297,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
         select(TournamentAgeGroup)
         .options(
             selectinload(TournamentAgeGroup.tournament),
-            selectinload(TournamentAgeGroup.tournament_teams).selectinload(TournamentTeam.team),
+            selectinload(TournamentAgeGroup.tournament_teams).selectinload(TournamentTeam.team).selectinload(Team.organization),
             selectinload(TournamentAgeGroup.phases).selectinload(Phase.groups).selectinload(Group.group_teams),
             selectinload(TournamentAgeGroup.phases).selectinload(Phase.matches),
         )
@@ -1662,7 +1709,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
         select(TournamentAgeGroup)
         .options(
             selectinload(TournamentAgeGroup.tournament),
-            selectinload(TournamentAgeGroup.tournament_teams).selectinload(TournamentTeam.team),
+            selectinload(TournamentAgeGroup.tournament_teams).selectinload(TournamentTeam.team).selectinload(Team.organization),
             selectinload(TournamentAgeGroup.phases).selectinload(Phase.groups).selectinload(Group.group_teams),
             selectinload(TournamentAgeGroup.phases).selectinload(Phase.matches),
         )

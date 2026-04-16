@@ -13,7 +13,7 @@ import { useAdminTeams, useCreateTeam, useEnrollTournamentTeam, useUnenrollTourn
 import { useOrganizationFields } from '@/api/fields'
 import ImageUpload from '@/components/shared/ImageUpload'
 import AgeGroupProgramView, { AdminAllMatchesEditorView } from '@/components/program/AgeGroupProgramView'
-import { Calendar, MapPin, Globe, Pencil, Trash2, X, Plus, Eye, EyeOff, Users, Save, ArrowRight, ExternalLink, Sparkles, AlertTriangle, Clock3, Download } from 'lucide-react'
+import { Calendar, MapPin, Globe, Pencil, Trash2, X, Plus, Eye, EyeOff, Users, Save, ArrowRight, ExternalLink, Sparkles, AlertTriangle, Clock3, Download, ClipboardList } from 'lucide-react'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
 import { useAuth } from '@/context/AuthContext'
@@ -444,7 +444,6 @@ function TournamentRow({ tournament: t, onEdit, onOperations, onCategories, canE
 }
 
 function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) {
-  const navigate = useNavigate()
   const { user } = useAuth()
   const isScoreKeeper = user?.role === 'SCORE_KEEPER'
   const resetTournamentResults = useResetTournamentResults()
@@ -478,11 +477,8 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
             <Link to="/admin/tornei" className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 transition-colors hover:text-slate-600">
               Tornei
             </Link>
-            <h1 className="mt-2 text-3xl font-black text-slate-950">Risultati e ritardi</h1>
+            <h1 className="mt-2 text-3xl font-black text-slate-950">Risultati</h1>
             <p className="mt-1 text-sm text-slate-500">{tournament.name}</p>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-              Pagina operativa dell&apos;evento. Apri una categoria per inserire risultati, applicare ritardi e correggere manualmente gironi e partite.
-            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             {!isScoreKeeper && (
@@ -496,35 +492,6 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
                 {resetTournamentResults.isPending ? 'Reset in corso...' : 'Reset risultati torneo'}
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie`)}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-semibold text-violet-700 transition-colors hover:bg-violet-100"
-            >
-              <Sparkles className="h-4 w-4" />
-              Categorie
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate(`/admin/tornei/${tournament.id}/calendario`)}
-              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-            >
-              Calendario impianti
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate(`/admin/tornei/${tournament.id}/modifica`)}
-              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-            >
-              Modifica evento
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate('/admin/tornei')}
-              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-            >
-              Torna ai tornei
-            </button>
           </div>
         </div>
       </div>
@@ -542,10 +509,7 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
       <section className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
         <div className="border-b border-slate-200 px-6 py-5">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Operatività</p>
-          <h2 className="mt-1 text-2xl font-black text-slate-950">Gestione per categoria</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Apri una categoria per inserire risultati, applicare ritardi e correggere manualmente gironi e partite.
-          </p>
+          <h2 className="mt-1 text-2xl font-black text-slate-950">Risultati per Categoria</h2>
         </div>
         <div className="p-6">
           <AgeGroupsOperationsPanel tournament={tournament} />
@@ -578,8 +542,8 @@ function TournamentCategoriesScreen({ tournament }: { tournament: Tournament }) 
               onClick={() => navigate(`/admin/tornei/${tournament.id}/gestione`)}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
             >
-              <Calendar className="h-4 w-4" />
-              Risultati e ritardi
+              <ClipboardList className="h-4 w-4" />
+              Risultati
             </button>
             <button
               type="button"
@@ -676,8 +640,8 @@ function AgeGroupOperationsCard({ tournament, group }: { tournament: Tournament;
           onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${group.id}/gestione`)}
           className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
         >
-          <Calendar className="h-4 w-4" />
-          Gestione
+          <ClipboardList className="h-4 w-4" />
+          Risultati
         </button>
       </div>
     </div>
@@ -2106,8 +2070,8 @@ function AgeGroupUnifiedCard({
             onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${group.id}/gestione`)}
             className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
           >
-            <Calendar className="h-4 w-4" />
-            Gestione
+            <ClipboardList className="h-4 w-4" />
+            Risultati
           </button>
           <button
             type="button"
