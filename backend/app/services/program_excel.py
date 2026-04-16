@@ -427,6 +427,180 @@ def _write_knockout_sheet(
         current_row += 1
 
 
+# ── Block writers (offset-aware, for single-sheet layout) ─────────────────────
+
+def _write_group_block(
+    ws,
+    start_row: int,
+    age_group_label: str,
+    group: "ProgramGroupResponse",
+    group_num: int,
+    phase_name: str,
+    tournament_timezone: str,
+    image_cache: dict,
+) -> int:
+    """Write one group (team list + matches) starting at *start_row*. Returns next free row."""
+    from openpyxl.styles import Font, Alignment
+
+    team_code: dict[str, tuple[str, str]] = {}
+    for pos, team in enumerate(group.teams):
+        code = f"{chr(65 + pos)}{group_num}"
+        if team.tournament_team_id:
+            team_code[team.tournament_team_id] = (code, team.label)
+
+    r = start_row
+
+    # Group name banner
+    ws.row_dimensions[r].height = 20
+    ws.cell(row=r, column=1, value=group.name)
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=_NCOLS)
+    _style_group_name_row(ws, r)
+    r += 1
+
+    # Team-roster header
+    ws.row_dimensions[r].height = 16
+    for ci, val in enumerate(["COD.", "SQUADRA"] + [""] * (_NCOLS - 2), start=1):
+        ws.cell(row=r, column=ci, value=val)
+    _style_section_header(ws, r, "DBEAFE")
+    r += 1
+
+    # Team rows
+    for pos, team in enumerate(group.teams):
+        code = f"{chr(65 + pos)}{group_num}"
+        ws.cell(row=r, column=1, value=code)
+        ws.cell(row=r, column=2, value=team.label)
+        _style_match_row(ws, r, pos % 2 == 1, row_height=26)
+        logo_bytes = _fetch_image_bytes(getattr(team, "team_logo_url", None), image_cache)
+        _add_image(ws, logo_bytes, f"C{r}", 20, 20)
+        r += 1
+
+    # Spacer
+    ws.row_dimensions[r].height = 6
+    r += 1
+
+    # Match header
+    header = [""] * _NCOLS
+    header[_COL_ORA]      = "ORA"
+    header[_COL_CAMPO]    = "CAMPO"
+    header[_COL_NOM_HOME] = "SQUADRA CASA"
+    header[_COL_VS]       = "vs"
+    header[_COL_NOM_AWAY] = "SQUADRA OSPITE"
+    header[_COL_PT_H]     = "PT"
+    header[_COL_PT_A]     = "PT"
+    header[_COL_ARBITRO]  = "ARBITRO"
+    for ci, val in enumerate(header, start=1):
+        ws.cell(row=r, column=ci, value=val)
+    _style_section_header(ws, r, "DBEAFE")
+    r += 1
+
+    # Match rows
+    for i, match in enumerate(_sort_matches(group.matches)):
+        h_code, h_name = team_code.get(match.home_team_id or "", ("", match.home_label or ""))
+        a_code, a_name = team_code.get(match.away_team_id or "", ("", match.away_label or ""))
+        row_data = [""] * _NCOLS
+        row_data[_COL_ORA]      = _format_time(match.scheduled_at, tournament_timezone)
+        row_data[_COL_CAMPO]    = _field_label(match)
+        row_data[_COL_COD_HOME] = h_code
+        row_data[_COL_NOM_HOME] = h_name
+        row_data[_COL_VS]       = "vs"
+        row_data[_COL_COD_AWAY] = a_code
+        row_data[_COL_NOM_AWAY] = a_name
+        row_data[_COL_PT_H]     = match.home_score if match.home_score is not None else ""
+        row_data[_COL_PT_A]     = match.away_score if match.away_score is not None else ""
+        row_data[_COL_ARBITRO]  = match.referee or ""
+        for ci, val in enumerate(row_data, start=1):
+            ws.cell(row=r, column=ci, value=val)
+        _style_match_row(ws, r, i % 2 == 1)
+        if match.home_logo_url:
+            logo = _fetch_image_bytes(match.home_logo_url, image_cache)
+            _add_image(ws, logo, f"C{r}", 14, 14)
+        r += 1
+
+    # Trailing spacer
+    ws.row_dimensions[r].height = 10
+    r += 1
+    return r
+
+
+def _write_knockout_block(
+    ws,
+    start_row: int,
+    phase: "ProgramPhaseResponse",
+    tournament_timezone: str,
+) -> int:
+    """Write knockout rounds starting at *start_row*. Returns next free row."""
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    r = start_row
+
+    # Phase name banner (amber-dark, same style as round header in _write_knockout_sheet)
+    ws.row_dimensions[r].height = 20
+    amber_fill = PatternFill("solid", fgColor="92400E")
+    thin = Side(style="thin", color="B45309")
+    for col in range(1, _NCOLS + 1):
+        c = ws.cell(row=r, column=col)
+        c.fill = amber_fill
+        c.border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    cell = ws.cell(row=r, column=1, value=phase.name.upper())
+    cell.font = Font(bold=True, size=12, color="FEF3C7", name="Calibri")
+    cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=_NCOLS)
+    r += 1
+
+    matches_by_round: dict[str, list] = {}
+    for m in _sort_matches(phase.knockout_matches):
+        matches_by_round.setdefault(m.bracket_round or phase.name, []).append(m)
+
+    for round_name, round_matches in matches_by_round.items():
+        # Round sub-header
+        ws.row_dimensions[r].height = 16
+        light_amber = PatternFill("solid", fgColor="B45309")
+        for col in range(1, _NCOLS + 1):
+            c = ws.cell(row=r, column=col)
+            c.fill = light_amber
+            c.border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        rnd_cell = ws.cell(row=r, column=1, value=round_name.upper())
+        rnd_cell.font = Font(bold=True, size=10, color="FEF3C7", name="Calibri")
+        rnd_cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=_NCOLS)
+        r += 1
+
+        # Column header
+        header = [""] * _NCOLS
+        header[_COL_ORA]      = "ORA"
+        header[_COL_CAMPO]    = "CAMPO"
+        header[_COL_NOM_HOME] = "SQUADRA CASA"
+        header[_COL_VS]       = "vs"
+        header[_COL_NOM_AWAY] = "SQUADRA OSPITE"
+        header[_COL_PT_H]     = "PT"
+        header[_COL_PT_A]     = "PT"
+        header[_COL_ARBITRO]  = "ARBITRO"
+        for ci, val in enumerate(header, start=1):
+            ws.cell(row=r, column=ci, value=val)
+        _style_section_header(ws, r, "FEF3C7")
+        r += 1
+
+        for i, match in enumerate(round_matches):
+            row_data = [""] * _NCOLS
+            row_data[_COL_ORA]      = _format_time(match.scheduled_at, tournament_timezone)
+            row_data[_COL_CAMPO]    = _field_label(match)
+            row_data[_COL_NOM_HOME] = match.home_label or ""
+            row_data[_COL_VS]       = "vs"
+            row_data[_COL_NOM_AWAY] = match.away_label or ""
+            row_data[_COL_PT_H]     = match.home_score if match.home_score is not None else ""
+            row_data[_COL_PT_A]     = match.away_score if match.away_score is not None else ""
+            row_data[_COL_ARBITRO]  = match.referee or ""
+            for ci, val in enumerate(row_data, start=1):
+                ws.cell(row=r, column=ci, value=val)
+            _style_match_row(ws, r, i % 2 == 1)
+            r += 1
+
+        ws.row_dimensions[r].height = 8
+        r += 1
+
+    return r
+
+
 # ── Public entry point ─────────────────────────────────────────────────────────
 
 def build_age_group_program_excel(
@@ -441,36 +615,31 @@ def build_age_group_program_excel(
     age_group_label = program.display_name or program.age_group
     image_cache: dict = {}
 
-    # Pre-fetch header logos once (shared across all sheets)
     org_logo        = _fetch_image_bytes(organization_logo_url, image_cache)
     tournament_logo = _fetch_image_bytes(tournament_logo_url, image_cache)
 
     wb = Workbook()
-    wb.remove(wb.active)  # drop the default empty sheet
+    wb.remove(wb.active)
+
+    ws = wb.create_sheet(title=_safe_sheet_name(age_group_label))
+    _set_col_widths(ws)
+    ws.freeze_panes = f"A{_HEADER_ROWS + 1}"
+    _write_sheet_header(ws, tournament_name, age_group_label, tournament_name, org_logo, tournament_logo)
+
+    current_row = _HEADER_ROWS + 1
 
     for day in program.days:
         for phase in day.phases:
             if phase.groups:
                 for gi, group in enumerate(phase.groups):
-                    sheet_name = _safe_sheet_name(
-                        f"G{gi + 1} - {phase.name}" if len(phase.groups) > 1 else phase.name
+                    current_row = _write_group_block(
+                        ws, current_row, age_group_label, group,
+                        gi + 1, phase.name, tournament_timezone, image_cache,
                     )
-                    ws = wb.create_sheet(title=sheet_name)
-                    _write_group_sheet(
-                        ws, tournament_name, age_group_label, group,
-                        gi + 1, phase.name, tournament_timezone,
-                        org_logo, tournament_logo, image_cache,
-                    )
-
             if phase.knockout_matches:
-                ws = wb.create_sheet(title=_safe_sheet_name(phase.name))
-                _write_knockout_sheet(
-                    ws, tournament_name, age_group_label, phase,
-                    tournament_timezone, org_logo, tournament_logo,
+                current_row = _write_knockout_block(
+                    ws, current_row, phase, tournament_timezone,
                 )
-
-    if not wb.sheetnames:
-        wb.create_sheet("Programma")
 
     buffer = BytesIO()
     wb.save(buffer)
