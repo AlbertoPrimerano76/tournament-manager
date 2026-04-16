@@ -552,10 +552,14 @@ async def _load_tournament_programs(tournament_id: str, user: User, db: AsyncSes
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
 
+    from app.models.tournament import AgeGroup as AgeGroupEnum
     ag_result = await db.execute(
         select(TournamentAgeGroup).where(TournamentAgeGroup.tournament_id == tournament_id)
     )
-    age_groups = ag_result.scalars().all()
+    age_groups = sorted(
+        ag_result.scalars().all(),
+        key=lambda ag: list(AgeGroupEnum).index(ag.age_group),
+    )
 
     programs = []
     for ag in age_groups:

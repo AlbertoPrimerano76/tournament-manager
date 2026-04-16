@@ -3008,32 +3008,6 @@ function AgeGroupConfigurationPanel({
     }
   }
 
-  async function handleDownloadProgramPdf() {
-    setSaveError('')
-    try {
-      await downloadAdminAgeGroupProgramPdf(ageGroup.id)
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setSaveError(msg ?? 'Errore durante il download del PDF')
-    }
-  }
-
-  async function handleDownloadProgramExcel() {
-    setSaveError('')
-    try {
-      await downloadAdminAgeGroupProgramExcel(ageGroup.id)
-    } catch (err: unknown) {
-      const errData = (err as { response?: { data?: unknown } })?.response?.data
-      let msg: string | undefined
-      if (errData instanceof Blob) {
-        try { msg = JSON.parse(await errData.text())?.detail } catch { /* ignore */ }
-      } else {
-        msg = (errData as { detail?: string } | undefined)?.detail
-      }
-      setSaveError(msg ?? 'Errore durante il download Excel')
-    }
-  }
-
   async function handleSaveAsTemplate() {
     if (!templateName.trim()) return
     await createTemplate.mutateAsync({
@@ -3416,26 +3390,6 @@ function AgeGroupConfigurationPanel({
                         >
                           Vai alle partite
                         </Link>
-                      )}
-                      {program?.generated && (
-                        <button
-                          type="button"
-                          onClick={() => void handleDownloadProgramExcel()}
-                          className="inline-flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-800 transition-colors hover:bg-green-100"
-                        >
-                          <Download className="h-4 w-4" />
-                          Excel gironi
-                        </button>
-                      )}
-                      {program?.generated && (
-                        <button
-                          type="button"
-                          onClick={() => void handleDownloadProgramPdf()}
-                          className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100"
-                        >
-                          <Download className="h-4 w-4" />
-                          PDF calendario
-                        </button>
                       )}
                     </>
                   )}

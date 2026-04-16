@@ -96,13 +96,25 @@ def _fetch_image_bytes(url: str | None, cache: dict) -> bytes | None:
     return data
 
 
+def _to_png_bytes(img_bytes: bytes) -> bytes:
+    """Convert image bytes to PNG (openpyxl only supports JPEG/PNG/GIF/BMP/TIFF)."""
+    try:
+        from PIL import Image as PILImage
+        with PILImage.open(BytesIO(img_bytes)) as im:
+            buf = BytesIO()
+            im.convert("RGBA").save(buf, format="PNG")
+            return buf.getvalue()
+    except Exception:
+        return img_bytes
+
+
 def _add_image(ws, img_bytes: bytes | None, cell_ref: str, w_px: int, h_px: int) -> None:
     """Anchor an image to *cell_ref* at *w_px × h_px* pixels (no-op on error)."""
     if not img_bytes:
         return
     try:
         from openpyxl.drawing.image import Image as XlImage
-        img = XlImage(BytesIO(img_bytes))
+        img = XlImage(BytesIO(_to_png_bytes(img_bytes)))
         img.width = w_px
         img.height = h_px
         img.anchor = cell_ref
@@ -484,6 +496,20 @@ def build_full_tournament_excel(
     wb = Workbook()
     wb.remove(wb.active)
 
+    used_sheet_names: set[str] = set()
+
+    def _unique_sheet_name(name: str) -> str:
+        if name not in used_sheet_names:
+            used_sheet_names.add(name)
+            return name
+        i = 2
+        while True:
+            candidate = _safe_sheet_name(f"{name[:27]} {i}")
+            if candidate not in used_sheet_names:
+                used_sheet_names.add(candidate)
+                return candidate
+            i += 1
+
     for program in programs:
         age_group_label = program.display_name or program.age_group
         prefix = age_group_label[:10]
@@ -491,9 +517,11 @@ def build_full_tournament_excel(
             for phase in day.phases:
                 if phase.groups:
                     for gi, group in enumerate(phase.groups):
-                        sheet_name = _safe_sheet_name(
-                            f"{prefix} · G{gi + 1}" if len(phase.groups) > 1 else f"{prefix} · {phase.name}"
+                        raw = (
+                            f"{prefix} · G{gi + 1}" if len(phase.groups) > 1
+                            else f"{prefix} · {phase.name}"
                         )
+                        sheet_name = _unique_sheet_name(_safe_sheet_name(raw))
                         ws = wb.create_sheet(title=sheet_name)
                         _write_group_sheet(
                             ws, tournament_name, age_group_label, group,
@@ -501,7 +529,8 @@ def build_full_tournament_excel(
                             org_logo, tournament_logo, image_cache,
                         )
                 if phase.knockout_matches:
-                    sheet_name = _safe_sheet_name(f"{prefix} · {phase.name}")
+                    raw = f"{prefix} · {phase.name}"
+                    sheet_name = _unique_sheet_name(_safe_sheet_name(raw))
                     ws = wb.create_sheet(title=sheet_name)
                     _write_knockout_sheet(
                         ws, tournament_name, age_group_label, phase,
