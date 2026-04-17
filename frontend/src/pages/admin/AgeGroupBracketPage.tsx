@@ -1,7 +1,7 @@
 import { Link, useParams } from 'react-router-dom'
 import { useAdminTournaments, useAdminAgeGroupProgram, type ProgramMatch, type ProgramPhase, type AgeGroupProgram } from '@/api/tournaments'
 import { format, parseISO } from 'date-fns'
-import { Clock, MapPin } from 'lucide-react'
+import { Clock, MapPin, Timer } from 'lucide-react'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -12,7 +12,23 @@ function fmtTime(iso: string | null): string {
 
 function fieldLabel(m: ProgramMatch): string {
   if (!m.field_name) return ''
-  return m.field_number != null ? `${m.field_name} ${m.field_number}` : m.field_name
+  const name = stripCategory(m.field_name)
+  return m.field_number != null ? `${name} · Campo ${m.field_number}` : name
+}
+
+function stripCategory(name: string): string {
+  const parts = name.split(' · ')
+  if (parts.length > 1) {
+    const last = parts[parts.length - 1]
+    if (last.length <= 5 && !/\s/.test(last)) return parts.slice(0, -1).join(' · ')
+  }
+  return name
+}
+
+function statusStyle(s: string): string {
+  if (s === 'COMPLETED') return 'bg-emerald-50 border-emerald-200'
+  if (s === 'IN_PROGRESS') return 'bg-amber-50 border-amber-200'
+  return 'bg-white border-slate-200'
 }
 
 // ─── Build bracket rounds from knockout_matches ───────────────────────────────
@@ -24,10 +40,6 @@ interface BracketRound {
 }
 
 function buildBracketRounds(phase: ProgramPhase): BracketRound[] {
-  // Group by bracket_round name so each named round is its own column.
-  // bracket_round_order is a scheduling artifact and can assign the same value
-  // to conceptually different rounds (e.g. "Piazzamento 1-4 · Semifinali" and
-  // "Piazzamento 5-8 · Semifinali" scheduled in the same slot).
   const map = new Map<string, { minOrder: number; matches: ProgramMatch[] }>()
   for (const m of phase.knockout_matches) {
     const roundName = m.bracket_round ?? phase.name
@@ -47,70 +59,66 @@ function buildBracketRounds(phase: ProgramPhase): BracketRound[] {
       matches: [...matches].sort((a, b) => (a.bracket_position ?? 0) - (b.bracket_position ?? 0)),
     }))
     .sort((a, b) => {
-      // Primary: scheduling order (earlier rounds first)
       if (a.order !== b.order) return a.order - b.order
-      // Secondary: more matches = earlier column (semis before finals)
       if (b.matches.length !== a.matches.length) return b.matches.length - a.matches.length
-      // Tertiary: sort by name alphabetically for stable output
       return a.name.localeCompare(b.name)
     })
 }
 
-// ─── Single match box ─────────────────────────────────────────────────────────
+// ─── Match card (group stage) ─────────────────────────────────────────────────
 
-function MatchBox({ match, dim = false }: { match: ProgramMatch; dim?: boolean }) {
+function GroupMatchCard({ match }: { match: ProgramMatch }) {
   const hasResult = match.home_score != null && match.away_score != null
   const homeWins = hasResult && match.home_score! > match.away_score!
   const awayWins = hasResult && match.away_score! > match.home_score!
   const fl = fieldLabel(match)
 
   return (
-    <div
-      className={`w-52 rounded-xl border shadow-sm overflow-hidden text-[12px] transition-opacity ${
-        dim ? 'opacity-50' : 'opacity-100'
-      } ${hasResult ? 'border-slate-300' : 'border-slate-200'} bg-white`}
-    >
-      {/* time + field header — two lines so the field name is always readable */}
-      <div className="border-b border-slate-100 bg-slate-50 px-2.5 py-1">
-        <div className="flex items-center gap-1.5">
-          <Clock className="h-3 w-3 shrink-0 text-slate-400" />
-          <span className="font-semibold text-slate-600">{fmtTime(match.scheduled_at)}</span>
-        </div>
+    <div className={`rounded-2xl border p-3 transition-colors ${statusStyle(match.status)}`}>
+      {/* time + field */}
+      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="flex items-center gap-1 text-xs font-bold text-slate-700">
+          <Clock className="h-3 w-3 text-slate-400" />
+          {fmtTime(match.scheduled_at)}
+        </span>
         {fl && (
-          <div className="flex items-center gap-1 mt-0.5">
-            <MapPin className="h-3 w-3 shrink-0 text-slate-400" />
-            <span className="text-slate-500 text-[11px] leading-tight">{fl}</span>
-          </div>
+          <span className="flex items-center gap-1 text-xs text-slate-400">
+            <MapPin className="h-3 w-3" />
+            {fl}
+          </span>
+        )}
+        {match.match_duration_minutes && (
+          <span className="flex items-center gap-1 text-xs text-slate-400">
+            <Timer className="h-3 w-3" />
+            {match.match_duration_minutes}'
+          </span>
         )}
       </div>
-      {/* home team */}
-      <div
-        className={`flex items-center justify-between gap-1 px-2.5 py-1.5 ${
-          homeWins ? 'bg-emerald-50' : ''
-        }`}
-      >
-        <span className={`truncate font-semibold ${homeWins ? 'text-emerald-800' : 'text-slate-800'}`}>
+
+      {/* home */}
+      <div className={`flex items-center justify-between gap-2 rounded-xl px-3 py-2 ${homeWins ? 'bg-emerald-100' : 'bg-slate-50'}`}>
+        <span className={`text-sm font-bold leading-tight ${homeWins ? 'text-emerald-800' : 'text-slate-800'}`}>
           {match.home_label}
         </span>
         {hasResult && (
-          <span className={`shrink-0 text-sm font-black ${homeWins ? 'text-emerald-700' : 'text-slate-500'}`}>
+          <span className={`shrink-0 text-lg font-black tabular-nums ${homeWins ? 'text-emerald-700' : 'text-slate-600'}`}>
             {match.home_score}
           </span>
         )}
       </div>
-      {/* divider */}
-      <div className="mx-2.5 border-t border-slate-100" />
-      {/* away team */}
-      <div
-        className={`flex items-center justify-between gap-1 px-2.5 py-1.5 ${
-          awayWins ? 'bg-emerald-50' : ''
-        }`}
-      >
-        <span className={`truncate font-semibold ${awayWins ? 'text-emerald-800' : 'text-slate-800'}`}>
+
+      {/* separator */}
+      <div className="my-1 flex items-center justify-center text-[10px] font-bold uppercase tracking-widest text-slate-300">
+        {hasResult ? '–' : 'vs'}
+      </div>
+
+      {/* away */}
+      <div className={`flex items-center justify-between gap-2 rounded-xl px-3 py-2 ${awayWins ? 'bg-emerald-100' : 'bg-slate-50'}`}>
+        <span className={`text-sm font-bold leading-tight ${awayWins ? 'text-emerald-800' : 'text-slate-800'}`}>
           {match.away_label}
         </span>
         {hasResult && (
-          <span className={`shrink-0 text-sm font-black ${awayWins ? 'text-emerald-700' : 'text-slate-500'}`}>
+          <span className={`shrink-0 text-lg font-black tabular-nums ${awayWins ? 'text-emerald-700' : 'text-slate-600'}`}>
             {match.away_score}
           </span>
         )}
@@ -119,18 +127,100 @@ function MatchBox({ match, dim = false }: { match: ProgramMatch; dim?: boolean }
   )
 }
 
-// ─── Bracket for one knockout phase ──────────────────────────────────────────
-// Two rendering modes:
-//   1. Tree mode  — rounds strictly halve (4→2→1, 8→4→2→1). Shows connector lines.
-//   2. Flat mode  — rounds don't strictly halve (placement brackets with consolation
-//                   finals). Shows columns without connector lines.
+// ─── Group stage ──────────────────────────────────────────────────────────────
+
+function GroupStageSchedule({ phase }: { phase: ProgramPhase }) {
+  return (
+    <div>
+      <h3 className="mb-4 text-sm font-bold uppercase tracking-[0.15em] text-slate-500">{phase.name}</h3>
+      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+        {phase.groups.map((group) => {
+          const sorted = [...group.matches].sort((a, b) => {
+            if (!a.scheduled_at && !b.scheduled_at) return 0
+            if (!a.scheduled_at) return 1
+            if (!b.scheduled_at) return -1
+            return a.scheduled_at.localeCompare(b.scheduled_at)
+          })
+          return (
+            <div key={group.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+              <p className="mb-3 text-sm font-black text-slate-800">{group.name}</p>
+              <div className="flex flex-col gap-2">
+                {sorted.map((m) => <GroupMatchCard key={m.id} match={m} />)}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Knockout match card ──────────────────────────────────────────────────────
+
+function KnockoutMatchCard({ match }: { match: ProgramMatch }) {
+  const hasResult = match.home_score != null && match.away_score != null
+  const homeWins = hasResult && match.home_score! > match.away_score!
+  const awayWins = hasResult && match.away_score! > match.home_score!
+  const fl = fieldLabel(match)
+
+  return (
+    <div className={`w-64 overflow-hidden rounded-2xl border shadow-sm ${statusStyle(match.status)}`}>
+      {/* header */}
+      <div className="border-b border-slate-100 bg-slate-50 px-3 py-2">
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <Clock className="h-3 w-3 shrink-0" />
+          <span className="font-bold text-slate-700">{fmtTime(match.scheduled_at)}</span>
+          {match.match_duration_minutes && (
+            <>
+              <span className="text-slate-300">·</span>
+              <Timer className="h-3 w-3 shrink-0" />
+              <span>{match.match_duration_minutes}'</span>
+            </>
+          )}
+        </div>
+        {fl && (
+          <div className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400">
+            <MapPin className="h-2.5 w-2.5 shrink-0" />
+            <span className="leading-tight">{fl}</span>
+          </div>
+        )}
+      </div>
+
+      {/* home */}
+      <div className={`flex items-center justify-between gap-2 px-3 py-2.5 ${homeWins ? 'bg-emerald-50' : ''}`}>
+        <span className={`text-sm font-bold leading-snug ${homeWins ? 'text-emerald-800' : 'text-slate-800'}`}>
+          {match.home_label}
+        </span>
+        {hasResult && (
+          <span className={`shrink-0 text-lg font-black ${homeWins ? 'text-emerald-700' : 'text-slate-500'}`}>
+            {match.home_score}
+          </span>
+        )}
+      </div>
+
+      <div className="mx-3 border-t border-slate-100" />
+
+      {/* away */}
+      <div className={`flex items-center justify-between gap-2 px-3 py-2.5 ${awayWins ? 'bg-emerald-50' : ''}`}>
+        <span className={`text-sm font-bold leading-snug ${awayWins ? 'text-emerald-800' : 'text-slate-800'}`}>
+          {match.away_label}
+        </span>
+        {hasResult && (
+          <span className={`shrink-0 text-lg font-black ${awayWins ? 'text-emerald-700' : 'text-slate-500'}`}>
+            {match.away_score}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Knockout bracket ─────────────────────────────────────────────────────────
 
 function KnockoutBracket({ phase }: { phase: ProgramPhase }) {
   const rounds = buildBracketRounds(phase)
   if (rounds.length === 0) return null
 
-  // True tree bracket: every successive round has EXACTLY half the matches
-  // (no Math.ceil — odd numbers signal byes/placement, not pure elimination)
   const isTreeBracket = rounds.every(
     (r, i) => i === 0 || r.matches.length === rounds[i - 1].matches.length / 2,
   )
@@ -138,22 +228,22 @@ function KnockoutBracket({ phase }: { phase: ProgramPhase }) {
   // ── Tree layout ────────────────────────────────────────────────────────────
   if (isTreeBracket) {
     const firstRoundCount = rounds[0]?.matches.length ?? 1
-    const slotHeight = 116 // px per match "slot"
+    const slotHeight = 136
 
     return (
       <div>
-        <h3 className="mb-3 text-sm font-bold uppercase tracking-[0.15em] text-slate-500">{phase.name}</h3>
+        <h3 className="mb-4 text-sm font-bold uppercase tracking-[0.15em] text-slate-500">{phase.name}</h3>
         <div className="overflow-x-auto pb-4">
-          <div className="inline-flex items-stretch gap-0" style={{ minWidth: `${rounds.length * 240}px` }}>
+          <div className="inline-flex items-stretch gap-0" style={{ minWidth: `${rounds.length * 280}px` }}>
             {rounds.map((round, ri) => {
               const isLast = ri === rounds.length - 1
               const colSlots = firstRoundCount / Math.pow(2, ri)
               const colHeight = colSlots * slotHeight
 
               return (
-                <div key={round.order} className="flex flex-col" style={{ width: 240 }}>
-                  <div className="mb-2 px-4 text-center">
-                    <span className="rounded-full bg-slate-100 px-3 py-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-600">
+                <div key={round.order} className="flex flex-col" style={{ width: 280 }}>
+                  <div className="mb-3 px-4 text-center">
+                    <span className="rounded-full bg-slate-800 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-white">
                       {round.name}
                     </span>
                   </div>
@@ -162,7 +252,7 @@ function KnockoutBracket({ phase }: { phase: ProgramPhase }) {
                     {round.matches.map((match, mi) => {
                       const matchesInCol = round.matches.length
                       const slotSize = colHeight / matchesInCol
-                      const top = mi * slotSize + (slotSize - 96) / 2
+                      const top = mi * slotSize + (slotSize - 116) / 2
 
                       return (
                         <div
@@ -170,7 +260,7 @@ function KnockoutBracket({ phase }: { phase: ProgramPhase }) {
                           className="absolute left-4"
                           style={{ top, right: isLast ? 16 : 0 }}
                         >
-                          <MatchBox match={match} />
+                          <KnockoutMatchCard match={match} />
                           {!isLast && (
                             <div
                               className="absolute right-0 top-1/2 -translate-y-1/2 border-t-2 border-slate-300"
@@ -181,7 +271,6 @@ function KnockoutBracket({ phase }: { phase: ProgramPhase }) {
                       )
                     })}
 
-                    {/* Vertical connectors grouping pairs toward next round */}
                     {!isLast && round.matches.map((_, mi) => {
                       if (mi % 2 !== 0) return null
                       const matchesInCol = round.matches.length
@@ -215,80 +304,27 @@ function KnockoutBracket({ phase }: { phase: ProgramPhase }) {
     )
   }
 
-  // ── Flat layout (placement / consolation brackets) ─────────────────────────
-  // Rounds are shown as labeled columns. No connector lines — matches in
-  // different columns are independent (e.g. 1-2 Finale and 3-4 Finale).
+  // ── Flat layout (placement brackets) ──────────────────────────────────────
   return (
     <div>
-      <h3 className="mb-3 text-sm font-bold uppercase tracking-[0.15em] text-slate-500">{phase.name}</h3>
+      <h3 className="mb-4 text-sm font-bold uppercase tracking-[0.15em] text-slate-500">{phase.name}</h3>
       <div className="overflow-x-auto pb-4">
-        <div className="inline-flex items-start gap-6">
+        <div className="inline-flex items-start gap-5">
           {rounds.map((round) => (
-            <div key={round.order} className="flex flex-col gap-3" style={{ width: 224 }}>
+            <div key={round.order} className="flex flex-col gap-3" style={{ width: 272 }}>
               <div className="text-center">
-                <span className="rounded-full bg-slate-100 px-3 py-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-600">
+                <span className="rounded-full bg-slate-800 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-white">
                   {round.name}
                 </span>
               </div>
               <div className="flex flex-col gap-3">
                 {round.matches.map((match) => (
-                  <MatchBox key={match.id} match={match} />
+                  <KnockoutMatchCard key={match.id} match={match} />
                 ))}
               </div>
             </div>
           ))}
         </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Group stage schedule ─────────────────────────────────────────────────────
-
-function GroupStageSchedule({ phase }: { phase: ProgramPhase }) {
-  return (
-    <div>
-      <h3 className="mb-3 text-sm font-bold uppercase tracking-[0.15em] text-slate-500">{phase.name}</h3>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {phase.groups.map((group) => {
-          const sorted = [...group.matches].sort((a, b) => {
-            if (!a.scheduled_at && !b.scheduled_at) return 0
-            if (!a.scheduled_at) return 1
-            if (!b.scheduled_at) return -1
-            return a.scheduled_at.localeCompare(b.scheduled_at)
-          })
-          return (
-            <div key={group.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <p className="mb-3 text-sm font-black text-slate-800">{group.name}</p>
-              <div className="space-y-2">
-                {sorted.map((m) => {
-                  const fl = fieldLabel(m)
-                  const hasResult = m.home_score != null && m.away_score != null
-                  return (
-                    <div
-                      key={m.id}
-                      className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs"
-                    >
-                      <span className="w-10 shrink-0 font-bold text-slate-500">{fmtTime(m.scheduled_at)}</span>
-                      {fl && <span className="w-20 shrink-0 truncate text-slate-400">{fl}</span>}
-                      <span className={`flex-1 truncate font-semibold ${hasResult && m.home_score! > m.away_score! ? 'text-emerald-700' : 'text-slate-800'}`}>
-                        {m.home_label}
-                      </span>
-                      {hasResult ? (
-                        <span className="shrink-0 font-black text-slate-700">{m.home_score}–{m.away_score}</span>
-                      ) : (
-                        <span className="shrink-0 text-slate-400">vs</span>
-                      )}
-                      <span className={`flex-1 truncate text-right font-semibold ${hasResult && m.away_score! > m.home_score! ? 'text-emerald-700' : 'text-slate-800'}`}>
-                        {m.away_label}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })}
       </div>
     </div>
   )
@@ -307,7 +343,7 @@ function DaySection({ program }: { program: AgeGroupProgram }) {
       {groupPhases.length > 0 && (
         <section className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
           <p className="mb-5 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Fasi a gironi</p>
-          <div className="space-y-6">
+          <div className="space-y-8">
             {groupPhases.map((p) => <GroupStageSchedule key={p.id} phase={p} />)}
           </div>
         </section>
@@ -315,7 +351,7 @@ function DaySection({ program }: { program: AgeGroupProgram }) {
 
       {knockoutPhases.length > 0 && (
         <section className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 p-6 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
-          <p className="mb-5 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Tabellone eliminazione</p>
+          <p className="mb-5 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Fase ad eliminazione</p>
           <div className="space-y-10">
             {knockoutPhases.map((p) => <KnockoutBracket key={p.id} phase={p} />)}
           </div>
@@ -347,12 +383,19 @@ export default function AgeGroupBracketPage() {
     )
   }
 
+  // stats
+  const allMatches = program.days.flatMap((d) =>
+    d.phases.flatMap((p) => [...p.groups.flatMap((g) => g.matches), ...p.knockout_matches]),
+  )
+  const completed = allMatches.filter((m) => m.status === 'COMPLETED').length
+  const live = allMatches.filter((m) => m.status === 'IN_PROGRESS').length
+
   return (
     <div className="mx-auto max-w-6xl space-y-5">
       {/* header */}
       <div className="rounded-[2rem] border border-white/80 bg-white/85 p-6 shadow-[0_35px_90px_-60px_rgba(15,23,42,0.45)] backdrop-blur">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="flex-1">
             <Link
               to={`/admin/tornei/${tournamentId}/categorie/${ageGroupId}`}
               className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 transition-colors hover:text-slate-600"
@@ -361,11 +404,38 @@ export default function AgeGroupBracketPage() {
             </Link>
             <h1 className="mt-2 text-3xl font-black text-slate-950">Tabellone</h1>
             <p className="mt-1 text-sm text-slate-500">{tournament?.name} · {agLabel}</p>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-              Orari e campi dei gironi, tabellone ad eliminazione con i risultati aggiornati.
-            </p>
+          </div>
+
+          {/* stats */}
+          <div className="flex shrink-0 gap-3">
+            <div className="rounded-2xl bg-slate-50 px-4 py-3 text-center">
+              <p className="text-[11px] text-slate-400">Partite</p>
+              <p className="text-xl font-black text-slate-900">{allMatches.length}</p>
+            </div>
+            <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-center">
+              <p className="text-[11px] text-emerald-600">Terminate</p>
+              <p className="text-xl font-black text-emerald-700">{completed}</p>
+            </div>
+            {live > 0 && (
+              <div className="rounded-2xl bg-amber-50 px-4 py-3 text-center">
+                <p className="text-[11px] text-amber-600">In corso</p>
+                <p className="text-xl font-black text-amber-700">{live}</p>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* progress bar */}
+        {allMatches.length > 0 && (
+          <div className="mt-4">
+            <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                style={{ width: `${(completed / allMatches.length) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <DaySection program={program} />
