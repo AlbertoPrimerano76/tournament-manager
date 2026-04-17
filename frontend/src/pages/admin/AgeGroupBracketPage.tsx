@@ -24,19 +24,36 @@ interface BracketRound {
 }
 
 function buildBracketRounds(phase: ProgramPhase): BracketRound[] {
-  const map = new Map<number, { name: string; matches: ProgramMatch[] }>()
+  // Group by bracket_round name so each named round is its own column.
+  // bracket_round_order is a scheduling artifact and can assign the same value
+  // to conceptually different rounds (e.g. "Piazzamento 1-4 · Semifinali" and
+  // "Piazzamento 5-8 · Semifinali" scheduled in the same slot).
+  const map = new Map<string, { minOrder: number; matches: ProgramMatch[] }>()
   for (const m of phase.knockout_matches) {
+    const roundName = m.bracket_round ?? phase.name
     const order = m.bracket_round_order ?? 0
-    if (!map.has(order)) map.set(order, { name: m.bracket_round ?? phase.name, matches: [] })
-    map.get(order)!.matches.push(m)
+    if (!map.has(roundName)) {
+      map.set(roundName, { minOrder: order, matches: [] })
+    } else {
+      const entry = map.get(roundName)!
+      if (order < entry.minOrder) entry.minOrder = order
+    }
+    map.get(roundName)!.matches.push(m)
   }
   return Array.from(map.entries())
-    .sort(([a], [b]) => a - b)
-    .map(([order, { name, matches }]) => ({
-      order,
+    .map(([name, { minOrder, matches }]) => ({
+      order: minOrder,
       name,
       matches: [...matches].sort((a, b) => (a.bracket_position ?? 0) - (b.bracket_position ?? 0)),
     }))
+    .sort((a, b) => {
+      // Primary: scheduling order (earlier rounds first)
+      if (a.order !== b.order) return a.order - b.order
+      // Secondary: more matches = earlier column (semis before finals)
+      if (b.matches.length !== a.matches.length) return b.matches.length - a.matches.length
+      // Tertiary: sort by name alphabetically for stable output
+      return a.name.localeCompare(b.name)
+    })
 }
 
 // ─── Single match box ─────────────────────────────────────────────────────────
