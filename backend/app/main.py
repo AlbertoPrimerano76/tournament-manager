@@ -117,9 +117,9 @@ class PublicCacheHeaderMiddleware:
             return
 
         if any(pat in path for pat in _LONG_CDN_PATTERNS):
-            header = b"public, max-age=300, stale-while-revalidate=1800"
+            header = b"public, max-age=120, stale-while-revalidate=0"
         else:
-            header = b"public, max-age=60, stale-while-revalidate=300"
+            header = b"public, max-age=10, stale-while-revalidate=0"
 
         async def send_with_cache(message):
             if message["type"] == "http.response.start" and message.get("status") == 200:
