@@ -483,6 +483,12 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
+              to={`/admin/tornei/${tournament.id}/programma`}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+            >
+              Programma completo
+            </Link>
+            <Link
               to={`/admin/tornei/${tournament.id}/calendario`}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 transition-colors hover:bg-sky-100"
             >

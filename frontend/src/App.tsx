@@ -17,6 +17,7 @@ const ResetPasswordPage = lazy(() => import('@/pages/admin/ResetPasswordPage'))
 const DashboardPage = lazy(() => import('@/pages/admin/DashboardPage'))
 const TournamentsAdminPage = lazy(() => import('@/pages/admin/TournamentsAdminPage'))
 const AgeGroupBracketPage = lazy(() => import('@/pages/admin/AgeGroupBracketPage'))
+const TournamentSchedulePage = lazy(() => import('@/pages/admin/TournamentSchedulePage'))
 const UsersAdminPage = lazy(() => import('@/pages/admin/UsersAdminPage'))
 const OrganizationsAdminPage = lazy(() => import('@/pages/admin/OrganizationsAdminPage'))
 const AdminHelpPage = lazy(() => import('@/pages/admin/AdminHelpPage'))
@@ -58,6 +59,7 @@ export default function App() {
               <Route path="tornei/:tournamentId/calendario" element={<TournamentsAdminPage />} />
               <Route path="tornei/:tournamentId/categorie/:ageGroupId/gestione" element={<TournamentsAdminPage />} />
               <Route path="tornei/:tournamentId/categorie/:ageGroupId/tabellone" element={<AgeGroupBracketPage />} />
+              <Route path="tornei/:tournamentId/programma" element={<TournamentSchedulePage />} />
               <Route path="tornei/:tournamentId/categorie/:ageGroupId" element={<TournamentsAdminPage />} />
               <Route path="societa" element={<OrganizationsAdminPage />} />
               <Route path="utenti" element={<UsersAdminPage />} />
