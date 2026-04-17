@@ -138,6 +138,7 @@ export interface ProgramMatch {
   group_id: string | null
   group_name: string | null
   bracket_round: string | null
+  bracket_round_order: number | null
   bracket_position: number | null
   scheduled_at: string | null
   original_scheduled_at: string | null

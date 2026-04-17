@@ -1449,6 +1449,9 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
 
             phase_lane_slot_counters: dict[tuple[str | None, int | None], int] = defaultdict(int)
             stagger_groups = bool(phase_config.get("stagger_groups", False))
+            _raw_max = phase_config.get("max_concurrent_matches")
+            max_concurrent: int | None = int(_raw_max) if isinstance(_raw_max, (int, float)) and int(_raw_max) > 0 else None
+            slot_matches_count: dict[int, int] = defaultdict(int)
             global_slot_offset = 0
             phase_group_match_indexes: dict[str, int] = defaultdict(int)
             max_rounds = max((len(plan["rounds"]) for plan in group_plans), default=0)
@@ -1480,6 +1483,10 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                             slot_index = global_slot_offset
                         else:
                             slot_index = max(phase_lane_slot_counters[_lane_key(lane)] for lane in chunk_lanes) if chunk_lanes else 0
+                        if max_concurrent:
+                            n = len(round_chunk)
+                            while slot_matches_count[slot_index] + n > max_concurrent:
+                                slot_index += 1
                         slot_time = phase_start + (match_slot_length * slot_index) if phase_start else None
                         for lane_index, (home_entry, away_entry) in enumerate(round_chunk):
                             lane = lanes[lane_index % len(lanes)]
@@ -1507,7 +1514,11 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                             if slot_time:
                                 phase_end = max(phase_end or slot_time, slot_time + match_slot_length)
                             if not stagger_groups:
-                                phase_lane_slot_counters[lane_counter_key] = slot_index + 1
+                                phase_lane_slot_counters[lane_counter_key] = max(
+                                    phase_lane_slot_counters[lane_counter_key], slot_index + 1
+                                )
+                        if max_concurrent:
+                            slot_matches_count[slot_index] += len(round_chunk)
                         if stagger_groups:
                             global_slot_offset += 1
 
@@ -1905,6 +1916,9 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
 
             phase_lane_slot_counters: dict[tuple[str | None, int | None], int] = defaultdict(int)
             stagger_groups = bool(phase_config.get("stagger_groups", False))
+            _raw_max = phase_config.get("max_concurrent_matches")
+            max_concurrent: int | None = int(_raw_max) if isinstance(_raw_max, (int, float)) and int(_raw_max) > 0 else None
+            slot_matches_count: dict[int, int] = defaultdict(int)
             global_slot_offset = 0
             phase_group_match_indexes: dict[str, int] = defaultdict(int)
             max_rounds = max((len(plan["rounds"]) for plan in group_plans), default=0)
@@ -1936,6 +1950,10 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                             slot_index = global_slot_offset
                         else:
                             slot_index = max(phase_lane_slot_counters[_lane_key(lane)] for lane in chunk_lanes) if chunk_lanes else 0
+                        if max_concurrent:
+                            n = len(round_chunk)
+                            while slot_matches_count[slot_index] + n > max_concurrent:
+                                slot_index += 1
                         slot_time = phase_start + (match_slot_length * slot_index) if phase_start else None
                         for lane_index, (home_entry, away_entry) in enumerate(round_chunk):
                             lane = lanes[lane_index % len(lanes)]
@@ -1963,7 +1981,11 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                             if slot_time:
                                 phase_end = max(phase_end or slot_time, slot_time + match_slot_length)
                             if not stagger_groups:
-                                phase_lane_slot_counters[lane_counter_key] = slot_index + 1
+                                phase_lane_slot_counters[lane_counter_key] = max(
+                                    phase_lane_slot_counters[lane_counter_key], slot_index + 1
+                                )
+                        if max_concurrent:
+                            slot_matches_count[slot_index] += len(round_chunk)
                         if stagger_groups:
                             global_slot_offset += 1
 
@@ -2574,6 +2596,7 @@ def _serialize_match(match: Match, phase_name: str, phase_type: str, group_name:
         group_id=match.group_id,
         group_name=group_name,
         bracket_round=match.bracket_round,
+        bracket_round_order=match.bracket_round_order,
         bracket_position=match.bracket_position,
         scheduled_at=match.scheduled_at,
         original_scheduled_at=match.original_scheduled_at,

@@ -1770,6 +1770,7 @@ type StructurePhase = {
   group_block_size: number | null
   round_trip_mode: 'single' | 'double'
   stagger_groups: boolean
+  max_concurrent_matches: number | null
   knockout_progression: 'full_bracket' | 'single_round'
   num_groups: number | null
   group_sizes: string
@@ -1894,6 +1895,7 @@ const BUILTIN_TEMPLATES: Array<{
           group_block_size: null,
           round_trip_mode: 'single',
           stagger_groups: false,
+          max_concurrent_matches: null,
           knockout_progression: 'full_bracket',
           num_groups: 1,
           group_sizes: '',
@@ -1935,6 +1937,7 @@ const BUILTIN_TEMPLATES: Array<{
           group_block_size: null,
           round_trip_mode: 'single',
           stagger_groups: false,
+          max_concurrent_matches: null,
           knockout_progression: 'full_bracket',
           num_groups: 2,
           group_sizes: '4,4',
@@ -1959,6 +1962,7 @@ const BUILTIN_TEMPLATES: Array<{
           group_block_size: null,
           round_trip_mode: 'single',
           stagger_groups: false,
+          max_concurrent_matches: null,
           knockout_progression: 'full_bracket',
           num_groups: null,
           group_sizes: '',
@@ -2000,6 +2004,7 @@ const BUILTIN_TEMPLATES: Array<{
           group_block_size: null,
           round_trip_mode: 'single',
           stagger_groups: false,
+          max_concurrent_matches: null,
           knockout_progression: 'full_bracket',
           num_groups: 4,
           group_sizes: '4,4,4,4',
@@ -2024,6 +2029,7 @@ const BUILTIN_TEMPLATES: Array<{
           group_block_size: 4,
           round_trip_mode: 'single',
           stagger_groups: false,
+          max_concurrent_matches: null,
           knockout_progression: 'full_bracket',
           num_groups: null,
           group_sizes: '',
@@ -2065,6 +2071,7 @@ const BUILTIN_TEMPLATES: Array<{
           group_block_size: null,
           round_trip_mode: 'single',
           stagger_groups: false,
+          max_concurrent_matches: null,
           knockout_progression: 'full_bracket',
           num_groups: 2,
           group_sizes: '6,6',
@@ -2089,6 +2096,7 @@ const BUILTIN_TEMPLATES: Array<{
           group_block_size: 4,
           round_trip_mode: 'single',
           stagger_groups: false,
+          max_concurrent_matches: null,
           knockout_progression: 'full_bracket',
           num_groups: null,
           group_sizes: '',
@@ -2245,6 +2253,15 @@ function AgeGroupUnifiedCard({
             <Pencil className="h-4 w-4" />
             Configura
           </button>
+          {hasProgram && (
+            <button
+              type="button"
+              onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${group.id}/tabellone`)}
+              className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800 transition-colors hover:bg-violet-100"
+            >
+              Tabellone
+            </button>
+          )}
           {hasProgram && (
             <>
               <button
@@ -3909,6 +3926,18 @@ function AgeGroupConfigurationPanel({
                               <span className="text-sm text-slate-700">Attiva sfalzamento gironi</span>
                             </label>
                           </FormField>
+                          <FormField label="Max partite simultanee" hint="Limita quante partite possono giocarsi nello stesso momento (1 = mai in contemporanea, 2 = al massimo 2, vuoto = nessun limite)">
+                            <select
+                              value={phase.max_concurrent_matches ?? ''}
+                              onChange={(e) => setPhase(index, { max_concurrent_matches: e.target.value ? Number(e.target.value) : null })}
+                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                            >
+                              <option value="">Nessun limite</option>
+                              <option value="1">1 — mai in contemporanea</option>
+                              <option value="2">2 — al massimo 2 in contemporanea</option>
+                              <option value="3">3 — al massimo 3 in contemporanea</option>
+                            </select>
+                          </FormField>
                           <FormField label="Squadre per girone" hint="Es. 4,4,5">
                             <input
                               value={phase.group_sizes}
@@ -5047,6 +5076,7 @@ function serializeStructureForComparison(structure: StructureConfig) {
       group_block_size: phase.group_block_size,
       round_trip_mode: phase.round_trip_mode,
       stagger_groups: phase.stagger_groups,
+      max_concurrent_matches: phase.max_concurrent_matches,
       knockout_progression: phase.knockout_progression,
       num_groups: phase.num_groups,
       group_sizes: phase.group_sizes,
@@ -5530,6 +5560,9 @@ function normalizePhase(value: unknown, index: number): StructurePhase {
       : null,
     round_trip_mode: input.round_trip_mode === 'double' ? 'double' : 'single',
     stagger_groups: (input as { stagger_groups?: unknown }).stagger_groups === true,
+    max_concurrent_matches: typeof (input as { max_concurrent_matches?: unknown }).max_concurrent_matches === 'number'
+      ? ((input as { max_concurrent_matches?: number }).max_concurrent_matches ?? null)
+      : null,
     knockout_progression: input.knockout_progression === 'single_round' ? 'single_round' : 'full_bracket',
     num_groups: typeof input.num_groups === 'number' ? input.num_groups : null,
     group_sizes: typeof input.group_sizes === 'string' ? input.group_sizes : '',
@@ -5620,6 +5653,7 @@ function makeEmptyPhase(index: number, tournamentStartDate?: string | null): Str
     group_block_size: null,
     round_trip_mode: 'single',
     stagger_groups: false,
+    max_concurrent_matches: null,
     knockout_progression: 'full_bracket',
     num_groups: null,
     group_sizes: '',

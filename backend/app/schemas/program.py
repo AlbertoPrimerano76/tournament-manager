@@ -19,6 +19,7 @@ class ProgramMatchResponse(BaseModel):
     group_id: str | None = None
     group_name: str | None = None
     bracket_round: str | None = None
+    bracket_round_order: int | None = None
     bracket_position: int | None = None
     scheduled_at: datetime | None = None
     original_scheduled_at: datetime | None = None
