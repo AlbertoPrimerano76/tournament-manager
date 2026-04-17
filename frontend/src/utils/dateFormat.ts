@@ -12,3 +12,19 @@ export function formatMatchDate(dateStr: string): string {
 export function formatDate(dateStr: string): string {
   return format(new Date(dateStr), 'd MMMM yyyy', { locale: it })
 }
+
+/**
+ * Strips the age-group category suffix that _build_field_name() appends for
+ * internal conflict detection (e.g. "Campo G. Maneo · U8" → "Campo G. Maneo").
+ * The suffix is a short word-like code (≤5 chars, no spaces) after " · ".
+ */
+export function stripFieldCategory(name: string): string {
+  const parts = name.split(' · ')
+  if (parts.length > 1) {
+    const last = parts[parts.length - 1]
+    if (last.length <= 5 && !/\s/.test(last)) {
+      return parts.slice(0, -1).join(' · ')
+    }
+  }
+  return name
+}

@@ -591,9 +591,10 @@ def _format_phase_meta(phase: ProgramPhaseResponse, tournament_timezone: str = "
     configured = _format_time(phase.configured_start_at, tournament_timezone, "--:--")
     actual = _format_time(phase.phase_start_at, tournament_timezone, configured)
     estimated = _format_time(phase.estimated_end_at, tournament_timezone, "--:--")
+    duration_part = f" · Durata partite: {phase.match_duration_minutes} min" if phase.match_duration_minutes else ""
     if phase.configured_start_at and phase.phase_start_at and phase.phase_start_at != phase.configured_start_at:
-        return f"Inizio previsto {configured} · Inizio aggiornato {actual} · Fine stimata {estimated}"
-    return f"Inizio {actual} · Fine stimata {estimated}"
+        return f"Inizio previsto {configured} · Inizio aggiornato {actual} · Fine stimata {estimated}{duration_part}"
+    return f"Inizio {actual} · Fine stimata {estimated}{duration_part}"
 
 
 def _sort_matches(matches: list[ProgramMatchResponse]) -> list[ProgramMatchResponse]:

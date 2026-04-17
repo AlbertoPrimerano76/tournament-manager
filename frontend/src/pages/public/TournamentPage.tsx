@@ -8,6 +8,7 @@ import SponsorBar from '@/components/public/SponsorBar'
 import { Calendar, MapPin, ChevronRight, MapPinned, Navigation, Route, X, Building2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
+import { stripFieldCategory } from '@/utils/dateFormat'
 
 export default function TournamentPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -215,9 +216,9 @@ export default function TournamentPage() {
                 const firstMatch = [...programMatches]
                   .filter((match) => !!match.scheduled_at)
                   .sort((a, b) => new Date(a.scheduled_at!).getTime() - new Date(b.scheduled_at!).getTime())[0]
-                const fieldCount = new Set(programMatches.filter((match) => match.field_name).map((match) => `${match.field_name}-${match.field_number ?? 'x'}`)).size
+                const fieldCount = new Set(programMatches.filter((match) => match.field_name).map((match) => `${stripFieldCategory(match.field_name!)}-${match.field_number ?? 'x'}`)).size
                 const facilityNames = Array.from(
-                  new Set(programMatches.filter((match) => match.field_name).map((match) => match.field_name as string)),
+                  new Set(programMatches.filter((match) => match.field_name).map((match) => stripFieldCategory(match.field_name!))),
                 )
                 const cardStyle = getAgeGroupCardStyle(theme, ag.age_group)
 

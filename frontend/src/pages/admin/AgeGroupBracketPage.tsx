@@ -53,15 +53,17 @@ function MatchBox({ match, dim = false }: { match: ProgramMatch; dim?: boolean }
         dim ? 'opacity-50' : 'opacity-100'
       } ${hasResult ? 'border-slate-300' : 'border-slate-200'} bg-white`}
     >
-      {/* time + field header */}
-      <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-2.5 py-1">
-        <Clock className="h-3 w-3 shrink-0 text-slate-400" />
-        <span className="font-semibold text-slate-600">{fmtTime(match.scheduled_at)}</span>
+      {/* time + field header — two lines so the field name is always readable */}
+      <div className="border-b border-slate-100 bg-slate-50 px-2.5 py-1">
+        <div className="flex items-center gap-1.5">
+          <Clock className="h-3 w-3 shrink-0 text-slate-400" />
+          <span className="font-semibold text-slate-600">{fmtTime(match.scheduled_at)}</span>
+        </div>
         {fl && (
-          <>
+          <div className="flex items-center gap-1 mt-0.5">
             <MapPin className="h-3 w-3 shrink-0 text-slate-400" />
-            <span className="truncate text-slate-500">{fl}</span>
-          </>
+            <span className="text-slate-500 text-[11px] leading-tight">{fl}</span>
+          </div>
         )}
       </div>
       {/* home team */}
@@ -101,95 +103,123 @@ function MatchBox({ match, dim = false }: { match: ProgramMatch; dim?: boolean }
 }
 
 // ─── Bracket for one knockout phase ──────────────────────────────────────────
-// Layout: early rounds on the left, final on the right.
-// Pairs of matches connect to a single match in the next round.
+// Two rendering modes:
+//   1. Tree mode  — rounds strictly halve (4→2→1, 8→4→2→1). Shows connector lines.
+//   2. Flat mode  — rounds don't strictly halve (placement brackets with consolation
+//                   finals). Shows columns without connector lines.
 
 function KnockoutBracket({ phase }: { phase: ProgramPhase }) {
   const rounds = buildBracketRounds(phase)
   if (rounds.length === 0) return null
 
-  // Total slots = matches in the first round (they determine height)
-  const firstRoundCount = rounds[0]?.matches.length ?? 1
+  // True tree bracket: every successive round has EXACTLY half the matches
+  // (no Math.ceil — odd numbers signal byes/placement, not pure elimination)
+  const isTreeBracket = rounds.every(
+    (r, i) => i === 0 || r.matches.length === rounds[i - 1].matches.length / 2,
+  )
 
+  // ── Tree layout ────────────────────────────────────────────────────────────
+  if (isTreeBracket) {
+    const firstRoundCount = rounds[0]?.matches.length ?? 1
+    const slotHeight = 116 // px per match "slot"
+
+    return (
+      <div>
+        <h3 className="mb-3 text-sm font-bold uppercase tracking-[0.15em] text-slate-500">{phase.name}</h3>
+        <div className="overflow-x-auto pb-4">
+          <div className="inline-flex items-stretch gap-0" style={{ minWidth: `${rounds.length * 240}px` }}>
+            {rounds.map((round, ri) => {
+              const isLast = ri === rounds.length - 1
+              const colSlots = firstRoundCount / Math.pow(2, ri)
+              const colHeight = colSlots * slotHeight
+
+              return (
+                <div key={round.order} className="flex flex-col" style={{ width: 240 }}>
+                  <div className="mb-2 px-4 text-center">
+                    <span className="rounded-full bg-slate-100 px-3 py-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-600">
+                      {round.name}
+                    </span>
+                  </div>
+
+                  <div className="relative flex flex-col" style={{ height: colHeight }}>
+                    {round.matches.map((match, mi) => {
+                      const matchesInCol = round.matches.length
+                      const slotSize = colHeight / matchesInCol
+                      const top = mi * slotSize + (slotSize - 96) / 2
+
+                      return (
+                        <div
+                          key={match.id}
+                          className="absolute left-4"
+                          style={{ top, right: isLast ? 16 : 0 }}
+                        >
+                          <MatchBox match={match} />
+                          {!isLast && (
+                            <div
+                              className="absolute right-0 top-1/2 -translate-y-1/2 border-t-2 border-slate-300"
+                              style={{ width: 16 }}
+                            />
+                          )}
+                        </div>
+                      )
+                    })}
+
+                    {/* Vertical connectors grouping pairs toward next round */}
+                    {!isLast && round.matches.map((_, mi) => {
+                      if (mi % 2 !== 0) return null
+                      const matchesInCol = round.matches.length
+                      const slotSize = colHeight / matchesInCol
+                      const topA = mi * slotSize + slotSize / 2
+                      const topB = (mi + 1) < matchesInCol
+                        ? (mi + 1) * slotSize + slotSize / 2
+                        : topA
+                      const midY = (topA + topB) / 2
+
+                      return (
+                        <div key={`conn-${mi}`} className="pointer-events-none absolute right-0 top-0 w-4">
+                          <div
+                            className="absolute right-0 border-r-2 border-slate-300"
+                            style={{ top: topA, height: topB - topA }}
+                          />
+                          <div
+                            className="absolute right-0 border-t-2 border-slate-300"
+                            style={{ top: midY, width: 16 }}
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Flat layout (placement / consolation brackets) ─────────────────────────
+  // Rounds are shown as labeled columns. No connector lines — matches in
+  // different columns are independent (e.g. 1-2 Finale and 3-4 Finale).
   return (
     <div>
       <h3 className="mb-3 text-sm font-bold uppercase tracking-[0.15em] text-slate-500">{phase.name}</h3>
       <div className="overflow-x-auto pb-4">
-        <div className="inline-flex items-stretch gap-0" style={{ minWidth: `${rounds.length * 240}px` }}>
-          {rounds.map((round, ri) => {
-            const isLast = ri === rounds.length - 1
-
-            // Each round has 2^(lastRound - ri) slots relative to firstRound
-            // Height per slot: 80px for match box + 16px gap
-            const slotHeight = 116 // px per match "slot"
-            const colSlots = firstRoundCount / Math.pow(2, ri)
-            const colHeight = colSlots * slotHeight
-
-            return (
-              <div key={round.order} className="flex flex-col" style={{ width: 240 }}>
-                {/* Round label */}
-                <div className="mb-2 px-4 text-center">
-                  <span className="rounded-full bg-slate-100 px-3 py-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-600">
-                    {round.name}
-                  </span>
-                </div>
-
-                {/* Matches column */}
-                <div className="relative flex flex-col" style={{ height: colHeight }}>
-                  {round.matches.map((match, mi) => {
-                    // Vertical centering of each match within its slot
-                    const matchesInCol = round.matches.length
-                    const slotSize = colHeight / matchesInCol
-                    const top = mi * slotSize + (slotSize - 88) / 2
-
-                    return (
-                      <div
-                        key={match.id}
-                        className="absolute left-4"
-                        style={{ top, right: isLast ? 16 : 0 }}
-                      >
-                        <MatchBox match={match} />
-                        {/* Right connector line (to next round) */}
-                        {!isLast && (
-                          <div
-                            className="absolute right-0 top-1/2 -translate-y-1/2 border-t-2 border-slate-300"
-                            style={{ width: 16 }}
-                          />
-                        )}
-                      </div>
-                    )
-                  })}
-
-                  {/* Vertical connector lines grouping pairs toward next round */}
-                  {!isLast && round.matches.map((_, mi) => {
-                    if (mi % 2 !== 0) return null
-                    const matchesInCol = round.matches.length
-                    const slotSize = colHeight / matchesInCol
-                    const topA = mi * slotSize + slotSize / 2
-                    const topB = (mi + 1) < matchesInCol
-                      ? (mi + 1) * slotSize + slotSize / 2
-                      : topA
-                    const midY = (topA + topB) / 2
-
-                    return (
-                      <div key={`conn-${mi}`} className="pointer-events-none absolute right-0 top-0 w-4">
-                        {/* vertical bar from match A to match B */}
-                        <div
-                          className="absolute right-0 border-r-2 border-slate-300"
-                          style={{ top: topA, height: topB - topA }}
-                        />
-                        {/* horizontal stub from midpoint to next column */}
-                        <div
-                          className="absolute right-0 border-t-2 border-slate-300"
-                          style={{ top: midY, width: 16 }}
-                        />
-                      </div>
-                    )
-                  })}
-                </div>
+        <div className="inline-flex items-start gap-6">
+          {rounds.map((round) => (
+            <div key={round.order} className="flex flex-col gap-3" style={{ width: 224 }}>
+              <div className="text-center">
+                <span className="rounded-full bg-slate-100 px-3 py-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-600">
+                  {round.name}
+                </span>
               </div>
-            )
-          })}
+              <div className="flex flex-col gap-3">
+                {round.matches.map((match) => (
+                  <MatchBox key={match.id} match={match} />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

@@ -360,13 +360,14 @@ def _write_knockout_sheet(
     tournament_timezone: str,
     org_logo: bytes | None,
     tournament_logo: bytes | None,
+    duration_suffix: str = "",
 ) -> None:
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
     _set_col_widths(ws)
     ws.freeze_panes = f"A{_HEADER_ROWS + 1}"
 
-    _write_sheet_header(ws, tournament_name, age_group_label, phase.name, org_logo, tournament_logo)
+    _write_sheet_header(ws, tournament_name, age_group_label, f"{phase.name}{duration_suffix}", org_logo, tournament_logo)
 
     matches = _sort_matches(phase.knockout_matches)
     matches_by_round: dict[str, list[ProgramMatchResponse]] = {}
@@ -623,6 +624,7 @@ def build_age_group_program_excel(
 
     for day in program.days:
         for phase in day.phases:
+            dur_suffix = f"  ·  {phase.match_duration_minutes} min/partita" if phase.match_duration_minutes else ""
             if phase.groups:
                 for gi, group in enumerate(phase.groups):
                     sheet_name = _safe_sheet_name(
@@ -631,7 +633,7 @@ def build_age_group_program_excel(
                     ws = wb.create_sheet(title=sheet_name)
                     _write_group_sheet(
                         ws, tournament_name, age_group_label, group,
-                        gi + 1, phase.name, tournament_timezone,
+                        gi + 1, f"{phase.name}{dur_suffix}", tournament_timezone,
                         org_logo, tournament_logo, image_cache,
                     )
             if phase.knockout_matches:
@@ -639,6 +641,7 @@ def build_age_group_program_excel(
                 _write_knockout_sheet(
                     ws, tournament_name, age_group_label, phase,
                     tournament_timezone, org_logo, tournament_logo,
+                    duration_suffix=dur_suffix,
                 )
 
     if not wb.sheetnames:

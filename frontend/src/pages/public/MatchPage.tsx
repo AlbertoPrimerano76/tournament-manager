@@ -2,9 +2,10 @@ import { useParams, Link, useLocation } from 'react-router-dom'
 import { useMatch } from '@/api/tournaments'
 import LoadingSpinner from '@/components/shared/LoadingSpinner'
 import ErrorMessage from '@/components/shared/ErrorMessage'
-import { ArrowLeft, Clock, MapPin, User, Share2 } from 'lucide-react'
+import { ArrowLeft, Clock, MapPin, User, Share2, Timer } from 'lucide-react'
 import { format, formatDistanceToNow, isFuture } from 'date-fns'
 import { it } from 'date-fns/locale'
+import { stripFieldCategory } from '@/utils/dateFormat'
 
 const statusLabels: Record<string, string> = {
   SCHEDULED: 'Programmata',
@@ -158,7 +159,12 @@ export default function MatchPage() {
           )}
           {currentMatch.field_name && (
             <DetailRow icon={<MapPin className="h-4 w-4" />} label="Campo">
-              {currentMatch.field_name}{currentMatch.field_number ? ` — Campo ${currentMatch.field_number}` : ''}
+              {stripFieldCategory(currentMatch.field_name)}{currentMatch.field_number ? ` — Campo ${currentMatch.field_number}` : ''}
+            </DetailRow>
+          )}
+          {currentMatch.match_duration_minutes && (
+            <DetailRow icon={<Timer className="h-4 w-4" />} label="Durata">
+              {currentMatch.match_duration_minutes} minuti
             </DetailRow>
           )}
           {currentMatch.referee && (

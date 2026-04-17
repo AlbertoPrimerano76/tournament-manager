@@ -24,6 +24,7 @@ import {
   formatPhaseWindow,
   createTeamQueryValue,
 } from '@/components/public/AgeGroupComponents'
+import { stripFieldCategory } from '@/utils/dateFormat'
 
 type GroupPhaseView = 'matches' | 'standings' | 'team'
 type MatchStatusView = 'pending' | 'completed'
@@ -224,9 +225,10 @@ export default function AgeGroupPage() {
         matches
           .filter((match) => match.field_name)
           .map((match) => {
-            const facility = facilityMap.get(match.field_name ?? '')
-            return [match.field_name as string, {
-              name: match.field_name as string,
+            const displayName = stripFieldCategory(match.field_name!)
+            const facility = facilityMap.get(displayName)
+            return [displayName, {
+              name: displayName,
               maps_url: facility?.maps_url ?? null,
             }] as const
           }),

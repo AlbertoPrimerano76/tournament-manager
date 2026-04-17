@@ -84,9 +84,11 @@ class MatchResponse(BaseModel):
     away_label: str | None = None
     home_logo_url: str | None = None
     away_logo_url: str | None = None
+    # Duration of the match in minutes (from age-group schedule config)
+    match_duration_minutes: int | None = None
 
     @classmethod
-    def from_match(cls, match: object) -> "MatchResponse":
+    def from_match(cls, match: object, match_duration_minutes: int | None = None) -> "MatchResponse":
         data = {
             "id": getattr(match, "id"),
             "phase_id": getattr(match, "phase_id"),
@@ -111,6 +113,7 @@ class MatchResponse(BaseModel):
             "away_label": None,
             "home_logo_url": None,
             "away_logo_url": None,
+            "match_duration_minutes": match_duration_minutes,
         }
 
         match_dict = getattr(match, "__dict__", {})

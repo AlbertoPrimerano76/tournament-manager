@@ -318,12 +318,16 @@ async def update_match_schedule(
     next_scheduled_at = body.scheduled_at
     next_actual_end_at = body.actual_end_at
     if body.delay_minutes is not None:
+        # Automatic delay mode: offset from the current scheduled time
         if previous_scheduled_at is None:
             raise HTTPException(status_code=422, detail="Impossibile applicare un ritardo senza un orario già definito")
         next_scheduled_at = previous_scheduled_at + timedelta(minutes=body.delay_minutes)
         if previous_scheduled_at and match.actual_end_at:
             duration_delta = match.actual_end_at - previous_scheduled_at
             next_actual_end_at = next_scheduled_at + duration_delta
+    elif body.scheduled_at is not None and body.scheduled_at != previous_scheduled_at:
+        # Manual reschedule: reset original_scheduled_at so no delay is shown
+        match.original_scheduled_at = body.scheduled_at
 
     match.scheduled_at = next_scheduled_at
     match.actual_end_at = next_actual_end_at

@@ -3,6 +3,7 @@ import { Clock, MapPin } from 'lucide-react'
 import { format } from 'date-fns'
 import { it } from 'date-fns/locale'
 import type { Match } from '@/api/tournaments'
+import { stripFieldCategory } from '@/utils/dateFormat'
 
 interface Props {
   match: Match
@@ -71,7 +72,7 @@ export default function MatchCard({ match, homeTeamName, awayTeamName }: Props) 
           {match.field_name && (
             <div className="flex items-center gap-1">
               <MapPin className="h-3 w-3" />
-              {match.field_name}{match.field_number ? ` #${match.field_number}` : ''}
+              {stripFieldCategory(match.field_name)}{match.field_number ? ` #${match.field_number}` : ''}
             </div>
           )}
         </div>

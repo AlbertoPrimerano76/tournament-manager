@@ -120,6 +120,7 @@ export interface Match {
   away_label: string | null
   home_logo_url: string | null
   away_logo_url: string | null
+  match_duration_minutes: number | null
 }
 
 export interface ProgramTeamSlot {
@@ -158,6 +159,7 @@ export interface ProgramMatch {
   away_tries: number | null
   referee: string | null
   notes: string | null
+  match_duration_minutes: number | null
 }
 
 export interface ProgramGroup {
@@ -178,6 +180,7 @@ export interface ProgramPhase {
   configured_start_at: string | null
   phase_start_at: string | null
   estimated_end_at: string | null
+  match_duration_minutes: number | null
   groups: ProgramGroup[]
   knockout_matches: ProgramMatch[]
 }

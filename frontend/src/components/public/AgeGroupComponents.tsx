@@ -7,6 +7,7 @@ import { it } from 'date-fns/locale'
 import { Star } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { type ProgramMatch, type ProgramPhase, type StandingRow } from '@/api/tournaments'
+import { stripFieldCategory } from '@/utils/dateFormat'
 
 // ---------------------------------------------------------------------------
 // Small UI atoms
@@ -110,8 +111,11 @@ export function PublicMatchRow({
             </span>
           ) : null}
         </p>
-        <p><span className="font-semibold text-slate-900">Campo:</span> {match.field_name ? `${match.field_name}${match.field_number ? ` #${match.field_number}` : ''}` : 'Da definire'}</p>
+        <p><span className="font-semibold text-slate-900">Campo:</span> {match.field_name ? `${stripFieldCategory(match.field_name)}${match.field_number ? ` #${match.field_number}` : ''}` : 'Da definire'}</p>
         <p><span className="font-semibold text-slate-900">Arbitro:</span> {match.referee || 'Da definire'}</p>
+        {match.match_duration_minutes != null && (
+          <p><span className="font-semibold text-slate-900">Durata:</span> {match.match_duration_minutes} min</p>
+        )}
       </div>
     </Link>
   )

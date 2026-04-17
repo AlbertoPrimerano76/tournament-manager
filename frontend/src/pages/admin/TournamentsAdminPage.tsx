@@ -1771,6 +1771,8 @@ type StructurePhase = {
   round_trip_mode: 'single' | 'double'
   stagger_groups: boolean
   max_concurrent_matches: number | null
+  num_halves: number | null
+  half_duration_minutes: number | null
   knockout_progression: 'full_bracket' | 'single_round'
   num_groups: number | null
   group_sizes: string
@@ -1896,6 +1898,8 @@ const BUILTIN_TEMPLATES: Array<{
           round_trip_mode: 'single',
           stagger_groups: false,
           max_concurrent_matches: null,
+          num_halves: null,
+          half_duration_minutes: null,
           knockout_progression: 'full_bracket',
           num_groups: 1,
           group_sizes: '',
@@ -1938,6 +1942,8 @@ const BUILTIN_TEMPLATES: Array<{
           round_trip_mode: 'single',
           stagger_groups: false,
           max_concurrent_matches: null,
+          num_halves: null,
+          half_duration_minutes: null,
           knockout_progression: 'full_bracket',
           num_groups: 2,
           group_sizes: '4,4',
@@ -1963,6 +1969,8 @@ const BUILTIN_TEMPLATES: Array<{
           round_trip_mode: 'single',
           stagger_groups: false,
           max_concurrent_matches: null,
+          num_halves: null,
+          half_duration_minutes: null,
           knockout_progression: 'full_bracket',
           num_groups: null,
           group_sizes: '',
@@ -2005,6 +2013,8 @@ const BUILTIN_TEMPLATES: Array<{
           round_trip_mode: 'single',
           stagger_groups: false,
           max_concurrent_matches: null,
+          num_halves: null,
+          half_duration_minutes: null,
           knockout_progression: 'full_bracket',
           num_groups: 4,
           group_sizes: '4,4,4,4',
@@ -2030,6 +2040,8 @@ const BUILTIN_TEMPLATES: Array<{
           round_trip_mode: 'single',
           stagger_groups: false,
           max_concurrent_matches: null,
+          num_halves: null,
+          half_duration_minutes: null,
           knockout_progression: 'full_bracket',
           num_groups: null,
           group_sizes: '',
@@ -2072,6 +2084,8 @@ const BUILTIN_TEMPLATES: Array<{
           round_trip_mode: 'single',
           stagger_groups: false,
           max_concurrent_matches: null,
+          num_halves: null,
+          half_duration_minutes: null,
           knockout_progression: 'full_bracket',
           num_groups: 2,
           group_sizes: '6,6',
@@ -2097,6 +2111,8 @@ const BUILTIN_TEMPLATES: Array<{
           round_trip_mode: 'single',
           stagger_groups: false,
           max_concurrent_matches: null,
+          num_halves: null,
+          half_duration_minutes: null,
           knockout_progression: 'full_bracket',
           num_groups: null,
           group_sizes: '',
@@ -4052,6 +4068,50 @@ function AgeGroupConfigurationPanel({
                         </div>
                       )}
 
+                      {/* Per-phase match duration override for knockout phases */}
+                      {activePhase.phase_type === 'KNOCKOUT' && (
+                        <div className="mt-4 rounded-[1.3rem] border border-slate-200 bg-slate-50 p-4">
+                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Durata partite di questa fase</p>
+                          <p className="mt-1 text-sm text-slate-600">
+                            Lascia vuoto per usare la durata globale ({structure.schedule.match_duration_minutes ?? 12} min). Imposta qui se i tempi della finale differiscono dai gironi.
+                          </p>
+                          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                            <FormField label="N° tempi" hint="Es. 2">
+                              <input
+                                type="number"
+                                min="1"
+                                max="10"
+                                value={activePhase.num_halves ?? ''}
+                                onChange={(e) => setPhase(activePhaseIndex, { num_halves: e.target.value ? Number(e.target.value) : null })}
+                                placeholder="–"
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                              />
+                            </FormField>
+                            <FormField label="Durata per tempo" hint="Minuti">
+                              <input
+                                type="number"
+                                min="1"
+                                value={activePhase.half_duration_minutes ?? ''}
+                                onChange={(e) => setPhase(activePhaseIndex, { half_duration_minutes: e.target.value ? Number(e.target.value) : null })}
+                                placeholder="–"
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rugby-green"
+                              />
+                            </FormField>
+                            <div className="flex flex-col justify-end">
+                              {activePhase.num_halves && activePhase.half_duration_minutes ? (
+                                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-800">
+                                  Totale: {activePhase.num_halves * activePhase.half_duration_minutes} min
+                                </div>
+                              ) : (
+                                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-400">
+                                  Totale: –
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {phase.phase_type === 'GROUP_STAGE' && structure.schedule.playing_fields.length > 0 && (
                         <div className="mt-4 rounded-[1.3rem] border border-slate-200 bg-slate-50 p-4">
                           <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Campi per girone</p>
@@ -5077,6 +5137,8 @@ function serializeStructureForComparison(structure: StructureConfig) {
       round_trip_mode: phase.round_trip_mode,
       stagger_groups: phase.stagger_groups,
       max_concurrent_matches: phase.max_concurrent_matches,
+      num_halves: phase.num_halves,
+      half_duration_minutes: phase.half_duration_minutes,
       knockout_progression: phase.knockout_progression,
       num_groups: phase.num_groups,
       group_sizes: phase.group_sizes,
@@ -5234,16 +5296,12 @@ function validateStructureConfig(structure: StructureConfig): string[] {
         errors.push(`${phaseLabel}: la somma delle squadre per girone deve essere ${expectedIncomingTeams}.`)
       }
 
-      const groupNames = Array.from({ length: phase.num_groups ?? 0 }, (_, groupIndex) => `Girone ${String.fromCharCode(65 + groupIndex)}`)
+      const groupNames = buildGroupNames(phase)
+      const receivesFromPreviousPhase = structure.phases.slice(0, index).some((p) => p.advancement_routes.some((r) => r.target_phase_id === phase.id))
       for (const groupName of groupNames) {
-        const assignments = phase.group_field_assignments[groupName] ?? []
-        if (assignments.length === 0) {
-          errors.push(`${phaseLabel}: assegna almeno un campo a ${groupName}.`)
-        }
-        const receivesFromPreviousPhase = structure.phases.slice(0, index).some((p) => p.advancement_routes.some((r) => r.target_phase_id === phase.id))
         const refereeAssignments = phase.referee_group_assignments[groupName] ?? []
         const hasAnyRefereeSource = refereeAssignments.length > 0
-        if (!receivesFromPreviousPhase && (phase.num_groups ?? 0) > 1 && !hasAnyRefereeSource) {
+        if (!receivesFromPreviousPhase && groupNames.length > 1 && !hasAnyRefereeSource) {
           errors.push(`${phaseLabel}: assegna almeno una fonte arbitri a ${groupName} (stesso girone o un altro girone).`)
         }
       }
@@ -5563,6 +5621,12 @@ function normalizePhase(value: unknown, index: number): StructurePhase {
     max_concurrent_matches: typeof (input as { max_concurrent_matches?: unknown }).max_concurrent_matches === 'number'
       ? ((input as { max_concurrent_matches?: number }).max_concurrent_matches ?? null)
       : null,
+    num_halves: typeof (input as { num_halves?: unknown }).num_halves === 'number'
+      ? ((input as { num_halves?: number }).num_halves ?? null)
+      : null,
+    half_duration_minutes: typeof (input as { half_duration_minutes?: unknown }).half_duration_minutes === 'number'
+      ? ((input as { half_duration_minutes?: number }).half_duration_minutes ?? null)
+      : null,
     knockout_progression: input.knockout_progression === 'single_round' ? 'single_round' : 'full_bracket',
     num_groups: typeof input.num_groups === 'number' ? input.num_groups : null,
     group_sizes: typeof input.group_sizes === 'string' ? input.group_sizes : '',
@@ -5654,6 +5718,8 @@ function makeEmptyPhase(index: number, tournamentStartDate?: string | null): Str
     round_trip_mode: 'single',
     stagger_groups: false,
     max_concurrent_matches: null,
+    num_halves: null,
+    half_duration_minutes: null,
     knockout_progression: 'full_bracket',
     num_groups: null,
     group_sizes: '',

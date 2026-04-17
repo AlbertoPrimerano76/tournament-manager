@@ -39,6 +39,7 @@ class ProgramMatchResponse(BaseModel):
     away_tries: int | None = None
     referee: str | None = None
     notes: str | None = None
+    match_duration_minutes: int | None = None
 
 
 class ProgramGroupResponse(BaseModel):
@@ -59,6 +60,7 @@ class ProgramPhaseResponse(BaseModel):
     configured_start_at: datetime | None = None
     phase_start_at: datetime | None = None
     estimated_end_at: datetime | None = None
+    match_duration_minutes: int | None = None
     groups: list[ProgramGroupResponse]
     knockout_matches: list[ProgramMatchResponse]
 

@@ -269,9 +269,9 @@ def _phase_start_datetime(age_group: TournamentAgeGroup, phase_index: int) -> da
     return datetime.combine(base.date(), start, tzinfo=_tournament_tz(age_group))
 
 
-def _phase_slot_duration(age_group: TournamentAgeGroup) -> timedelta:
+def _phase_slot_duration(age_group: TournamentAgeGroup, phase_config: dict[str, Any] | None = None) -> timedelta:
     schedule = _schedule_settings(age_group)
-    duration = int(schedule.get("match_duration_minutes") or 12)
+    duration = _resolve_phase_duration_minutes(age_group, phase_config)
     interval = int(schedule.get("interval_minutes") or 8)
     return timedelta(minutes=max(duration, 1) + max(interval, 0))
 
@@ -332,9 +332,25 @@ def _resolve_phase_start(
     return resolved
 
 
-def _slot_delta(age_group: TournamentAgeGroup) -> timedelta:
+def _resolve_phase_duration_minutes(age_group: TournamentAgeGroup, phase_config: dict[str, Any] | None = None) -> int:
+    """Return match duration in minutes, checking per-phase config first then global schedule."""
     schedule = _schedule_settings(age_group)
-    duration = int(schedule.get("match_duration_minutes") or 12)
+    global_duration = int(schedule.get("match_duration_minutes") or 12)
+    if not phase_config:
+        return global_duration
+    num_halves = phase_config.get("num_halves")
+    half_duration = phase_config.get("half_duration_minutes")
+    if num_halves and half_duration:
+        return max(int(num_halves) * int(half_duration), 1)
+    phase_duration = phase_config.get("match_duration_minutes")
+    if phase_duration:
+        return max(int(phase_duration), 1)
+    return global_duration
+
+
+def _slot_delta(age_group: TournamentAgeGroup, phase_config: dict[str, Any] | None = None) -> timedelta:
+    schedule = _schedule_settings(age_group)
+    duration = _resolve_phase_duration_minutes(age_group, phase_config)
     interval = int(schedule.get("interval_minutes") or 8)
     return timedelta(minutes=max(duration, 1) + max(interval, 0))
 
@@ -1182,11 +1198,11 @@ def _ordered_group_block_rounds(
 
 
 async def _sync_future_age_group_matches(age_group: TournamentAgeGroup, phases_config: list[dict[str, Any]], db: AsyncSession) -> TournamentAgeGroup:
-    match_slot_length = _slot_delta(age_group)
     previous_phase_end: datetime | None = None
 
     for phase_index, phase in enumerate(sorted(age_group.phases, key=lambda item: item.phase_order)):
         phase_config = phases_config[phase_index] if phase_index < len(phases_config) and isinstance(phases_config[phase_index], dict) else {}
+        match_slot_length = _slot_delta(age_group, phase_config)
         phase_start = _resolve_phase_start(age_group, phase_index, phase_config, previous_phase_end)
         phase_end = phase_start
 
@@ -1351,7 +1367,6 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
     participants = sorted(age_group.tournament_teams, key=lambda item: item.team.name.lower())
     if len(participants) < 2:
         raise ValueError("Servono almeno 2 squadre nella categoria per generare le partite")
-    match_slot_length = _slot_delta(age_group)
     initial_entries: list[dict[str, Any]] = [
         {
             "label": _team_label(team),
@@ -1369,6 +1384,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
     previous_phase_end: datetime | None = None
 
     for phase_index, phase_config in enumerate(phases_config):
+        match_slot_length = _slot_delta(age_group, phase_config)
         phase_order = phase_index + 1
         current_entries = queued_entries_by_phase.pop(phase_order, [])
         if not current_entries:
@@ -1782,7 +1798,6 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
     participants = sorted(age_group.tournament_teams, key=lambda item: item.team.name.lower())
     if len(participants) < 2:
         raise ValueError("Servono almeno 2 squadre nella categoria per generare le partite")
-    match_slot_length = _slot_delta(age_group)
     initial_entries: list[dict[str, Any]] = [
         {
             "label": _team_label(team),
@@ -1796,6 +1811,8 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
     queued_entries_by_phase[1] = initial_entries
     phase_order_map = _resolve_phase_order_map(phases_config)
     previous_phase_end: datetime | None = None
+    # match_slot_length is computed per-phase below (may differ for knockout vs group)
+    match_slot_length = _slot_delta(age_group)  # default; overridden per phase in the loops
 
     for phase in existing_phases:
         if phase.phase_order >= phase_order:
@@ -1840,6 +1857,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
     total_created_matches = 0
 
     for relative_index, phase_config in enumerate(phases_config[start_index:], start=start_index):
+        match_slot_length = _slot_delta(age_group, phase_config)
         phase_order_number = relative_index + 1
         current_entries = queued_entries_by_phase.pop(phase_order_number, [])
         if not current_entries:
@@ -2239,8 +2257,9 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
 
     for phase_order, phase_config in enumerate(phases_config, start=1):
         phase = phases_by_order.get(phase_order)
+        _phase_duration = _resolve_phase_duration_minutes(age_group, phase_config if isinstance(phase_config, dict) else None)
         if phase:
-            group_responses, knockout_matches, phase_date, phase_id, phase_name, phase_type, phase_start_at, estimated_end_at = _serialize_phase_for_program(phase)
+            group_responses, knockout_matches, phase_date, phase_id, phase_name, phase_type, phase_start_at, estimated_end_at = _serialize_phase_for_program(phase, _phase_duration)
         else:
             group_responses, knockout_matches, phase_date, phase_id, phase_name, phase_type, phase_start_at, estimated_end_at = _build_placeholder_phase_from_config(
                 age_group.id,
@@ -2267,6 +2286,7 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
             configured_start_at=configured_start_at,
             phase_start_at=phase_start_at,
             estimated_end_at=estimated_end_at,
+            match_duration_minutes=_phase_duration,
             groups=group_responses,
             knockout_matches=knockout_matches,
         ))
@@ -2274,7 +2294,8 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
     for phase in sorted(age_group.phases, key=lambda item: item.phase_order):
         if phase.phase_order <= len(phases_config):
             continue
-        group_responses, knockout_matches, phase_date, phase_id, phase_name, phase_type, phase_start_at, estimated_end_at = _serialize_phase_for_program(phase)
+        extra_phase_duration = _resolve_phase_duration_minutes(age_group)
+        group_responses, knockout_matches, phase_date, phase_id, phase_name, phase_type, phase_start_at, estimated_end_at = _serialize_phase_for_program(phase, extra_phase_duration)
         day_key = phase_date.isoformat() if phase_date else f"phase-{phase.phase_order}"
         phase_days[day_key].append(ProgramPhaseResponse(
             id=phase_id,
@@ -2286,6 +2307,7 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
             configured_start_at=None,
             phase_start_at=phase_start_at,
             estimated_end_at=estimated_end_at,
+            match_duration_minutes=extra_phase_duration,
             groups=group_responses,
             knockout_matches=knockout_matches,
         ))
@@ -2332,6 +2354,7 @@ def _program_phase_sort_key(phase: ProgramPhaseResponse) -> tuple[datetime, int,
 
 def _serialize_phase_for_program(
     phase: Phase,
+    match_duration_minutes: int | None = None,
 ) -> tuple[list[ProgramGroupResponse], list[ProgramMatchResponse], date_type | None, str, str, str, datetime | None, datetime | None]:
     group_responses: list[ProgramGroupResponse] = []
 
@@ -2355,7 +2378,7 @@ def _serialize_phase_for_program(
             ]
 
         matches = [
-            _serialize_match(match, phase.name, phase.phase_type.value, group.name)
+            _serialize_match(match, phase.name, phase.phase_type.value, group.name, match_duration_minutes)
             for match in sorted(
                 [item for item in phase.matches if item.group_id == group.id],
                 key=lambda item: (item.bracket_position or 0, item.scheduled_at or datetime.max),
@@ -2371,7 +2394,7 @@ def _serialize_phase_for_program(
         ))
 
     knockout_matches = [
-        _serialize_match(match, phase.name, phase.phase_type.value, None)
+        _serialize_match(match, phase.name, phase.phase_type.value, None, match_duration_minutes)
         for match in sorted(
             [item for item in phase.matches if item.group_id is None],
             key=lambda item: (item.bracket_round_order or 0, item.bracket_position or 0),
@@ -2581,7 +2604,7 @@ def _estimate_placeholder_knockout_end(
     return phase_start_at, phase_start_at + (slot_duration * slot_rows)
 
 
-def _serialize_match(match: Match, phase_name: str, phase_type: str, group_name: str | None) -> ProgramMatchResponse:
+def _serialize_match(match: Match, phase_name: str, phase_type: str, group_name: str | None, match_duration_minutes: int | None = None) -> ProgramMatchResponse:
     seed_home, seed_away, clean_notes = decode_seed_note(match.notes)
     home_label = match.home_team.team.name if match.home_team else seed_home or "Da definire"
     away_label = match.away_team.team.name if match.away_team else seed_away or "Da definire"
@@ -2616,4 +2639,5 @@ def _serialize_match(match: Match, phase_name: str, phase_type: str, group_name:
         away_tries=match.away_tries,
         referee=match.referee,
         notes=clean_notes,
+        match_duration_minutes=match_duration_minutes,
     )
