@@ -1769,6 +1769,7 @@ type StructurePhase = {
   placement_start_rank: number | null
   group_block_size: number | null
   round_trip_mode: 'single' | 'double'
+  stagger_groups: boolean
   knockout_progression: 'full_bracket' | 'single_round'
   num_groups: number | null
   group_sizes: string
@@ -1892,6 +1893,7 @@ const BUILTIN_TEMPLATES: Array<{
           placement_start_rank: null,
           group_block_size: null,
           round_trip_mode: 'single',
+          stagger_groups: false,
           knockout_progression: 'full_bracket',
           num_groups: 1,
           group_sizes: '',
@@ -1932,6 +1934,7 @@ const BUILTIN_TEMPLATES: Array<{
           placement_start_rank: null,
           group_block_size: null,
           round_trip_mode: 'single',
+          stagger_groups: false,
           knockout_progression: 'full_bracket',
           num_groups: 2,
           group_sizes: '4,4',
@@ -1955,6 +1958,7 @@ const BUILTIN_TEMPLATES: Array<{
           placement_start_rank: 1,
           group_block_size: null,
           round_trip_mode: 'single',
+          stagger_groups: false,
           knockout_progression: 'full_bracket',
           num_groups: null,
           group_sizes: '',
@@ -1995,6 +1999,7 @@ const BUILTIN_TEMPLATES: Array<{
           placement_start_rank: null,
           group_block_size: null,
           round_trip_mode: 'single',
+          stagger_groups: false,
           knockout_progression: 'full_bracket',
           num_groups: 4,
           group_sizes: '4,4,4,4',
@@ -2018,6 +2023,7 @@ const BUILTIN_TEMPLATES: Array<{
           placement_start_rank: 1,
           group_block_size: 4,
           round_trip_mode: 'single',
+          stagger_groups: false,
           knockout_progression: 'full_bracket',
           num_groups: null,
           group_sizes: '',
@@ -2058,6 +2064,7 @@ const BUILTIN_TEMPLATES: Array<{
           placement_start_rank: null,
           group_block_size: null,
           round_trip_mode: 'single',
+          stagger_groups: false,
           knockout_progression: 'full_bracket',
           num_groups: 2,
           group_sizes: '6,6',
@@ -2081,6 +2088,7 @@ const BUILTIN_TEMPLATES: Array<{
           placement_start_rank: 1,
           group_block_size: 4,
           round_trip_mode: 'single',
+          stagger_groups: false,
           knockout_progression: 'full_bracket',
           num_groups: null,
           group_sizes: '',
@@ -3890,6 +3898,17 @@ function AgeGroupConfigurationPanel({
                               <option value="double">Andata e ritorno</option>
                             </select>
                           </FormField>
+                          <FormField label="Sfalza gironi" hint="I gironi giocano in sequenza: finito il turno A, gioca B — le squadre libere possono arbitrare">
+                            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                              <input
+                                type="checkbox"
+                                checked={phase.stagger_groups}
+                                onChange={(e) => setPhase(index, { stagger_groups: e.target.checked })}
+                                className="h-4 w-4 rounded border-slate-300 accent-rugby-green"
+                              />
+                              <span className="text-sm text-slate-700">Attiva sfalzamento gironi</span>
+                            </label>
+                          </FormField>
                           <FormField label="Squadre per girone" hint="Es. 4,4,5">
                             <input
                               value={phase.group_sizes}
@@ -5027,6 +5046,7 @@ function serializeStructureForComparison(structure: StructureConfig) {
       placement_start_rank: phase.placement_start_rank,
       group_block_size: phase.group_block_size,
       round_trip_mode: phase.round_trip_mode,
+      stagger_groups: phase.stagger_groups,
       knockout_progression: phase.knockout_progression,
       num_groups: phase.num_groups,
       group_sizes: phase.group_sizes,
@@ -5509,6 +5529,7 @@ function normalizePhase(value: unknown, index: number): StructurePhase {
       ? ((input as { group_block_size?: number }).group_block_size ?? null)
       : null,
     round_trip_mode: input.round_trip_mode === 'double' ? 'double' : 'single',
+    stagger_groups: (input as { stagger_groups?: unknown }).stagger_groups === true,
     knockout_progression: input.knockout_progression === 'single_round' ? 'single_round' : 'full_bracket',
     num_groups: typeof input.num_groups === 'number' ? input.num_groups : null,
     group_sizes: typeof input.group_sizes === 'string' ? input.group_sizes : '',
@@ -5598,6 +5619,7 @@ function makeEmptyPhase(index: number, tournamentStartDate?: string | null): Str
     placement_start_rank: null,
     group_block_size: null,
     round_trip_mode: 'single',
+    stagger_groups: false,
     knockout_progression: 'full_bracket',
     num_groups: null,
     group_sizes: '',

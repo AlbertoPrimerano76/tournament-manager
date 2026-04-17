@@ -1193,6 +1193,8 @@ async def _sync_future_age_group_matches(age_group: TournamentAgeGroup, phases_c
         if phase.phase_type == PhaseType.GROUP_STAGE:
             groups = sorted(phase.groups, key=lambda item: item.group_order)
             phase_lane_slot_counters: dict[tuple[str | None, int | None], int] = defaultdict(int)
+            stagger_groups = bool(phase_config.get("stagger_groups", False))
+            global_slot_offset = 0
             group_plans: list[dict[str, Any]] = []
             max_chunks = 0
             for group_index, group in enumerate(groups):
@@ -1224,20 +1226,27 @@ async def _sync_future_age_group_matches(age_group: TournamentAgeGroup, phases_c
                         chunk_matches = plan["subchunks"][subchunk_index]
                         lanes = plan["lanes"]
                         chunk_lanes = [lanes[lane_index % len(lanes)] for lane_index in range(len(chunk_matches))]
-                        slot_index = max(phase_lane_slot_counters[_lane_key(lane)] for lane in chunk_lanes) if chunk_lanes else 0
+                        if stagger_groups:
+                            slot_index = global_slot_offset
+                        else:
+                            slot_index = max(phase_lane_slot_counters[_lane_key(lane)] for lane in chunk_lanes) if chunk_lanes else 0
                         slot_time = phase_start + (match_slot_length * slot_index) if phase_start else None
                         for lane_index, match in enumerate(chunk_matches):
                             lane = lanes[lane_index % len(lanes)]
                             lane_counter_key = _lane_key(lane)
                             if _match_has_recorded_result(match):
-                                phase_lane_slot_counters[lane_counter_key] = slot_index + 1
+                                if not stagger_groups:
+                                    phase_lane_slot_counters[lane_counter_key] = slot_index + 1
                                 continue
                             match.scheduled_at = slot_time
                             match.field_name = lane.get("field_name")
                             match.field_number = lane.get("field_number")
                             if slot_time:
                                 phase_end = max(phase_end or slot_time, slot_time + match_slot_length)
-                            phase_lane_slot_counters[lane_counter_key] = slot_index + 1
+                            if not stagger_groups:
+                                phase_lane_slot_counters[lane_counter_key] = slot_index + 1
+                        if stagger_groups:
+                            global_slot_offset += 1
         else:
             lanes = _knockout_lanes(age_group, phase_config) or [{"field_name": None, "field_number": None}]
             matches = sorted(
@@ -1439,6 +1448,8 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                 })
 
             phase_lane_slot_counters: dict[tuple[str | None, int | None], int] = defaultdict(int)
+            stagger_groups = bool(phase_config.get("stagger_groups", False))
+            global_slot_offset = 0
             phase_group_match_indexes: dict[str, int] = defaultdict(int)
             max_rounds = max((len(plan["rounds"]) for plan in group_plans), default=0)
             for round_index in range(max_rounds):
@@ -1465,7 +1476,10 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                         lanes = plan["lanes"]
                         round_chunk = plan["chunks"][chunk_index]
                         chunk_lanes = [lanes[lane_index % len(lanes)] for lane_index in range(len(round_chunk))]
-                        slot_index = max(phase_lane_slot_counters[_lane_key(lane)] for lane in chunk_lanes) if chunk_lanes else 0
+                        if stagger_groups:
+                            slot_index = global_slot_offset
+                        else:
+                            slot_index = max(phase_lane_slot_counters[_lane_key(lane)] for lane in chunk_lanes) if chunk_lanes else 0
                         slot_time = phase_start + (match_slot_length * slot_index) if phase_start else None
                         for lane_index, (home_entry, away_entry) in enumerate(round_chunk):
                             lane = lanes[lane_index % len(lanes)]
@@ -1492,7 +1506,10 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                             phase_group_match_indexes[group.id] += 1
                             if slot_time:
                                 phase_end = max(phase_end or slot_time, slot_time + match_slot_length)
-                            phase_lane_slot_counters[lane_counter_key] = slot_index + 1
+                            if not stagger_groups:
+                                phase_lane_slot_counters[lane_counter_key] = slot_index + 1
+                        if stagger_groups:
+                            global_slot_offset += 1
 
             await db.flush()
             raw_referee_assignments = phase_config.get("referee_group_assignments", {})
@@ -1887,6 +1904,8 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                 })
 
             phase_lane_slot_counters: dict[tuple[str | None, int | None], int] = defaultdict(int)
+            stagger_groups = bool(phase_config.get("stagger_groups", False))
+            global_slot_offset = 0
             phase_group_match_indexes: dict[str, int] = defaultdict(int)
             max_rounds = max((len(plan["rounds"]) for plan in group_plans), default=0)
             for round_index in range(max_rounds):
@@ -1913,7 +1932,10 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                         lanes = plan["lanes"]
                         round_chunk = plan["chunks"][chunk_index]
                         chunk_lanes = [lanes[lane_index % len(lanes)] for lane_index in range(len(round_chunk))]
-                        slot_index = max(phase_lane_slot_counters[_lane_key(lane)] for lane in chunk_lanes) if chunk_lanes else 0
+                        if stagger_groups:
+                            slot_index = global_slot_offset
+                        else:
+                            slot_index = max(phase_lane_slot_counters[_lane_key(lane)] for lane in chunk_lanes) if chunk_lanes else 0
                         slot_time = phase_start + (match_slot_length * slot_index) if phase_start else None
                         for lane_index, (home_entry, away_entry) in enumerate(round_chunk):
                             lane = lanes[lane_index % len(lanes)]
@@ -1940,7 +1962,10 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                             phase_group_match_indexes[group.id] += 1
                             if slot_time:
                                 phase_end = max(phase_end or slot_time, slot_time + match_slot_length)
-                            phase_lane_slot_counters[lane_counter_key] = slot_index + 1
+                            if not stagger_groups:
+                                phase_lane_slot_counters[lane_counter_key] = slot_index + 1
+                        if stagger_groups:
+                            global_slot_offset += 1
 
             await db.flush()
             raw_referee_assignments = phase_config.get("referee_group_assignments", {})
