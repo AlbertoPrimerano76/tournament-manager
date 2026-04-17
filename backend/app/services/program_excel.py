@@ -621,25 +621,28 @@ def build_age_group_program_excel(
     wb = Workbook()
     wb.remove(wb.active)
 
-    ws = wb.create_sheet(title=_safe_sheet_name(age_group_label))
-    _set_col_widths(ws)
-    ws.freeze_panes = f"A{_HEADER_ROWS + 1}"
-    _write_sheet_header(ws, tournament_name, age_group_label, tournament_name, org_logo, tournament_logo)
-
-    current_row = _HEADER_ROWS + 1
-
     for day in program.days:
         for phase in day.phases:
             if phase.groups:
                 for gi, group in enumerate(phase.groups):
-                    current_row = _write_group_block(
-                        ws, current_row, age_group_label, group,
-                        gi + 1, phase.name, tournament_timezone, image_cache,
+                    sheet_name = _safe_sheet_name(
+                        f"G{gi + 1} - {phase.name}" if len(phase.groups) > 1 else phase.name
+                    )
+                    ws = wb.create_sheet(title=sheet_name)
+                    _write_group_sheet(
+                        ws, tournament_name, age_group_label, group,
+                        gi + 1, phase.name, tournament_timezone,
+                        org_logo, tournament_logo, image_cache,
                     )
             if phase.knockout_matches:
-                current_row = _write_knockout_block(
-                    ws, current_row, phase, tournament_timezone,
+                ws = wb.create_sheet(title=_safe_sheet_name(phase.name))
+                _write_knockout_sheet(
+                    ws, tournament_name, age_group_label, phase,
+                    tournament_timezone, org_logo, tournament_logo,
                 )
+
+    if not wb.sheetnames:
+        wb.create_sheet("Programma")
 
     buffer = BytesIO()
     wb.save(buffer)
