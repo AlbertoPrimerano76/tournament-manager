@@ -2258,66 +2258,67 @@ function AgeGroupUnifiedCard({
 
   return (
     <div className="rounded-[1.45rem] border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div className="min-w-0">
-          <p className="text-base font-black text-slate-900">{agLabel}</p>
-          <p className="mt-1 text-sm text-slate-500">Formula, squadre e operatività della categoria in un solo punto.</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <StatusPill label={hasFormula ? 'Formula pronta' : 'Formula da completare'} tone={hasFormula ? 'emerald' : 'amber'} />
-            <StatusPill label={hasScheduleBase ? 'Orari e campi impostati' : 'Base calendario incompleta'} tone={hasScheduleBase ? 'sky' : 'amber'} />
-            <StatusPill label={hasProgram ? `Programma generato · ${completedMatches}/${totalMatches}` : 'Programma non generato'} tone={hasProgram ? 'fuchsia' : 'slate'} />
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2 shrink-0">
+      {/* Row 1: title + action buttons */}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-base font-black text-slate-900">{agLabel}</p>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
           <button
             type="button"
             onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${group.id}`)}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
           >
-            <Pencil className="h-4 w-4" />
+            <Pencil className="h-3.5 w-3.5" />
             Configura
           </button>
           {hasProgram && (
             <button
               type="button"
               onClick={() => navigate(`/admin/tornei/${tournament.id}/categorie/${group.id}/tabellone`)}
-              className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800 transition-colors hover:bg-violet-100"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-semibold text-violet-800 transition-colors hover:bg-violet-100"
             >
               Tabellone
             </button>
           )}
           {hasProgram && (
             <>
-                <button
-                  type="button"
-                  onClick={() => void handleDlXls()}
-                  disabled={isXlsDl}
-                  className="inline-flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm font-semibold text-green-800 transition-colors hover:bg-green-100 disabled:opacity-50"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  {isXlsDl ? '...' : `Excel ${tournament.name} · ${agLabel}`}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleDlPdf()}
-                  disabled={isPdfDl}
-                  className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:opacity-50"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  {isPdfDl ? '...' : `PDF ${tournament.name} · ${agLabel}`}
-                </button>
-              </>
-            )}
+              <button
+                type="button"
+                onClick={() => void handleDlXls()}
+                disabled={isXlsDl}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-semibold text-green-800 transition-colors hover:bg-green-100 disabled:opacity-50"
+                title={`Scarica Excel · ${agLabel}`}
+              >
+                <Download className="h-3.5 w-3.5" />
+                {isXlsDl ? '...' : 'Excel'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDlPdf()}
+                disabled={isPdfDl}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+                title={`Scarica PDF · ${agLabel}`}
+              >
+                <Download className="h-3.5 w-3.5" />
+                {isPdfDl ? '...' : 'PDF'}
+              </button>
+            </>
+          )}
           <button
             type="button"
             disabled={isPending}
             onClick={() => setConfirmingRemove(true)}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+            title="Rimuovi categoria"
           >
-            <Trash2 className="h-4 w-4" />
-            Rimuovi
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
+      </div>
+      {/* Row 2: status badges */}
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        <StatusPill label={hasFormula ? 'Formula pronta' : 'Formula da completare'} tone={hasFormula ? 'emerald' : 'amber'} />
+        <StatusPill label={hasScheduleBase ? 'Orari e campi impostati' : 'Base calendario incompleta'} tone={hasScheduleBase ? 'sky' : 'amber'} />
+        <StatusPill label={hasProgram ? `Programma · ${completedMatches}/${totalMatches}` : 'Programma non generato'} tone={hasProgram ? 'fuchsia' : 'slate'} />
       </div>
       {confirmingRemove && (
         <div className="mt-3 flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
