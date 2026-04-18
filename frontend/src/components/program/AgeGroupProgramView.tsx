@@ -1092,6 +1092,8 @@ function ProgramMatchCard({
     ? group.teams.filter((item) => !item.is_placeholder && item.tournament_team_id)
         .map((item) => ({ value: item.tournament_team_id!, label: item.label }))
     : participants.map((item) => ({ value: item.id, label: item.team_name }))
+  const homePlaceholderOptionLabel = match.home_team_id ? 'Da definire' : (match.home_label || 'Da definire')
+  const awayPlaceholderOptionLabel = match.away_team_id ? 'Da definire' : (match.away_label || 'Da definire')
   const activeDurationMinutes = manualMatchDurationMinutes ? Number(manualMatchDurationMinutes) : effectiveMatchDurationMinutes
   const scheduledAtValue = scheduledAt || toLocalDateTimeValue(match.scheduled_at)
   const actualEndAtValue = actualEndAt || getInitialActualEndAt(match.scheduled_at, match.actual_end_at, activeDurationMinutes)
@@ -1296,7 +1298,7 @@ function ProgramMatchCard({
                   onChange={(e) => setHomeTeamId(e.target.value)}
                   className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                 >
-                  <option value="">Da definire</option>
+                  <option value="">{homePlaceholderOptionLabel}</option>
                   {availableParticipantOptions.map((option) => (
                     <option key={`home-${match.id}-${option.value}`} value={option.value}>{option.label}</option>
                   ))}
@@ -1309,7 +1311,7 @@ function ProgramMatchCard({
                   onChange={(e) => setAwayTeamId(e.target.value)}
                   className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                 >
-                  <option value="">Da definire</option>
+                  <option value="">{awayPlaceholderOptionLabel}</option>
                   {availableParticipantOptions.map((option) => (
                     <option key={`away-${match.id}-${option.value}`} value={option.value}>{option.label}</option>
                   ))}
