@@ -320,12 +320,11 @@ def _resolve_phase_start(
     if not base:
         return fallback_start
     explicit_start = phase_config.get("start_time")
-    minimum_start = fallback_start + _PHASE_BREAK if fallback_start else None
     if isinstance(explicit_start, str) and explicit_start:
-        resolved = datetime.combine(base.date(), _parse_start_time(explicit_start), tzinfo=_tournament_tz(age_group))
-        if minimum_start and resolved < minimum_start:
-            return minimum_start
-        return resolved
+        # User explicitly configured a start time — honour it as-is.
+        return datetime.combine(base.date(), _parse_start_time(explicit_start), tzinfo=_tournament_tz(age_group))
+    # Auto-scheduling: enforce a minimum gap after the previous phase ends.
+    minimum_start = fallback_start + _PHASE_BREAK if fallback_start else None
     resolved = fallback_start or _phase_start_datetime(age_group, phase_index)
     if minimum_start and resolved and resolved < minimum_start:
         return minimum_start
