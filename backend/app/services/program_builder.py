@@ -279,6 +279,7 @@ def _phase_slot_duration(age_group: TournamentAgeGroup, phase_config: dict[str, 
 def _estimate_phase_time_window(
     matches: list[ProgramMatchResponse],
     slot_duration: timedelta,
+    interval_minutes: int = 8,
 ) -> tuple[datetime | None, datetime | None]:
     scheduled_matches = [match for match in matches if match.scheduled_at]
     if not scheduled_matches:
@@ -288,7 +289,11 @@ def _estimate_phase_time_window(
     estimated_end_at = max(
         match.actual_end_at
         if match.actual_end_at and match.actual_end_at > match.scheduled_at
-        else match.scheduled_at + slot_duration
+        else match.scheduled_at + (
+            timedelta(minutes=match.match_duration_minutes + interval_minutes)
+            if match.match_duration_minutes is not None
+            else slot_duration
+        )
         for match in scheduled_matches
         if match.scheduled_at
     )
@@ -2493,9 +2498,12 @@ def _serialize_phase_for_program(
         *[match for group in group_responses for match in group.matches],
         *knockout_matches,
     ]
+    age_group = phase.tournament_age_group
+    _interval = int(_schedule_settings(age_group).get("interval_minutes") or 8) if age_group else 8
     phase_start_at, estimated_end_at = _estimate_phase_time_window(
         phase_matches,
-        _phase_slot_duration(phase.tournament_age_group) if phase.tournament_age_group else timedelta(minutes=20),
+        _phase_slot_duration(age_group) if age_group else timedelta(minutes=20),
+        interval_minutes=_interval,
     )
     return group_responses, knockout_matches, phase_date, phase.id, phase.name, phase.phase_type.value, phase_start_at, estimated_end_at
 
