@@ -690,6 +690,7 @@ def build_full_tournament_excel(
         prefix = age_group_label[:10]
         for day in program.days:
             for phase in day.phases:
+                dur_suffix = f"  ·  {phase.match_duration_minutes} min/partita" if phase.match_duration_minutes else ""
                 if phase.groups:
                     for gi, group in enumerate(phase.groups):
                         raw = (
@@ -700,7 +701,7 @@ def build_full_tournament_excel(
                         ws = wb.create_sheet(title=sheet_name)
                         _write_group_sheet(
                             ws, tournament_name, age_group_label, group,
-                            gi + 1, phase.name, tournament_timezone,
+                            gi + 1, f"{phase.name}{dur_suffix}", tournament_timezone,
                             org_logo, tournament_logo, image_cache,
                         )
                 if phase.knockout_matches:
@@ -710,6 +711,7 @@ def build_full_tournament_excel(
                     _write_knockout_sheet(
                         ws, tournament_name, age_group_label, phase,
                         tournament_timezone, org_logo, tournament_logo,
+                        duration_suffix=dur_suffix,
                     )
 
     if not wb.sheetnames:
