@@ -86,12 +86,11 @@ def _round_duration_suffix(
         for match in round_matches
         if match.match_duration_minutes is not None
     }
-    if len(durations) != 1:
-        return ""
-    duration = next(iter(durations))
-    if default_duration_minutes is not None and duration == default_duration_minutes:
-        return ""
-    return f"  ·  {duration} min/partita"
+    if len(durations) == 1:
+        return f"  ·  {next(iter(durations))} min/partita"
+    if not durations and default_duration_minutes:
+        return f"  ·  {default_duration_minutes} min/partita"
+    return ""
 
 
 # ── Image helpers ──────────────────────────────────────────────────────────────
