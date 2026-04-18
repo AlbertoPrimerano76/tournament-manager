@@ -1828,6 +1828,184 @@ async def test_group_blocks_schedule_top_finals_last_and_propagate_results(clien
 
 
 @pytest.mark.asyncio
+async def test_group_blocks_of_two_create_only_finals_with_top_final_last(db: AsyncSession):
+    _, age_group = await create_tournament_with_teams(
+        db,
+        slug_suffix=f"group-blocks-two-{uuid.uuid4().hex[:6]}",
+        structure_config={
+            "expected_teams": 6,
+            "notes": "",
+            "schedule": {
+                "start_time": "09:30",
+                "match_duration_minutes": 12,
+                "interval_minutes": 8,
+                "playing_fields": [
+                    {"field_name": "Impianto Nord", "field_number": 1},
+                    {"field_name": "Impianto Sud", "field_number": 1},
+                ],
+            },
+            "phases": [
+                {
+                    "id": "phase-1",
+                    "name": "Gironi iniziali",
+                    "phase_type": "GROUP_STAGE",
+                    "num_groups": 2,
+                    "group_sizes": "3,3",
+                    "advancement_routes": [
+                        {
+                            "target_phase_id": "phase-2",
+                            "source_mode": "group_rank",
+                            "source_groups": [],
+                            "rank_from": 1,
+                            "rank_to": 3,
+                            "target_slots": [],
+                        },
+                    ],
+                    "bracket_mode": "standard",
+                    "notes": "",
+                    "group_field_assignments": {
+                        "Girone A": [{"field_name": "Impianto Nord", "field_number": 1}],
+                        "Girone B": [{"field_name": "Impianto Nord", "field_number": 1}],
+                    },
+                    "referee_group_assignments": {
+                        "Girone A": ["Girone B"],
+                        "Girone B": ["Girone A"],
+                    },
+                },
+                {
+                    "id": "phase-2",
+                    "name": "Finali piazzamento",
+                    "phase_type": "KNOCKOUT",
+                    "group_sizes": "",
+                    "bracket_mode": "group_blocks",
+                    "group_block_size": 2,
+                    "notes": "",
+                    "knockout_field_assignments": [
+                        {"field_name": "Impianto Nord", "field_number": 1},
+                        {"field_name": "Impianto Sud", "field_number": 1},
+                    ],
+                },
+            ],
+        },
+    )
+
+    await generate_age_group_program(age_group.id, db)
+
+    result = await db.execute(
+        select(Phase)
+        .options(selectinload(Phase.matches))
+        .where(Phase.tournament_age_group_id == age_group.id, Phase.phase_type == PhaseType.KNOCKOUT)
+    )
+    knockout_phase = result.scalar_one()
+    ordered_matches = sorted(
+        knockout_phase.matches,
+        key=lambda match: ((match.bracket_round_order or 0), (match.bracket_position or 0)),
+    )
+
+    assert [match.bracket_round for match in ordered_matches] == [
+        "Piazzamento 5-6 · Finale",
+        "Piazzamento 3-4 · Finale",
+        "Piazzamento 1-2 · Finale",
+    ]
+    assert ordered_matches[-1].scheduled_at is not None
+    assert all(
+        match.scheduled_at is not None and match.scheduled_at < ordered_matches[-1].scheduled_at
+        for match in ordered_matches[:-1]
+    )
+
+
+@pytest.mark.asyncio
+async def test_schedule_update_keeps_seed_labels_for_placeholder_matches(client: AsyncClient, db: AsyncSession):
+    headers = await ensure_admin_headers(client)
+    _, age_group = await create_tournament_with_teams(
+        db,
+        slug_suffix=f"seed-labels-{uuid.uuid4().hex[:6]}",
+        structure_config={
+            "expected_teams": 4,
+            "notes": "",
+            "schedule": {
+                "start_time": "09:30",
+                "match_duration_minutes": 12,
+                "interval_minutes": 8,
+                "playing_fields": [
+                    {"field_name": "Impianto Nord", "field_number": 1},
+                ],
+            },
+            "phases": [
+                {
+                    "id": "phase-1",
+                    "name": "Gironi iniziali",
+                    "phase_type": "GROUP_STAGE",
+                    "num_groups": 2,
+                    "group_sizes": "2,2",
+                    "advancement_routes": [
+                        {
+                            "target_phase_id": "phase-2",
+                            "source_mode": "group_rank",
+                            "source_groups": [],
+                            "rank_from": 1,
+                            "rank_to": 1,
+                            "target_slots": [],
+                        },
+                    ],
+                    "group_custom_names": ["Girone Bianco", "Girone Verde"],
+                    "bracket_mode": "standard",
+                    "group_field_assignments": {
+                        "Girone Bianco": [{"field_name": "Impianto Nord", "field_number": 1}],
+                        "Girone Verde": [{"field_name": "Impianto Nord", "field_number": 1}],
+                    },
+                    "referee_group_assignments": {
+                        "Girone Bianco": ["Girone Verde"],
+                        "Girone Verde": ["Girone Bianco"],
+                    },
+                },
+                {
+                    "id": "phase-2",
+                    "name": "Finale",
+                    "phase_type": "KNOCKOUT",
+                    "group_sizes": "",
+                    "bracket_mode": "standard",
+                    "knockout_field_assignments": [
+                        {"field_name": "Impianto Nord", "field_number": 1},
+                    ],
+                },
+            ],
+        },
+    )
+
+    await generate_age_group_program(age_group.id, db)
+
+    phase_result = await db.execute(
+        select(Phase)
+        .options(selectinload(Phase.matches))
+        .where(Phase.tournament_age_group_id == age_group.id, Phase.phase_type == PhaseType.KNOCKOUT)
+    )
+    knockout_phase = phase_result.scalar_one()
+    match = knockout_phase.matches[0]
+
+    response = await client.post(
+        f"/api/v1/admin/matches/{match.id}/schedule",
+        headers=headers,
+        json={
+            "scheduled_at": match.scheduled_at.isoformat() if match.scheduled_at else None,
+            "field_name": "Impianto Nord",
+            "field_number": 1,
+            "referee": "Arbitro Test",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["home_label"] == "1a Girone Bianco"
+    assert payload["away_label"] == "1a Girone Verde"
+
+    refreshed_match = await db.get(Match, match.id)
+    assert refreshed_match is not None
+    seed_home, seed_away, _ = decode_seed_note(refreshed_match.notes)
+    assert seed_home == "1a Girone Bianco"
+    assert seed_away == "1a Girone Verde"
+
+
+@pytest.mark.asyncio
 async def test_shared_group_field_schedule_interleaves_rounds_across_groups(db: AsyncSession):
     _, age_group = await create_tournament_with_teams(
         db,

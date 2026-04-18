@@ -77,6 +77,23 @@ def _sort_matches(matches: list[ProgramMatchResponse]) -> list[ProgramMatchRespo
     )
 
 
+def _round_duration_suffix(
+    round_matches: list[ProgramMatchResponse],
+    default_duration_minutes: int | None = None,
+) -> str:
+    durations = {
+        match.match_duration_minutes
+        for match in round_matches
+        if match.match_duration_minutes is not None
+    }
+    if len(durations) != 1:
+        return ""
+    duration = next(iter(durations))
+    if default_duration_minutes is not None and duration == default_duration_minutes:
+        return ""
+    return f"  ·  {duration} min/partita"
+
+
 # ── Image helpers ──────────────────────────────────────────────────────────────
 
 def _fetch_image_bytes(url: str | None, cache: dict) -> bytes | None:
@@ -262,6 +279,7 @@ def _write_group_sheet(
     org_logo: bytes | None,
     tournament_logo: bytes | None,
     image_cache: dict,
+    match_duration_minutes: int | None = None,
 ) -> None:
     from openpyxl.styles import Font, Alignment
 
@@ -280,7 +298,10 @@ def _write_group_sheet(
 
     # ── Row 4: group name banner ───────────────────────────────────────────────
     ws.row_dimensions[4].height = 20
-    ws.cell(row=4, column=1, value=group.name)
+    banner_text = group.name
+    if match_duration_minutes:
+        banner_text = f"{group.name}  ·  {match_duration_minutes} min/partita"
+    ws.cell(row=4, column=1, value=banner_text)
     ws.merge_cells(start_row=4, start_column=1, end_row=4, end_column=_NCOLS)
     _style_group_name_row(ws, 4)
 
@@ -360,14 +381,13 @@ def _write_knockout_sheet(
     tournament_timezone: str,
     org_logo: bytes | None,
     tournament_logo: bytes | None,
-    duration_suffix: str = "",
 ) -> None:
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
     _set_col_widths(ws)
     ws.freeze_panes = f"A{_HEADER_ROWS + 1}"
 
-    _write_sheet_header(ws, tournament_name, age_group_label, f"{phase.name}{duration_suffix}", org_logo, tournament_logo)
+    _write_sheet_header(ws, tournament_name, age_group_label, phase.name, org_logo, tournament_logo)
 
     matches = _sort_matches(phase.knockout_matches)
     matches_by_round: dict[str, list[ProgramMatchResponse]] = {}
@@ -386,7 +406,11 @@ def _write_knockout_sheet(
             c = ws.cell(row=current_row, column=col)
             c.fill = amber_fill
             c.border = Border(left=thin, right=thin, top=thin, bottom=thin)
-        rnd_cell = ws.cell(row=current_row, column=1, value=round_name.upper())
+        rnd_cell = ws.cell(
+            row=current_row,
+            column=1,
+            value=f"{round_name.upper()}{_round_duration_suffix(round_matches, phase.match_duration_minutes)}",
+        )
         rnd_cell.font = Font(bold=True, size=10, color="FEF3C7", name="Calibri")
         rnd_cell.alignment = Alignment(horizontal="center", vertical="center")
         ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=_NCOLS)
@@ -560,7 +584,11 @@ def _write_knockout_block(
             c = ws.cell(row=r, column=col)
             c.fill = light_amber
             c.border = Border(left=thin, right=thin, top=thin, bottom=thin)
-        rnd_cell = ws.cell(row=r, column=1, value=round_name.upper())
+        rnd_cell = ws.cell(
+            row=r,
+            column=1,
+            value=f"{round_name.upper()}{_round_duration_suffix(round_matches, phase.match_duration_minutes)}",
+        )
         rnd_cell.font = Font(bold=True, size=10, color="FEF3C7", name="Calibri")
         rnd_cell.alignment = Alignment(horizontal="center", vertical="center")
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=_NCOLS)
@@ -635,13 +663,13 @@ def build_age_group_program_excel(
                         ws, tournament_name, age_group_label, group,
                         gi + 1, f"{phase.name}{dur_suffix}", tournament_timezone,
                         org_logo, tournament_logo, image_cache,
+                        match_duration_minutes=phase.match_duration_minutes,
                     )
             if phase.knockout_matches:
                 ws = wb.create_sheet(title=_safe_sheet_name(phase.name))
                 _write_knockout_sheet(
                     ws, tournament_name, age_group_label, phase,
                     tournament_timezone, org_logo, tournament_logo,
-                    duration_suffix=dur_suffix,
                 )
 
     if not wb.sheetnames:
@@ -649,7 +677,7 @@ def build_age_group_program_excel(
 
     buffer = BytesIO()
     wb.save(buffer)
-    filename = f"gironi-{_safe_filename(age_group_label)}.xlsx"
+    filename = f"programma-{_safe_filename(tournament_name)}-{_safe_filename(age_group_label)}.xlsx"
     return buffer.getvalue(), filename
 
 
@@ -703,6 +731,7 @@ def build_full_tournament_excel(
                             ws, tournament_name, age_group_label, group,
                             gi + 1, f"{phase.name}{dur_suffix}", tournament_timezone,
                             org_logo, tournament_logo, image_cache,
+                            match_duration_minutes=phase.match_duration_minutes,
                         )
                 if phase.knockout_matches:
                     raw = f"{prefix} · {phase.name}"
@@ -711,7 +740,6 @@ def build_full_tournament_excel(
                     _write_knockout_sheet(
                         ws, tournament_name, age_group_label, phase,
                         tournament_timezone, org_logo, tournament_logo,
-                        duration_suffix=dur_suffix,
                     )
 
     if not wb.sheetnames:

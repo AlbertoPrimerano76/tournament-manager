@@ -44,6 +44,7 @@ export interface MatchScheduleUpdate {
   scheduled_at?: string | null
   actual_end_at?: string | null
   delay_minutes?: number | null
+  match_duration_minutes?: number | null
   field_name?: string | null
   field_number?: number | null
   referee?: string | null

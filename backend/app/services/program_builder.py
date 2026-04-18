@@ -333,11 +333,14 @@ def _resolve_phase_start(
 
 
 def _resolve_phase_duration_minutes(age_group: TournamentAgeGroup, phase_config: dict[str, Any] | None = None) -> int:
-    """Return match duration in minutes, checking per-phase config first then global schedule."""
+    """Return the default category match duration in minutes."""
     schedule = _schedule_settings(age_group)
-    global_duration = int(schedule.get("match_duration_minutes") or 12)
+    return int(schedule.get("match_duration_minutes") or 12)
+
+
+def _resolve_top_final_duration_override(phase_config: dict[str, Any] | None = None) -> int | None:
     if not phase_config:
-        return global_duration
+        return None
     num_halves = phase_config.get("num_halves")
     half_duration = phase_config.get("half_duration_minutes")
     if num_halves and half_duration:
@@ -345,7 +348,24 @@ def _resolve_phase_duration_minutes(age_group: TournamentAgeGroup, phase_config:
     phase_duration = phase_config.get("match_duration_minutes")
     if phase_duration:
         return max(int(phase_duration), 1)
-    return global_duration
+    return None
+
+
+def _is_top_final_round(round_name: str | None) -> bool:
+    if not round_name:
+        return False
+    normalized = str(round_name).strip().lower()
+    return normalized == "finale" or "piazzamento 1-2" in normalized
+
+
+def _resolve_generated_match_duration_minutes(
+    age_group: TournamentAgeGroup,
+    phase_config: dict[str, Any] | None,
+    round_name: str | None,
+) -> int | None:
+    if _is_top_final_round(round_name):
+        return _resolve_top_final_duration_override(phase_config)
+    return None
 
 
 def _slot_delta(age_group: TournamentAgeGroup, phase_config: dict[str, Any] | None = None) -> timedelta:
@@ -1152,18 +1172,21 @@ def _ordered_group_block_rounds(
     top_progression_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
     lower_progression_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
     middle_single_finals: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
+    standalone_single_finals: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]], bool]] = []
     lower_third_place_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
     lower_final_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
     top_third_place_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
     top_final_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
+    only_single_finals = True
 
     for bucket_name, start_rank, _, bucket_entries in carry_matches:
         block_rounds = _build_knockout_block_rounds(bucket_name, start_rank, bucket_entries)
         if not block_rounds:
             continue
         if len(block_rounds) == 1:
-            middle_single_finals.append((2, block_rounds[0][0], block_rounds[0][1]))
+            standalone_single_finals.append((start_rank, block_rounds[0][0], block_rounds[0][1], bucket_name == top_bucket_name))
             continue
+        only_single_finals = False
         if len(block_rounds) >= 3:
             target_third = top_third_place_rounds if bucket_name == top_bucket_name else lower_third_place_rounds
             target_final = top_final_rounds if bucket_name == top_bucket_name else lower_final_rounds
@@ -1187,7 +1210,19 @@ def _ordered_group_block_rounds(
     for progression_order in range(1, max_progression_order + 1):
         ordered_rounds.extend([item for item in top_progression_rounds if item[0] == progression_order])
         ordered_rounds.extend([item for item in lower_progression_rounds if item[0] == progression_order])
-    ordered_rounds.extend(middle_single_finals)
+
+    if only_single_finals:
+        lower_only_finals = sorted(
+            [item for item in standalone_single_finals if not item[3]],
+            key=lambda item: item[0],
+            reverse=True,
+        )
+        ordered_rounds.extend((2, round_name, pairs) for _, round_name, pairs, _ in lower_only_finals)
+        ordered_rounds.extend((3, round_name, pairs) for _, round_name, pairs, is_top in standalone_single_finals if is_top)
+    else:
+        middle_single_finals.extend((2, round_name, pairs) for _, round_name, pairs, _ in standalone_single_finals)
+        ordered_rounds.extend(middle_single_finals)
+
     ordered_rounds.extend(lower_third_place_rounds)
     ordered_rounds.extend(lower_final_rounds)
     ordered_rounds.extend(top_third_place_rounds)
@@ -1467,7 +1502,10 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             stagger_groups = bool(phase_config.get("stagger_groups", False))
             _raw_max = phase_config.get("max_concurrent_matches")
             max_concurrent: int | None = int(_raw_max) if isinstance(_raw_max, (int, float)) and int(_raw_max) > 0 else None
+            _raw_consec = phase_config.get("max_consecutive_group_matches")
+            max_consecutive: int | None = int(_raw_consec) if isinstance(_raw_consec, (int, float)) and int(_raw_consec) > 0 else None
             slot_matches_count: dict[int, int] = defaultdict(int)
+            team_last_slot: dict[str, int] = {}
             global_slot_offset = 0
             phase_group_match_indexes: dict[str, int] = defaultdict(int)
             max_rounds = max((len(plan["rounds"]) for plan in group_plans), default=0)
@@ -1499,10 +1537,25 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                             slot_index = global_slot_offset
                         else:
                             slot_index = max(phase_lane_slot_counters[_lane_key(lane)] for lane in chunk_lanes) if chunk_lanes else 0
-                        if max_concurrent:
-                            n = len(round_chunk)
-                            while slot_matches_count[slot_index] + n > max_concurrent:
+                        # Enforce max_concurrent_matches and max_consecutive_group_matches
+                        n = len(round_chunk)
+                        chunk_team_ids = [
+                            tid
+                            for pair in round_chunk
+                            for tid in (pair[0].get("tournament_team_id"), pair[1].get("tournament_team_id"))
+                            if tid
+                        ]
+                        for _guard in range(1000):  # safety cap to prevent infinite loop
+                            bumped = False
+                            if max_concurrent and slot_matches_count[slot_index] + n > max_concurrent:
                                 slot_index += 1
+                                bumped = True
+                            if max_consecutive and not bumped:
+                                if any(team_last_slot.get(tid) == slot_index - 1 for tid in chunk_team_ids):
+                                    slot_index += 1
+                                    bumped = True
+                            if not bumped:
+                                break
                         slot_time = phase_start + (match_slot_length * slot_index) if phase_start else None
                         for lane_index, (home_entry, away_entry) in enumerate(round_chunk):
                             lane = lanes[lane_index % len(lanes)]
@@ -1534,7 +1587,10 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                                     phase_lane_slot_counters[lane_counter_key], slot_index + 1
                                 )
                         if max_concurrent:
-                            slot_matches_count[slot_index] += len(round_chunk)
+                            slot_matches_count[slot_index] += n
+                        if max_consecutive:
+                            for tid in chunk_team_ids:
+                                team_last_slot[tid] = slot_index
                         if stagger_groups:
                             global_slot_offset += 1
 
@@ -1608,14 +1664,15 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
         knockout_progression = (phase.seeding_source or {}).get("knockout_progression", "full_bracket")
 
         if bracket_mode == "group_blocks":
+            round_slot_row = 0
             for round_order, round_name, pairs in _ordered_group_block_rounds(carry_matches):
-                for home_entry, away_entry in pairs:
+                for pair_index, (home_entry, away_entry) in enumerate(pairs):
                     home_label = home_entry["label"]
                     away_label = away_entry["label"] if away_entry else "Bye"
                     home_team_id = home_entry.get("tournament_team_id")
                     away_team_id = away_entry.get("tournament_team_id") if away_entry else None
-                    lane = knockout_lanes[knockout_slot_index % len(knockout_lanes)]
-                    scheduled_at = phase_start + (match_slot_length * (knockout_slot_index // len(knockout_lanes))) if phase_start else None
+                    lane = knockout_lanes[pair_index % len(knockout_lanes)]
+                    scheduled_at = phase_start + (match_slot_length * round_slot_row) if phase_start else None
 
                     match = Match(
                         phase_id=phase.id,
@@ -1630,6 +1687,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                         field_name=lane.get("field_name"),
                         field_number=lane.get("field_number"),
                         status=MatchStatus.SCHEDULED,
+                        match_duration_minutes=_resolve_generated_match_duration_minutes(age_group, phase_config, round_name),
                         notes=None if home_team_id and away_team_id else encode_seed_note(home_label, away_label),
                     )
                     db.add(match)
@@ -1638,7 +1696,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                     match_position += 1
                     if scheduled_at:
                         phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
-                    knockout_slot_index += 1
+                round_slot_row += max((len(pairs) + len(knockout_lanes) - 1) // len(knockout_lanes), 1)
 
         for bucket_name, _, _, bucket_entries in carry_matches:
             if not bucket_entries:
@@ -1681,6 +1739,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                             field_name=lane.get("field_name"),
                             field_number=lane.get("field_number"),
                             status=MatchStatus.SCHEDULED,
+                            match_duration_minutes=_resolve_generated_match_duration_minutes(age_group, phase_config, round_name),
                             notes=None if home_team_id and away_team_id else encode_seed_note(home_label, away_label),
                         )
                         db.add(match)
@@ -1936,7 +1995,10 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             stagger_groups = bool(phase_config.get("stagger_groups", False))
             _raw_max = phase_config.get("max_concurrent_matches")
             max_concurrent: int | None = int(_raw_max) if isinstance(_raw_max, (int, float)) and int(_raw_max) > 0 else None
+            _raw_consec = phase_config.get("max_consecutive_group_matches")
+            max_consecutive: int | None = int(_raw_consec) if isinstance(_raw_consec, (int, float)) and int(_raw_consec) > 0 else None
             slot_matches_count: dict[int, int] = defaultdict(int)
+            team_last_slot: dict[str, int] = {}
             global_slot_offset = 0
             phase_group_match_indexes: dict[str, int] = defaultdict(int)
             max_rounds = max((len(plan["rounds"]) for plan in group_plans), default=0)
@@ -1968,10 +2030,25 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                             slot_index = global_slot_offset
                         else:
                             slot_index = max(phase_lane_slot_counters[_lane_key(lane)] for lane in chunk_lanes) if chunk_lanes else 0
-                        if max_concurrent:
-                            n = len(round_chunk)
-                            while slot_matches_count[slot_index] + n > max_concurrent:
+                        # Enforce max_concurrent_matches and max_consecutive_group_matches
+                        n = len(round_chunk)
+                        chunk_team_ids = [
+                            tid
+                            for pair in round_chunk
+                            for tid in (pair[0].get("tournament_team_id"), pair[1].get("tournament_team_id"))
+                            if tid
+                        ]
+                        for _guard in range(1000):  # safety cap to prevent infinite loop
+                            bumped = False
+                            if max_concurrent and slot_matches_count[slot_index] + n > max_concurrent:
                                 slot_index += 1
+                                bumped = True
+                            if max_consecutive and not bumped:
+                                if any(team_last_slot.get(tid) == slot_index - 1 for tid in chunk_team_ids):
+                                    slot_index += 1
+                                    bumped = True
+                            if not bumped:
+                                break
                         slot_time = phase_start + (match_slot_length * slot_index) if phase_start else None
                         for lane_index, (home_entry, away_entry) in enumerate(round_chunk):
                             lane = lanes[lane_index % len(lanes)]
@@ -2003,7 +2080,10 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                                     phase_lane_slot_counters[lane_counter_key], slot_index + 1
                                 )
                         if max_concurrent:
-                            slot_matches_count[slot_index] += len(round_chunk)
+                            slot_matches_count[slot_index] += n
+                        if max_consecutive:
+                            for tid in chunk_team_ids:
+                                team_last_slot[tid] = slot_index
                         if stagger_groups:
                             global_slot_offset += 1
 
@@ -2064,14 +2144,15 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
         knockout_progression = (phase.seeding_source or {}).get("knockout_progression", "full_bracket")
 
         if bracket_mode == "group_blocks":
+            round_slot_row = 0
             for round_order, round_name, pairs in _ordered_group_block_rounds(carry_matches):
-                for home_entry, away_entry in pairs:
+                for pair_index, (home_entry, away_entry) in enumerate(pairs):
                     home_label = home_entry["label"]
                     away_label = away_entry["label"] if away_entry else "Bye"
                     home_team_id = home_entry.get("tournament_team_id")
                     away_team_id = away_entry.get("tournament_team_id") if away_entry else None
-                    lane = knockout_lanes[knockout_slot_index % len(knockout_lanes)]
-                    scheduled_at = phase_start + (match_slot_length * (knockout_slot_index // len(knockout_lanes))) if phase_start else None
+                    lane = knockout_lanes[pair_index % len(knockout_lanes)]
+                    scheduled_at = phase_start + (match_slot_length * round_slot_row) if phase_start else None
                     match = Match(
                         phase_id=phase.id,
                         group_id=None,
@@ -2085,6 +2166,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                         field_name=lane.get("field_name"),
                         field_number=lane.get("field_number"),
                         status=MatchStatus.SCHEDULED,
+                        match_duration_minutes=_resolve_generated_match_duration_minutes(age_group, phase_config, round_name),
                         notes=None if home_team_id and away_team_id else encode_seed_note(home_label, away_label),
                     )
                     db.add(match)
@@ -2093,7 +2175,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                     match_position += 1
                     if scheduled_at:
                         phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
-                    knockout_slot_index += 1
+                round_slot_row += max((len(pairs) + len(knockout_lanes) - 1) // len(knockout_lanes), 1)
 
         for bucket_name, _, _, bucket_entries in carry_matches:
             if not bucket_entries:
@@ -2132,6 +2214,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                             field_name=lane.get("field_name"),
                             field_number=lane.get("field_number"),
                             status=MatchStatus.SCHEDULED,
+                            match_duration_minutes=_resolve_generated_match_duration_minutes(age_group, phase_config, round_name),
                             notes=None if home_team_id and away_team_id else encode_seed_note(home_label, away_label),
                         )
                         db.add(match)
@@ -2639,5 +2722,5 @@ def _serialize_match(match: Match, phase_name: str, phase_type: str, group_name:
         away_tries=match.away_tries,
         referee=match.referee,
         notes=clean_notes,
-        match_duration_minutes=match_duration_minutes,
+        match_duration_minutes=match.match_duration_minutes if match.match_duration_minutes is not None else match_duration_minutes,
     )

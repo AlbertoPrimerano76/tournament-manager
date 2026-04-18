@@ -125,7 +125,7 @@ def _match_slot_duration(match: Match) -> timedelta:
     age_group = match.phase.tournament_age_group if match.phase else None
     structure = age_group.structure_config if age_group and isinstance(age_group.structure_config, dict) else {}
     schedule = structure.get("schedule", {}) if isinstance(structure.get("schedule"), dict) else {}
-    duration = int(schedule.get("match_duration_minutes") or 12)
+    duration = int(match.match_duration_minutes or schedule.get("match_duration_minutes") or 12)
     interval = int(schedule.get("interval_minutes") or 8)
     return timedelta(minutes=max(duration, 1) + max(interval, 0))
 
@@ -331,10 +331,12 @@ async def update_match_schedule(
 
     match.scheduled_at = next_scheduled_at
     match.actual_end_at = next_actual_end_at
+    match.match_duration_minutes = body.match_duration_minutes
     match.field_name = body.field_name
     match.field_number = body.field_number
     match.referee = body.referee
-    match.notes = body.notes
+    if "notes" in body.model_fields_set:
+        match.notes = body.notes
 
     if (
         body.propagate_delay

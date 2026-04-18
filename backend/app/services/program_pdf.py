@@ -130,7 +130,7 @@ def build_age_group_program_pdf(
         story.append(Spacer(1, 4))
 
     document.build(story)
-    filename = f"calendario-{_safe_filename(program.display_name or program.age_group)}.pdf"
+    filename = f"programma-{_safe_filename(tournament_name)}-{_safe_filename(program.display_name or program.age_group)}.pdf"
     return buffer.getvalue(), filename
 
 
@@ -437,7 +437,7 @@ def _build_knockout_section(
     blocks: list = []
     for round_name, round_matches in matches_by_round.items():
         banner = Table(
-            [[Paragraph(_escape_pdf_text(round_name), round_style)]],
+            [[Paragraph(_escape_pdf_text(f"{round_name}{_round_duration_suffix(round_matches, phase.match_duration_minutes)}"), round_style)]],
             colWidths=[sum(_COL_WIDTHS_SCHED) * mm],
         )
         banner.setStyle(TableStyle([
@@ -591,7 +591,9 @@ def _format_phase_meta(phase: ProgramPhaseResponse, tournament_timezone: str = "
     configured = _format_time(phase.configured_start_at, tournament_timezone, "--:--")
     actual = _format_time(phase.phase_start_at, tournament_timezone, configured)
     estimated = _format_time(phase.estimated_end_at, tournament_timezone, "--:--")
-    duration_part = f" · Durata partite: {phase.match_duration_minutes} min" if phase.match_duration_minutes else ""
+    duration_part = ""
+    if phase.match_duration_minutes and not phase.knockout_matches:
+        duration_part = f" · Durata partite: {phase.match_duration_minutes} min"
     if phase.configured_start_at and phase.phase_start_at and phase.phase_start_at != phase.configured_start_at:
         return f"Inizio previsto {configured} · Inizio aggiornato {actual} · Fine stimata {estimated}{duration_part}"
     return f"Inizio {actual} · Fine stimata {estimated}{duration_part}"
@@ -607,6 +609,23 @@ def _sort_matches(matches: list[ProgramMatchResponse]) -> list[ProgramMatchRespo
             m.bracket_position or 0,
         ),
     )
+
+
+def _round_duration_suffix(
+    round_matches: list[ProgramMatchResponse],
+    default_duration_minutes: int | None = None,
+) -> str:
+    durations = {
+        match.match_duration_minutes
+        for match in round_matches
+        if match.match_duration_minutes is not None
+    }
+    if len(durations) != 1:
+        return ""
+    duration = next(iter(durations))
+    if default_duration_minutes is not None and duration == default_duration_minutes:
+        return ""
+    return f" · {duration} min/partita"
 
 
 def _format_time(value, tournament_timezone: str, fallback: str = "—") -> str:

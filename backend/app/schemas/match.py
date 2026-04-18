@@ -1,6 +1,7 @@
 from datetime import datetime
 from pydantic import BaseModel
 from app.models.match import MatchStatus
+from app.services.program_builder import decode_seed_note
 
 
 class MatchCreate(BaseModel):
@@ -24,6 +25,7 @@ class MatchUpdate(BaseModel):
     away_team_id: str | None = None
     scheduled_at: datetime | None = None
     actual_end_at: datetime | None = None
+    match_duration_minutes: int | None = None
     field_name: str | None = None
     field_number: int | None = None
     status: MatchStatus | None = None
@@ -35,6 +37,7 @@ class MatchScheduleUpdate(BaseModel):
     scheduled_at: datetime | None = None
     actual_end_at: datetime | None = None
     delay_minutes: int | None = None
+    match_duration_minutes: int | None = None
     field_name: str | None = None
     field_number: int | None = None
     referee: str | None = None
@@ -100,6 +103,7 @@ class MatchResponse(BaseModel):
             "scheduled_at": getattr(match, "scheduled_at"),
             "original_scheduled_at": getattr(match, "original_scheduled_at", None),
             "actual_end_at": getattr(match, "actual_end_at"),
+            "match_duration_minutes": getattr(match, "match_duration_minutes", None) if getattr(match, "match_duration_minutes", None) is not None else match_duration_minutes,
             "field_name": getattr(match, "field_name"),
             "field_number": getattr(match, "field_number"),
             "status": getattr(match, "status"),
@@ -113,7 +117,6 @@ class MatchResponse(BaseModel):
             "away_label": None,
             "home_logo_url": None,
             "away_logo_url": None,
-            "match_duration_minutes": match_duration_minutes,
         }
 
         match_dict = getattr(match, "__dict__", {})
@@ -128,6 +131,10 @@ class MatchResponse(BaseModel):
         if away_team_model is not None:
             data["away_label"] = getattr(away_team_model, "name", None)
             data["away_logo_url"] = getattr(away_team_model, "logo_url", None)
+        if data["home_label"] is None or data["away_label"] is None:
+            seed_home, seed_away, _ = decode_seed_note(getattr(match, "notes", None))
+            data["home_label"] = data["home_label"] or seed_home
+            data["away_label"] = data["away_label"] or seed_away
 
         return cls.model_validate(data)
 

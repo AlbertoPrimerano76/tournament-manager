@@ -1049,8 +1049,10 @@ function ProgramMatchCard({
   const [homeTries, setHomeTries] = useState(match.home_tries?.toString() ?? '')
   const [awayTries, setAwayTries] = useState(match.away_tries?.toString() ?? '')
   const [scheduledAt, setScheduledAt] = useState(toLocalDateTimeValue(match.scheduled_at))
-  const [actualEndAt, setActualEndAt] = useState(getInitialActualEndAt(match.scheduled_at, match.actual_end_at, matchDurationMinutes))
+  const effectiveMatchDurationMinutes = match.match_duration_minutes ?? matchDurationMinutes
+  const [actualEndAt, setActualEndAt] = useState(getInitialActualEndAt(match.scheduled_at, match.actual_end_at, effectiveMatchDurationMinutes))
   const [delayMinutes, setDelayMinutes] = useState('')
+  const [manualMatchDurationMinutes, setManualMatchDurationMinutes] = useState(match.match_duration_minutes?.toString() ?? '')
   const [fieldName, setFieldName] = useState(match.field_name ?? '')
   const [fieldNumber, setFieldNumber] = useState(match.field_number?.toString() ?? '')
   const [referee, setReferee] = useState(match.referee ?? '')
@@ -1075,8 +1077,9 @@ function ProgramMatchCard({
     setHomeTries(match.home_tries?.toString() ?? '')
     setAwayTries(match.away_tries?.toString() ?? '')
     setScheduledAt(toLocalDateTimeValue(match.scheduled_at))
-    setActualEndAt(getInitialActualEndAt(match.scheduled_at, match.actual_end_at, matchDurationMinutes))
+    setActualEndAt(getInitialActualEndAt(match.scheduled_at, match.actual_end_at, match.match_duration_minutes ?? matchDurationMinutes))
     setDelayMinutes('')
+    setManualMatchDurationMinutes(match.match_duration_minutes?.toString() ?? '')
     setFieldName(match.field_name ?? '')
     setFieldNumber(match.field_number?.toString() ?? '')
     setReferee(match.referee ?? '')
@@ -1089,14 +1092,15 @@ function ProgramMatchCard({
     ? group.teams.filter((item) => !item.is_placeholder && item.tournament_team_id)
         .map((item) => ({ value: item.tournament_team_id!, label: item.label }))
     : participants.map((item) => ({ value: item.id, label: item.team_name }))
+  const activeDurationMinutes = manualMatchDurationMinutes ? Number(manualMatchDurationMinutes) : effectiveMatchDurationMinutes
   const scheduledAtValue = scheduledAt || toLocalDateTimeValue(match.scheduled_at)
-  const actualEndAtValue = actualEndAt || getInitialActualEndAt(match.scheduled_at, match.actual_end_at, matchDurationMinutes)
-  const expectedEndAt = deriveExpectedEnd(scheduledAtValue || match.scheduled_at, matchDurationMinutes)
-  const slotDeadlineAt = deriveSlotDeadline(scheduledAtValue || match.scheduled_at, matchDurationMinutes, intervalMinutes)
+  const actualEndAtValue = actualEndAt || getInitialActualEndAt(match.scheduled_at, match.actual_end_at, activeDurationMinutes)
+  const expectedEndAt = deriveExpectedEnd(scheduledAtValue || match.scheduled_at, activeDurationMinutes)
+  const slotDeadlineAt = deriveSlotDeadline(scheduledAtValue || match.scheduled_at, activeDurationMinutes, intervalMinutes)
   const calculatedDelayMinutes = deriveDelayMinutes(
     scheduledAtValue || match.scheduled_at,
     actualEndAtValue || match.actual_end_at,
-    matchDurationMinutes,
+    activeDurationMinutes,
     intervalMinutes,
   )
   const visibleDelayMinutes = delayMinutes === '' ? calculatedDelayMinutes : Number(delayMinutes)
@@ -1123,6 +1127,7 @@ function ProgramMatchCard({
             scheduled_at: scheduledAtValue ? new Date(scheduledAtValue).toISOString() : match.scheduled_at,
             actual_end_at: new Date(actualEndAtValue).toISOString(),
             delay_minutes: calculatedDelayMinutes,
+            match_duration_minutes: manualMatchDurationMinutes ? Number(manualMatchDurationMinutes) : null,
             field_name: fieldName.trim() || null,
             field_number: fieldNumber ? Number(fieldNumber) : null,
             referee: referee.trim() || null,
@@ -1171,6 +1176,7 @@ function ProgramMatchCard({
           scheduled_at: scheduledAtValue ? new Date(scheduledAtValue).toISOString() : null,
           actual_end_at: actualEndAtValue ? new Date(actualEndAtValue).toISOString() : null,
           delay_minutes: delayMinutes === '' ? null : Number(delayMinutes),
+          match_duration_minutes: manualMatchDurationMinutes ? Number(manualMatchDurationMinutes) : null,
           field_name: fieldName.trim() || null,
           field_number: fieldNumber ? Number(fieldNumber) : null,
           referee: referee.trim() || null,
@@ -1260,10 +1266,11 @@ function ProgramMatchCard({
         <p><span className="font-semibold text-slate-900">Orario:</span> {match.scheduled_at ? format(new Date(match.scheduled_at), 'HH:mm', { locale: it }) : 'Da definire'}</p>
         <p><span className="font-semibold text-slate-900">Campo:</span> {match.field_name ? `${match.field_name}${match.field_number ? ` · Campo ${match.field_number}` : ''}` : 'Da definire'}</p>
         <p><span className="font-semibold text-slate-900">Arbitro:</span> {match.referee || 'Da definire'}</p>
-        {(adminVariant === 'results' || adminVariant === 'delays') && (
+        <p><span className="font-semibold text-slate-900">Durata:</span> {activeDurationMinutes} min</p>
+        <p><span className="font-semibold text-slate-900">Fine prevista:</span> {expectedEndAt ? format(expectedEndAt, 'HH:mm', { locale: it }) : 'Da definire'}</p>
+        <p><span className="font-semibold text-slate-900">Slot fino a:</span> {slotDeadlineAt ? format(slotDeadlineAt, 'HH:mm', { locale: it }) : 'Da definire'}</p>
+        {(adminVariant === 'results' || adminVariant === 'delays' || adminVariant === 'full' || adminVariant === 'schedule') && (
           <>
-            <p><span className="font-semibold text-slate-900">Fine prevista:</span> {expectedEndAt ? format(expectedEndAt, 'HH:mm', { locale: it }) : 'Da definire'}</p>
-            <p><span className="font-semibold text-slate-900">Slot fino a:</span> {slotDeadlineAt ? format(slotDeadlineAt, 'HH:mm', { locale: it }) : 'Da definire'}</p>
             <p><span className="font-semibold text-slate-900">Fine reale:</span> {match.actual_end_at ? format(new Date(match.actual_end_at), 'HH:mm', { locale: it }) : 'Da definire'}</p>
             <p>
               <span className="font-semibold text-slate-900">Ritardo:</span>{' '}
@@ -1382,6 +1389,20 @@ function ProgramMatchCard({
               )}
               {(adminVariant === 'full' || adminVariant === 'schedule') && (
                 <>
+                  <label className="text-xs font-semibold text-slate-500">
+                    Durata partita
+                    <div className="mt-1 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                      <input
+                        type="number"
+                        min="1"
+                        value={manualMatchDurationMinutes}
+                        onChange={(e) => setManualMatchDurationMinutes(e.target.value)}
+                        placeholder={`${effectiveMatchDurationMinutes}`}
+                        className="block min-w-0 flex-1 bg-transparent text-sm text-slate-900 focus:outline-none"
+                      />
+                      <span className="text-xs font-medium text-slate-500">min</span>
+                    </div>
+                  </label>
                   <label className="text-xs font-semibold text-slate-500">
                     Campo
                     <select

@@ -488,23 +488,25 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
             >
               Programma completo
             </Link>
-            <Link
-              to={`/admin/tornei/${tournament.id}/calendario`}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 transition-colors hover:bg-sky-100"
-            >
-              <Calendar className="h-4 w-4" />
-              Calendario impianti
-            </Link>
             {!isScoreKeeper && (
-              <button
-                type="button"
-                onClick={() => void handleResetTournamentResults()}
-                disabled={resetTournamentResults.isPending}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50"
-              >
-                <AlertTriangle className="h-4 w-4" />
-                {resetTournamentResults.isPending ? 'Reset in corso...' : 'Reset risultati torneo'}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  to={`/admin/tornei/${tournament.id}/calendario`}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 transition-colors hover:bg-sky-100"
+                >
+                  <Calendar className="h-4 w-4" />
+                  Calendario impianti
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => void handleResetTournamentResults()}
+                  disabled={resetTournamentResults.isPending}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50"
+                >
+                  <AlertTriangle className="h-4 w-4" />
+                  {resetTournamentResults.isPending ? 'Reset in corso...' : 'Reset risultati torneo'}
+                </button>
+              </div>
             )}
             <button
               type="button"
@@ -532,7 +534,7 @@ function TournamentOperationsScreen({ tournament }: { tournament: Tournament }) 
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Operatività</p>
           <h2 className="mt-1 text-2xl font-black text-slate-950">Risultati per Categoria</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Inserisci i risultati delle partite per ogni categoria. Puoi aggiornare i punteggi e segnare le partite come completate.
+            Qui entri in ogni categoria per aggiornare risultati, ritardi e stato delle partite senza perdere il contesto del torneo. Usa questa pagina per aprire velocemente la gestione operativa corretta.
           </p>
         </div>
         <div className="p-6">
@@ -594,7 +596,7 @@ function TournamentCategoriesScreen({ tournament }: { tournament: Tournament }) 
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-800 transition-colors hover:bg-green-100 disabled:opacity-50"
             >
               <Download className="h-4 w-4" />
-              {isFullXlsDl ? 'Download...' : 'Excel completo'}
+              {isFullXlsDl ? 'Download...' : 'Excel tutte le categorie'}
             </button>
             <button
               type="button"
@@ -603,7 +605,7 @@ function TournamentCategoriesScreen({ tournament }: { tournament: Tournament }) 
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:opacity-50"
             >
               <Download className="h-4 w-4" />
-              {isFullPdfDl ? 'Download...' : 'PDF completo'}
+              {isFullPdfDl ? 'Download...' : 'PDF tutte le categorie'}
             </button>
             <button
               type="button"
@@ -759,7 +761,7 @@ function TournamentFieldScheduleScreen({ tournament }: { tournament: Tournament 
               className="inline-flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-800 transition-colors hover:bg-green-100 disabled:opacity-50"
             >
               <Download className="h-4 w-4" />
-              {isCampoXlsDl ? 'Download...' : 'Excel impianti'}
+              {isCampoXlsDl ? 'Download...' : 'Excel calendario impianti'}
             </button>
             <button
               type="button"
@@ -768,7 +770,7 @@ function TournamentFieldScheduleScreen({ tournament }: { tournament: Tournament 
               className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:opacity-50"
             >
               <Download className="h-4 w-4" />
-              {isCampoPdfDl ? 'Download...' : 'PDF impianti'}
+              {isCampoPdfDl ? 'Download...' : 'PDF calendario impianti'}
             </button>
             <Link
               to={`/admin/tornei/${tournament.id}/gestione`}
@@ -2286,26 +2288,26 @@ function AgeGroupUnifiedCard({
           )}
           {hasProgram && (
             <>
-              <button
-                type="button"
-                onClick={() => void handleDlXls()}
-                disabled={isXlsDl}
-                className="inline-flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm font-semibold text-green-800 transition-colors hover:bg-green-100 disabled:opacity-50"
-              >
-                <Download className="h-3.5 w-3.5" />
-                {isXlsDl ? '...' : `Excel ${agLabel}`}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleDlPdf()}
-                disabled={isPdfDl}
-                className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:opacity-50"
-              >
-                <Download className="h-3.5 w-3.5" />
-                {isPdfDl ? '...' : `PDF ${agLabel}`}
-              </button>
-            </>
-          )}
+                <button
+                  type="button"
+                  onClick={() => void handleDlXls()}
+                  disabled={isXlsDl}
+                  className="inline-flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm font-semibold text-green-800 transition-colors hover:bg-green-100 disabled:opacity-50"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  {isXlsDl ? '...' : `Excel ${tournament.name} · ${agLabel}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDlPdf()}
+                  disabled={isPdfDl}
+                  className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  {isPdfDl ? '...' : `PDF ${tournament.name} · ${agLabel}`}
+                </button>
+              </>
+            )}
           <button
             type="button"
             disabled={isPending}
@@ -2489,6 +2491,12 @@ function AgeGroupConfigurationScreen({
   const [isPdfDownloading, setIsPdfDownloading] = useState(false)
   const [isXlsxDownloading, setIsXlsxDownloading] = useState(false)
   const [xlsxError, setXlsxError] = useState('')
+  const orderedAgeGroups = AGE_GROUP_OPTIONS
+    .map((option) => ageGroups?.find((item) => item.age_group === option.value) ?? null)
+    .filter((item): item is AgeGroup => Boolean(item))
+  const currentAgeGroupIndex = orderedAgeGroups.findIndex((item) => item.id === ageGroupId)
+  const previousAgeGroup = currentAgeGroupIndex > 0 ? orderedAgeGroups[currentAgeGroupIndex - 1] : null
+  const nextAgeGroup = currentAgeGroupIndex >= 0 && currentAgeGroupIndex < orderedAgeGroups.length - 1 ? orderedAgeGroups[currentAgeGroupIndex + 1] : null
 
   if (isLoading) {
     return <div className="py-12 text-center text-sm text-slate-500">Caricamento categoria...</div>
@@ -2572,7 +2580,7 @@ function AgeGroupConfigurationScreen({
                   className="inline-flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-800 transition-colors hover:bg-green-100 disabled:opacity-50"
                 >
                   <Download className="h-4 w-4" />
-                  {isXlsxDownloading ? 'Download...' : `Excel ${ageGroup!.display_name || ageGroup!.age_group}`}
+                  {isXlsxDownloading ? 'Download...' : `Excel ${tournament.name} · ${ageGroup!.display_name || ageGroup!.age_group}`}
                 </button>
                 {xlsxError && (
                   <p className="w-full text-xs font-medium text-red-600">{xlsxError}</p>
@@ -2584,7 +2592,7 @@ function AgeGroupConfigurationScreen({
                   className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100 disabled:opacity-50"
                 >
                   <Download className="h-4 w-4" />
-                  {isPdfDownloading ? 'Download...' : `PDF ${ageGroup!.display_name || ageGroup!.age_group}`}
+                  {isPdfDownloading ? 'Download...' : `PDF ${tournament.name} · ${ageGroup!.display_name || ageGroup!.age_group}`}
                 </button>
               </>
             )}
@@ -2635,6 +2643,37 @@ function AgeGroupConfigurationScreen({
             </button>
           ))}
         </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link
+            to={`/admin/tornei/${tournament.id}/categorie`}
+            className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+          >
+            Tutte le categorie
+          </Link>
+          <Link
+            to={`/admin/tornei/${tournament.id}/categorie/${ageGroup.id}/gestione`}
+            className="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+          >
+            Vai a Partite
+          </Link>
+          {previousAgeGroup && (
+            <Link
+              to={`/admin/tornei/${tournament.id}/categorie/${previousAgeGroup.id}`}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              ← {previousAgeGroup.display_name || previousAgeGroup.age_group}
+            </Link>
+          )}
+          {nextAgeGroup && (
+            <Link
+              to={`/admin/tornei/${tournament.id}/categorie/${nextAgeGroup.id}`}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              {nextAgeGroup.display_name || nextAgeGroup.age_group} →
+            </Link>
+          )}
+        </div>
       </div>
 
       <AgeGroupConfigurationPanel
@@ -2657,6 +2696,12 @@ function AgeGroupOperationsScreen({
 }) {
   const { data: ageGroups, isLoading } = useAdminTournamentAgeGroups(tournament.id)
   const ageGroup = ageGroups?.find((item) => item.id === ageGroupId) ?? null
+  const orderedAgeGroups = AGE_GROUP_OPTIONS
+    .map((option) => ageGroups?.find((item) => item.age_group === option.value) ?? null)
+    .filter((item): item is AgeGroup => Boolean(item))
+  const currentAgeGroupIndex = orderedAgeGroups.findIndex((item) => item.id === ageGroupId)
+  const previousAgeGroup = currentAgeGroupIndex > 0 ? orderedAgeGroups[currentAgeGroupIndex - 1] : null
+  const nextAgeGroup = currentAgeGroupIndex >= 0 && currentAgeGroupIndex < orderedAgeGroups.length - 1 ? orderedAgeGroups[currentAgeGroupIndex + 1] : null
 
   if (isLoading) {
     return <div className="py-12 text-center text-sm text-slate-500">Caricamento gestione categoria...</div>
@@ -2692,10 +2737,44 @@ function AgeGroupOperationsScreen({
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
+              to={`/admin/tornei/${tournament.id}/categorie`}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Tutte le categorie
+            </Link>
+            <Link
+              to={`/admin/tornei/${tournament.id}/categorie/${ageGroup.id}`}
+              className="inline-flex items-center justify-center rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+            >
+              Configura categoria
+            </Link>
+            <Link
               to={`/admin/tornei/${tournament.id}/calendario`}
               className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
             >
               Calendario impianti
+            </Link>
+            {previousAgeGroup && (
+              <Link
+                to={`/admin/tornei/${tournament.id}/categorie/${previousAgeGroup.id}/gestione`}
+                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                ← {previousAgeGroup.display_name || previousAgeGroup.age_group}
+              </Link>
+            )}
+            {nextAgeGroup && (
+              <Link
+                to={`/admin/tornei/${tournament.id}/categorie/${nextAgeGroup.id}/gestione`}
+                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                {nextAgeGroup.display_name || nextAgeGroup.age_group} →
+              </Link>
+            )}
+            <Link
+              to="/admin/tornei"
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Torna ai tornei
             </Link>
           </div>
         </div>
@@ -4074,12 +4153,12 @@ function AgeGroupConfigurationPanel({
                         </div>
                       )}
 
-                      {/* Per-phase match duration override for knockout phases */}
+                      {/* Special duration override for the 1-2 final generated by this knockout phase */}
                       {activePhase.phase_type === 'KNOCKOUT' && (
                         <div className="mt-4 rounded-[1.3rem] border border-slate-200 bg-slate-50 p-4">
-                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Durata partite di questa fase</p>
+                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Durata speciale finale 1-2</p>
                           <p className="mt-1 text-sm text-slate-600">
-                            Lascia vuoto per usare la durata globale ({structure.schedule.match_duration_minutes ?? 12} min). Imposta qui se i tempi della finale differiscono dai gironi.
+                            Lascia vuoto per usare la durata globale ({structure.schedule.match_duration_minutes ?? 12} min). Questo override si applica solo alla finale per il 1°-2° posto, non a semifinali, 3°-4° o altre partite.
                           </p>
                           <div className="mt-3 grid gap-3 sm:grid-cols-3">
                             <FormField label="N° tempi" hint="Es. 2">
@@ -4251,7 +4330,7 @@ function AgeGroupConfigurationPanel({
                               Questa fase può chiudersi qui: nessuna squadra va avanti finché non aggiungi un instradamento.
                             </div>
                           ) : (
-                            <div className="mt-4 space-y-3">
+                          <div className="mt-4 space-y-3">
                               {phase.advancement_routes.map((route) => {
                                 const targetPhase = structure.phases.find((candidate) => candidate.id === route.target_phase_id)
                                 const sourceOrderPreview = describeRouteSourceEntries(phase, route)
@@ -4357,6 +4436,9 @@ function AgeGroupConfigurationPanel({
                                         </FormField>
                                       </div>
                                     )}
+                                    <div className="mt-3 rounded-[1.1rem] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                                      Più fasi possono convergere sulla stessa fase finale: collega anche un&apos;altra fase a questa stessa destinazione per creare una finale unica con ingressi multipli.
+                                    </div>
                                   </div>
                                 )
                               })}
@@ -4466,13 +4548,16 @@ function AgeGroupConfigurationPanel({
                                           </button>
                                         )}
                                       </div>
-                                      <button
-                                        type="button"
-                                        onClick={() => removeAdvancementRoute(index, route.id)}
-                                        className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeAdvancementRoute(index, route.id)}
+                                      className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                    </div>
+                                    <div className="mt-3 rounded-[1.1rem] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                                      Se vuoi una finale unica dopo due semifinali o due fasi distinte, instrada entrambe verso la stessa fase successiva.
                                     </div>
                                   </div>
                                 )
@@ -5148,6 +5233,7 @@ function serializeStructureForComparison(structure: StructureConfig) {
       knockout_progression: phase.knockout_progression,
       num_groups: phase.num_groups,
       group_sizes: phase.group_sizes,
+      group_custom_names: phase.group_custom_names,
       qualifiers_per_group: phase.qualifiers_per_group,
       best_extra_teams: phase.best_extra_teams,
       next_phase_type: phase.next_phase_type,
@@ -5486,7 +5572,8 @@ function buildTournamentFieldSchedule(ageGroups: AgeGroup[], programs: AgeGroupP
         for (const match of allMatches) {
           if (!match.scheduled_at || !match.field_name) continue
           const startsAt = new Date(match.scheduled_at)
-          const endsAt = new Date(startsAt.getTime() + (durationMinutes * 60_000))
+          const matchDurationMinutes = match.match_duration_minutes ?? durationMinutes
+          const endsAt = new Date(startsAt.getTime() + (matchDurationMinutes * 60_000))
           const fieldKey = `${match.field_name}${match.field_number ? ` · Campo ${match.field_number}` : ''}`
           const entries = grouped.get(fieldKey) ?? []
           entries.push({
