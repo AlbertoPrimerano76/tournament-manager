@@ -355,7 +355,11 @@ def _is_top_final_round(round_name: str | None) -> bool:
     if not round_name:
         return False
     normalized = str(round_name).strip().lower()
-    return normalized == "finale" or "piazzamento 1-2" in normalized
+    return (
+        normalized == "finale"
+        or "piazzamento 1-2" in normalized
+        or normalized == "tabellone principale · finale"
+    )
 
 
 def _resolve_generated_match_duration_minutes(

@@ -1298,10 +1298,20 @@ function ProgramMatchCard({
                   onChange={(e) => setHomeTeamId(e.target.value)}
                   className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                 >
-                  <option value="">{homePlaceholderOptionLabel}</option>
-                  {availableParticipantOptions.map((option) => (
-                    <option key={`home-${match.id}-${option.value}`} value={option.value}>{option.label}</option>
-                  ))}
+                  {homePlaceholderOptionLabel !== 'Da definire' ? (
+                    <optgroup label="Non ancora assegnata">
+                      <option value="">{homePlaceholderOptionLabel}</option>
+                    </optgroup>
+                  ) : (
+                    <option value="">— Da definire</option>
+                  )}
+                  {availableParticipantOptions.length > 0 && (
+                    <optgroup label="Squadre disponibili">
+                      {availableParticipantOptions.map((option) => (
+                        <option key={`home-${match.id}-${option.value}`} value={option.value}>{option.label}</option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </label>
               <label className="text-xs font-semibold text-slate-500">
@@ -1311,10 +1321,20 @@ function ProgramMatchCard({
                   onChange={(e) => setAwayTeamId(e.target.value)}
                   className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                 >
-                  <option value="">{awayPlaceholderOptionLabel}</option>
-                  {availableParticipantOptions.map((option) => (
-                    <option key={`away-${match.id}-${option.value}`} value={option.value}>{option.label}</option>
-                  ))}
+                  {awayPlaceholderOptionLabel !== 'Da definire' ? (
+                    <optgroup label="Non ancora assegnata">
+                      <option value="">{awayPlaceholderOptionLabel}</option>
+                    </optgroup>
+                  ) : (
+                    <option value="">— Da definire</option>
+                  )}
+                  {availableParticipantOptions.length > 0 && (
+                    <optgroup label="Squadre disponibili">
+                      {availableParticipantOptions.map((option) => (
+                        <option key={`away-${match.id}-${option.value}`} value={option.value}>{option.label}</option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </label>
             </div>
