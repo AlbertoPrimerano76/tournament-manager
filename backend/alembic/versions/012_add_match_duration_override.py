@@ -1,7 +1,7 @@
 """add match duration override to matches
 
 Revision ID: 012_add_match_duration_override
-Revises: 011_fix_user_assignment_unique_constraint
+Revises: 011
 Create Date: 2026-04-18 12:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "012_add_match_duration_override"
-down_revision = "011_fix_user_assignment_unique_constraint"
+down_revision = "011"
 branch_labels = None
 depends_on = None
 
