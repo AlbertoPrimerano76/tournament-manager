@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { AgeGroupProgram, ProgramGroup, ProgramMatch, ProgramPhase, TournamentParticipant } from '@/api/tournaments'
 import { useBulkScheduleGroupMatches, useBulkSchedulePhaseMatches, useEnterMatchScore, useUpdateMatchSchedule } from '@/api/matches'
 import { useMoveAgeGroupTeam, useRegenerateAgeGroupPhase, useUpdateMatchParticipants } from '@/api/tournaments'
@@ -1088,10 +1088,11 @@ function ProgramMatchCard({
     setAwayTeamId(match.away_team_id ?? '')
   }, [match])
 
-  const availableParticipantOptions = group
+  const availableParticipantOptions = useMemo(() => group
     ? group.teams.filter((item) => !item.is_placeholder && item.tournament_team_id)
         .map((item) => ({ value: item.tournament_team_id!, label: item.label }))
-    : participants.map((item) => ({ value: item.id, label: item.team_name }))
+    : participants.map((item) => ({ value: item.id, label: item.team_name })),
+  [group, participants])
   const homePlaceholderOptionLabel = match.home_team_id ? 'Da definire' : (match.home_label || 'Da definire')
   const awayPlaceholderOptionLabel = match.away_team_id ? 'Da definire' : (match.away_label || 'Da definire')
   const activeDurationMinutes = manualMatchDurationMinutes ? Number(manualMatchDurationMinutes) : effectiveMatchDurationMinutes

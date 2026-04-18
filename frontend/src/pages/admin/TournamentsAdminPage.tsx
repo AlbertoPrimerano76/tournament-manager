@@ -2309,8 +2309,9 @@ function AgeGroupUnifiedCard({
             onClick={() => setConfirmingRemove(true)}
             className="inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
             title="Rimuovi categoria"
+            aria-label="Rimuovi categoria"
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -2321,11 +2322,12 @@ function AgeGroupUnifiedCard({
         <StatusPill label={hasProgram ? `Programma · ${completedMatches}/${totalMatches}` : 'Programma non generato'} tone={hasProgram ? 'fuchsia' : 'slate'} />
       </div>
       {confirmingRemove && (
-        <div className="mt-3 flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
-          <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
-          <p className="flex-1 text-sm font-semibold text-red-800">Rimuovere «{group.display_name || group.age_group}»? I dati della categoria verranno persi.</p>
+        <div role="alertdialog" aria-modal="false" aria-labelledby={`remove-label-${group.id}`} className="mt-3 flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" aria-hidden="true" />
+          <p id={`remove-label-${group.id}`} className="flex-1 text-sm font-semibold text-red-800">Rimuovere «{group.display_name || group.age_group}»? I dati della categoria verranno persi.</p>
           <button onClick={() => { onRemove(group); setConfirmingRemove(false) }} disabled={isPending} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50">Rimuovi</button>
-          <button onClick={() => setConfirmingRemove(false)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100">Annulla</button>
+          {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+          <button autoFocus onClick={() => setConfirmingRemove(false)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100">Annulla</button>
         </div>
       )}
     </div>
