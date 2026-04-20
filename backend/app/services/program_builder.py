@@ -323,14 +323,27 @@ def _resolve_phase_start(
     base = _resolve_phase_date(age_group, phase_index, phase_config)
     if not base:
         return fallback_start
+
     explicit_start = phase_config.get("start_time")
     if isinstance(explicit_start, str) and explicit_start:
         # User explicitly configured a start time — honour it as-is.
         return datetime.combine(base.date(), _parse_start_time(explicit_start), tzinfo=_tournament_tz(age_group))
-    # Auto-scheduling: keep each phase anchored to its configured/base start time.
-    # Do not force cascading offsets from previous phases, otherwise starts can drift
-    # by match-duration steps across chained knockout phases.
-    return _phase_start_datetime(age_group, phase_index) or fallback_start
+
+    base_start = _phase_start_datetime(age_group, phase_index)
+    if not fallback_start:
+        return base_start
+    if not base_start:
+        return fallback_start
+
+    # Knockout phases in chained eliminations should stay anchored to the configured
+    # base hour (e.g. 11:30) and not drift by match-duration increments.
+    phase_type = str(phase_config.get("phase_type") or "").upper()
+    if phase_type == PhaseType.KNOCKOUT.value:
+        return base_start
+
+    # For non-knockout phases keep a minimum break from the previous phase.
+    minimum_start = fallback_start + _PHASE_BREAK
+    return minimum_start if base_start < minimum_start else base_start
 
 
 def _resolve_phase_duration_minutes(age_group: TournamentAgeGroup, phase_config: dict[str, Any] | None = None) -> int:
