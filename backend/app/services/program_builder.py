@@ -699,6 +699,24 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
                 return candidate
             candidate = max(e for _, e in conflicts)
 
+    # Build a map of phase_id → configured start datetime for phases that have an explicit
+    # start_time in the structure config. Matches at this anchor time must never be moved
+    # by cross-age-group conflict resolution — the admin explicitly chose that time.
+    _structure = age_group.structure_config or {}
+    _phases_cfg: list[dict[str, Any]] = _structure.get("phases", []) if isinstance(_structure, dict) else []
+    anchored_phase_starts: dict[str, datetime] = {}
+    for _phase in age_group.phases:
+        _idx = _phase.phase_order - 1
+        if _idx < len(_phases_cfg) and isinstance(_phases_cfg[_idx], dict):
+            _pc = _phases_cfg[_idx]
+            _explicit_st = _pc.get("start_time")
+            if isinstance(_explicit_st, str) and _explicit_st:
+                _base = _resolve_phase_date(age_group, _idx, _pc)
+                if _base:
+                    anchored_phase_starts[_phase.id] = datetime.combine(
+                        _base.date(), _parse_start_time(_explicit_st), tzinfo=_tournament_tz(age_group)
+                    )
+
     # ── 1. Group-stage matches (resolved independently by scheduled_at) ──────
     for match in group_stage_matches:
         if not match.scheduled_at or not match.field_name:
@@ -708,6 +726,12 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
             end_time = _match_end_time(match, slot_delta)
             if end_time:
                 occupied_slots[field_key].append((match.scheduled_at, end_time))
+            continue
+        # If this match is at the phase's explicitly configured start time, honour it
+        # as-is: the admin chose that time intentionally and it must not be displaced.
+        anchor = anchored_phase_starts.get(match.phase_id) if match.phase_id else None
+        if anchor is not None and match.scheduled_at == anchor:
+            occupied_slots[field_key].append((match.scheduled_at, match.scheduled_at + slot_delta))
             continue
         resolved = _find_free_slot(field_key, match.scheduled_at)
         match.scheduled_at = resolved
@@ -1296,6 +1320,8 @@ async def _sync_future_age_group_matches(age_group: TournamentAgeGroup, phases_c
                             if _match_has_recorded_result(match):
                                 if not stagger_groups:
                                     phase_lane_slot_counters[lane_counter_key] = slot_index + 1
+                                if match.scheduled_at:
+                                    phase_end = max(phase_end or match.scheduled_at, match.scheduled_at + match_slot_length)
                                 continue
                             match.scheduled_at = slot_time
                             match.field_name = lane.get("field_name")
@@ -1314,6 +1340,8 @@ async def _sync_future_age_group_matches(age_group: TournamentAgeGroup, phases_c
             )
             for match_index, match in enumerate(matches):
                 if _match_has_recorded_result(match):
+                    if match.scheduled_at:
+                        phase_end = max(phase_end or match.scheduled_at, match.scheduled_at + match_slot_length)
                     continue
                 lane = lanes[match_index % len(lanes)]
                 slot_time = phase_start + (match_slot_length * (match_index // len(lanes))) if phase_start else None
