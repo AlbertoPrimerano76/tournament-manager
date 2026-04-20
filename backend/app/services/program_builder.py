@@ -431,6 +431,58 @@ def _group_stage_rounds(
     return rounds + reverse_rounds
 
 
+def _optimize_single_lane_round_sequence(
+    rounds: list[list[tuple[dict[str, Any], dict[str, Any]]]],
+) -> list[list[tuple[dict[str, Any], dict[str, Any]]]]:
+    """Greedy ordering for single-lane groups to reduce back-to-back matches.
+
+    Keeps all pairings unchanged, but reorders when they are played.
+    """
+    flat_pairs: list[tuple[int, tuple[dict[str, Any], dict[str, Any]]]] = [
+        (index, pair)
+        for index, pair in enumerate(
+            [pair for round_pairs in rounds for pair in round_pairs]
+        )
+    ]
+    if len(flat_pairs) <= 1:
+        return [[pair] for _, pair in flat_pairs]
+
+    scheduled: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    last_seen: dict[str, int] = {}
+    previous_teams: set[str] = set()
+    slot_index = 0
+    pending = flat_pairs.copy()
+
+    while pending:
+        candidate_scores: list[tuple[int, int, int, tuple[dict[str, Any], dict[str, Any]], int, set[str]]] = []
+        for original_index, pair in pending:
+            teams = {
+                str(team_id)
+                for team_id in (pair[0].get("tournament_team_id"), pair[1].get("tournament_team_id"))
+                if team_id
+            }
+            overlap = len(previous_teams.intersection(teams))
+            if teams:
+                min_rest = min(
+                    slot_index - last_seen.get(team_id, -1000)
+                    for team_id in teams
+                )
+            else:
+                min_rest = 1000
+            candidate_scores.append((overlap, -min_rest, original_index, pair, original_index, teams))
+
+        best = min(candidate_scores, key=lambda item: (item[0], item[1], item[2]))
+        _, _, _, selected_pair, selected_original_index, selected_teams = best
+        scheduled.append(selected_pair)
+        for team_id in selected_teams:
+            last_seen[team_id] = slot_index
+        previous_teams = selected_teams
+        slot_index += 1
+        pending = [item for item in pending if item[0] != selected_original_index]
+
+    return [[pair] for pair in scheduled]
+
+
 def _group_lanes(
     age_group: TournamentAgeGroup,
     phase_config: dict[str, Any],
@@ -1541,6 +1593,10 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             _raw_consec = phase_config.get("max_consecutive_group_matches")
             # Default to True: prevent back-to-back matches unless explicitly disabled (set to 0)
             max_consecutive: bool = not (isinstance(_raw_consec, (int, float)) and int(_raw_consec) == 0)
+            if max_consecutive:
+                for plan in group_plans:
+                    if len(plan["lanes"]) == 1:
+                        plan["rounds"] = _optimize_single_lane_round_sequence(plan["rounds"])
             slot_matches_count: dict[int, int] = defaultdict(int)
             team_last_slot: dict[str, int] = {}
             global_slot_offset = 0
@@ -2035,6 +2091,10 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             _raw_consec = phase_config.get("max_consecutive_group_matches")
             # Default to True: prevent back-to-back matches unless explicitly disabled (set to 0)
             max_consecutive: bool = not (isinstance(_raw_consec, (int, float)) and int(_raw_consec) == 0)
+            if max_consecutive:
+                for plan in group_plans:
+                    if len(plan["lanes"]) == 1:
+                        plan["rounds"] = _optimize_single_lane_round_sequence(plan["rounds"])
             slot_matches_count: dict[int, int] = defaultdict(int)
             team_last_slot: dict[str, int] = {}
             global_slot_offset = 0
