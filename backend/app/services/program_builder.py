@@ -1511,7 +1511,8 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             _raw_max = phase_config.get("max_concurrent_matches")
             max_concurrent: int | None = int(_raw_max) if isinstance(_raw_max, (int, float)) and int(_raw_max) > 0 else None
             _raw_consec = phase_config.get("max_consecutive_group_matches")
-            max_consecutive: int | None = int(_raw_consec) if isinstance(_raw_consec, (int, float)) and int(_raw_consec) > 0 else None
+            # Default to True: prevent back-to-back matches unless explicitly disabled (set to 0)
+            max_consecutive: bool = not (isinstance(_raw_consec, (int, float)) and int(_raw_consec) == 0)
             slot_matches_count: dict[int, int] = defaultdict(int)
             team_last_slot: dict[str, int] = {}
             global_slot_offset = 0
@@ -2004,7 +2005,8 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             _raw_max = phase_config.get("max_concurrent_matches")
             max_concurrent: int | None = int(_raw_max) if isinstance(_raw_max, (int, float)) and int(_raw_max) > 0 else None
             _raw_consec = phase_config.get("max_consecutive_group_matches")
-            max_consecutive: int | None = int(_raw_consec) if isinstance(_raw_consec, (int, float)) and int(_raw_consec) > 0 else None
+            # Default to True: prevent back-to-back matches unless explicitly disabled (set to 0)
+            max_consecutive: bool = not (isinstance(_raw_consec, (int, float)) and int(_raw_consec) == 0)
             slot_matches_count: dict[int, int] = defaultdict(int)
             team_last_slot: dict[str, int] = {}
             global_slot_offset = 0
