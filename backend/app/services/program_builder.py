@@ -826,6 +826,10 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
                         occupied_slots[field_key].append((match.scheduled_at, end_time))
                     resolved_times.append(match.scheduled_at)
                     continue
+                if _is_anchored_match(match):
+                    occupied_slots[field_key].append((match.scheduled_at, match.scheduled_at + slot_delta))
+                    resolved_times.append(match.scheduled_at)
+                    continue
                 earliest = max(match.scheduled_at, prev_round_end) if prev_round_end else match.scheduled_at
                 resolved = _find_free_slot(field_key, earliest)
                 match.scheduled_at = resolved
