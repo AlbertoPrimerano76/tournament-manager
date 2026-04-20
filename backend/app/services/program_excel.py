@@ -79,8 +79,20 @@ def _sort_matches(matches: list[ProgramMatchResponse]) -> list[ProgramMatchRespo
 
 def _round_duration_suffix(
     round_matches: list[ProgramMatchResponse],
+    round_name: str | None = None,
     default_duration_minutes: int | None = None,
+    num_halves: int | None = None,
+    half_duration_minutes: int | None = None,
 ) -> str:
+    normalized_round_name = (round_name or "").lower()
+    if (
+        "piazzamento 1-2" in normalized_round_name
+        and num_halves
+        and half_duration_minutes
+    ):
+        total_minutes = max(int(num_halves) * int(half_duration_minutes), 1)
+        return f"  ·  {num_halves} tempi da {half_duration_minutes} minuti -> {total_minutes} min/partita"
+
     durations = {
         match.match_duration_minutes
         for match in round_matches
@@ -408,7 +420,7 @@ def _write_knockout_sheet(
         rnd_cell = ws.cell(
             row=current_row,
             column=1,
-            value=f"{round_name.upper()}{_round_duration_suffix(round_matches, phase.match_duration_minutes)}",
+            value=f"{round_name.upper()}{_round_duration_suffix(round_matches, round_name, phase.match_duration_minutes, phase.num_halves, phase.half_duration_minutes)}",
         )
         rnd_cell.font = Font(bold=True, size=10, color="FEF3C7", name="Calibri")
         rnd_cell.alignment = Alignment(horizontal="center", vertical="center")
@@ -586,7 +598,7 @@ def _write_knockout_block(
         rnd_cell = ws.cell(
             row=r,
             column=1,
-            value=f"{round_name.upper()}{_round_duration_suffix(round_matches, phase.match_duration_minutes)}",
+            value=f"{round_name.upper()}{_round_duration_suffix(round_matches, round_name, phase.match_duration_minutes, phase.num_halves, phase.half_duration_minutes)}",
         )
         rnd_cell.font = Font(bold=True, size=10, color="FEF3C7", name="Calibri")
         rnd_cell.alignment = Alignment(horizontal="center", vertical="center")

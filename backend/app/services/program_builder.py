@@ -2467,6 +2467,8 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
             phase_start_at=phase_start_at,
             estimated_end_at=estimated_end_at,
             match_duration_minutes=_phase_duration,
+            num_halves=int((phase_config or {}).get("num_halves")) if isinstance((phase_config or {}).get("num_halves"), int) else None,
+            half_duration_minutes=int((phase_config or {}).get("half_duration_minutes")) if isinstance((phase_config or {}).get("half_duration_minutes"), int) else None,
             groups=group_responses,
             knockout_matches=knockout_matches,
         ))
@@ -2488,6 +2490,8 @@ def _serialize_age_group_program(age_group: TournamentAgeGroup) -> AgeGroupProgr
             phase_start_at=phase_start_at,
             estimated_end_at=estimated_end_at,
             match_duration_minutes=extra_phase_duration,
+            num_halves=None,
+            half_duration_minutes=None,
             groups=group_responses,
             knockout_matches=knockout_matches,
         ))
