@@ -446,9 +446,14 @@ def _build_knockout_section(
             ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ("LEFTPADDING", (0, 0), (-1, -1), 10),
         ]))
+        banner.keepWithNext = True
+
+        round_table = _build_schedule_table(round_matches, tournament_timezone, field_map, is_knockout=True)
         blocks.append(banner)
-        blocks.append(Spacer(1, 3))
-        blocks.append(_build_schedule_table(round_matches, tournament_timezone, field_map, is_knockout=True))
+        round_spacer = Spacer(1, 3)
+        round_spacer.keepWithNext = True
+        blocks.append(round_spacer)
+        blocks.append(round_table)
         blocks.append(Spacer(1, 8))
 
     return blocks

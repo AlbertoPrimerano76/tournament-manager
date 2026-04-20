@@ -773,6 +773,12 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
                         _base.date(), _parse_start_time(_explicit_st), tzinfo=_tournament_tz(age_group)
                     )
 
+    def _is_anchored_match(match: Match) -> bool:
+        if not match.phase_id or not match.scheduled_at:
+            return False
+        anchor = anchored_phase_starts.get(match.phase_id)
+        return anchor is not None and match.scheduled_at == anchor
+
     # ── 1. Group-stage matches (resolved independently by scheduled_at) ──────
     for match in group_stage_matches:
         if not match.scheduled_at or not match.field_name:
@@ -785,8 +791,7 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
             continue
         # If this match is at the phase's explicitly configured start time, honour it
         # as-is: the admin chose that time intentionally and it must not be displaced.
-        anchor = anchored_phase_starts.get(match.phase_id) if match.phase_id else None
-        if anchor is not None and match.scheduled_at == anchor:
+        if _is_anchored_match(match):
             occupied_slots[field_key].append((match.scheduled_at, match.scheduled_at + slot_delta))
             continue
         resolved = _find_free_slot(field_key, match.scheduled_at)
@@ -839,6 +844,7 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
                     not match.scheduled_at
                     or _match_has_recorded_result(match)
                     or not match.field_name
+                    or _is_anchored_match(match)
                     or match.scheduled_at >= max_round_start
                 ):
                     continue
