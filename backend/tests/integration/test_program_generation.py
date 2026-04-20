@@ -13,7 +13,12 @@ from app.models.organization import Organization
 from app.models.phase import Group, GroupTeam, Phase, PhaseType
 from app.models.team import Team, TournamentTeam
 from app.models.tournament import Tournament, TournamentAgeGroup, AgeGroup
-from app.services.program_builder import decode_seed_note, generate_age_group_program, get_age_group_program
+from app.services.program_builder import (
+    _group_stage_rounds,
+    decode_seed_note,
+    generate_age_group_program,
+    get_age_group_program,
+)
 
 
 def make_formula_configs() -> list[tuple[str, dict, dict[str, int]]]:
@@ -312,6 +317,38 @@ def make_formula_configs() -> list[tuple[str, dict, dict[str, int]]]:
             {"phases": 3, "group_phases": 2, "knockout_phases": 1},
         ),
     ]
+
+
+def test_group_stage_rounds_rebalances_round_opener_when_possible() -> None:
+    slots = [
+        {"label": "Squadra 1", "tournament_team_id": "t1"},
+        {"label": "Squadra 2", "tournament_team_id": "t2"},
+        {"label": "Squadra 3", "tournament_team_id": "t3"},
+        {"label": "Squadra 4", "tournament_team_id": "t4"},
+        {"label": "Squadra 5", "tournament_team_id": "t5"},
+        {"label": "Squadra 6", "tournament_team_id": "t6"},
+    ]
+
+    rounds = _group_stage_rounds(slots, {"round_trip_mode": "single"})
+
+    assert len(rounds) > 1
+    previous_round_last_match = rounds[0][-1]
+    current_round_first_match = rounds[1][0]
+
+    previous_team_ids = {
+        team_id
+        for entry in previous_round_last_match
+        for team_id in (entry.get("tournament_team_id"),)
+        if team_id
+    }
+    first_match_team_ids = {
+        team_id
+        for entry in current_round_first_match
+        for team_id in (entry.get("tournament_team_id"),)
+        if team_id
+    }
+
+    assert previous_team_ids.isdisjoint(first_match_team_ids)
 
 
 async def create_tournament_with_teams(

@@ -422,13 +422,72 @@ def _group_stage_rounds(
 ) -> list[list[tuple[dict[str, Any], dict[str, Any]]]]:
     rounds = _round_robin_rounds(slots)
     if phase_config.get("round_trip_mode") != "double":
-        return rounds
+        return _rebalance_round_openers(rounds)
 
     reverse_rounds = [
         [(away_entry, home_entry) for home_entry, away_entry in round_pairs]
         for round_pairs in rounds
     ]
-    return rounds + reverse_rounds
+    return _rebalance_round_openers(rounds + reverse_rounds)
+
+
+def _rebalance_round_openers(
+    rounds: list[list[tuple[dict[str, Any], dict[str, Any]]]],
+) -> list[list[tuple[dict[str, Any], dict[str, Any]]]]:
+    """Reduce opener back-to-back teams between adjacent rounds when possible.
+
+    If the first match of the current round includes a team that played
+    in the last match of the previous round, swap the opener with the first
+    non-conflicting match available in the round.
+    """
+    if len(rounds) < 2:
+        return rounds
+
+    rebalanced_rounds: list[list[tuple[dict[str, Any], dict[str, Any]]]] = []
+
+    for round_pairs in rounds:
+        rebalanced_rounds.append(list(round_pairs))
+
+    for round_index in range(1, len(rebalanced_rounds)):
+        previous_round = rebalanced_rounds[round_index - 1]
+        current_round = rebalanced_rounds[round_index]
+        if not previous_round or len(current_round) < 2:
+            continue
+
+        previous_teams = {
+            team_id
+            for entry in previous_round[-1]
+            for team_id in (entry.get("tournament_team_id"),)
+            if team_id
+        }
+        if not previous_teams:
+            continue
+
+        opener_teams = {
+            team_id
+            for entry in current_round[0]
+            for team_id in (entry.get("tournament_team_id"),)
+            if team_id
+        }
+        if not (opener_teams & previous_teams):
+            continue
+
+        replacement_index: int | None = None
+        for match_index in range(1, len(current_round)):
+            candidate_teams = {
+                team_id
+                for entry in current_round[match_index]
+                for team_id in (entry.get("tournament_team_id"),)
+                if team_id
+            }
+            if candidate_teams and not (candidate_teams & previous_teams):
+                replacement_index = match_index
+                break
+
+        if replacement_index is not None:
+            current_round[0], current_round[replacement_index] = current_round[replacement_index], current_round[0]
+
+    return rebalanced_rounds
 
 
 def _group_lanes(
