@@ -61,6 +61,8 @@ class ProgramPhaseResponse(BaseModel):
     phase_start_at: datetime | None = None
     estimated_end_at: datetime | None = None
     match_duration_minutes: int | None = None
+    num_halves: int | None = None
+    half_duration_minutes: int | None = None
     groups: list[ProgramGroupResponse]
     knockout_matches: list[ProgramMatchResponse]
 
