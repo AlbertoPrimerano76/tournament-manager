@@ -30,7 +30,6 @@ from app.schemas.program import (
 _SEED_TYPE_KEY = "_seed"
 _LEGACY_SEED_PREFIX = "AUTOSEED::"
 _DEFAULT_TIMEZONE = "Europe/Rome"
-_PHASE_BREAK = timedelta(minutes=15)
 
 
 def _tournament_tz(age_group: TournamentAgeGroup) -> ZoneInfo:
@@ -328,12 +327,10 @@ def _resolve_phase_start(
     if isinstance(explicit_start, str) and explicit_start:
         # User explicitly configured a start time — honour it as-is.
         return datetime.combine(base.date(), _parse_start_time(explicit_start), tzinfo=_tournament_tz(age_group))
-    # Auto-scheduling: enforce a minimum gap after the previous phase ends.
-    minimum_start = fallback_start + _PHASE_BREAK if fallback_start else None
-    resolved = fallback_start or _phase_start_datetime(age_group, phase_index)
-    if minimum_start and resolved and resolved < minimum_start:
-        return minimum_start
-    return resolved
+    # Auto-scheduling: keep each phase anchored to its configured/base start time.
+    # Do not force cascading offsets from previous phases, otherwise starts can drift
+    # by match-duration steps across chained knockout phases.
+    return _phase_start_datetime(age_group, phase_index) or fallback_start
 
 
 def _resolve_phase_duration_minutes(age_group: TournamentAgeGroup, phase_config: dict[str, Any] | None = None) -> int:
