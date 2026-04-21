@@ -30,6 +30,7 @@ from app.schemas.program import (
 _SEED_TYPE_KEY = "_seed"
 _LEGACY_SEED_PREFIX = "AUTOSEED::"
 _DEFAULT_TIMEZONE = "Europe/Rome"
+_PHASE_BREAK = timedelta(0)
 
 
 def _tournament_tz(age_group: TournamentAgeGroup) -> ZoneInfo:
@@ -732,8 +733,16 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
     )
     age_group_matches = age_group_matches_result.scalars().all()
 
-    # Build phase-order lookup from loaded phase objects
-    phase_order_by_id: dict[str, int] = {phase.id: phase.phase_order for phase in age_group.phases}
+    # Query phases fresh from DB — age_group.phases may be stale if phases were just
+    # deleted and recreated in the same transaction (the ORM collection is not refreshed
+    # automatically when only the FK side is set on the new Phase objects).
+    fresh_phases_result = await db.execute(
+        select(Phase).where(Phase.tournament_age_group_id == age_group.id)
+    )
+    _fresh_phases = fresh_phases_result.scalars().all()
+
+    # Build phase-order lookup from fresh DB phase objects
+    phase_order_by_id: dict[str, int] = {phase.id: phase.phase_order for phase in _fresh_phases}
 
     # Separate group-stage matches from knockout matches
     group_stage_matches: list[Match] = []
@@ -774,7 +783,7 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
     _structure = age_group.structure_config or {}
     _phases_cfg: list[dict[str, Any]] = _structure.get("phases", []) if isinstance(_structure, dict) else []
     anchored_phase_starts: dict[str, datetime] = {}
-    for _phase in age_group.phases:
+    for _phase in _fresh_phases:
         _idx = _phase.phase_order - 1
         if _idx < len(_phases_cfg) and isinstance(_phases_cfg[_idx], dict):
             _pc = _phases_cfg[_idx]
@@ -2681,7 +2690,21 @@ def _build_placeholder_phase_from_config(
                 matches=[],
             ))
         phase_start_at = _resolve_phase_start(age_group, phase_order - 1, phase_config, None)
-        return groups, [], phase_date, phase_id, phase_name, phase_type, phase_start_at, None
+        # Estimate end time for the placeholder group stage
+        gs_estimated_end: datetime | None = None
+        if phase_start_at and group_sizes:
+            total_matches = sum(s * (s - 1) // 2 for s in group_sizes if s > 1)
+            if phase_config.get("round_trip_mode") == "double":
+                total_matches *= 2
+            if total_matches > 0:
+                total_lanes = sum(
+                    max(len(_group_lanes(age_group, phase_config, _group_name_from_config(gi, phase_config), gi, total_groups)), 1)
+                    for gi in range(total_groups)
+                )
+                slot_duration = _phase_slot_duration(age_group, phase_config)
+                slot_rows = math.ceil(total_matches / max(total_lanes, 1))
+                gs_estimated_end = phase_start_at + (slot_duration * slot_rows)
+        return groups, [], phase_date, phase_id, phase_name, phase_type, phase_start_at, gs_estimated_end
 
     phase_start_at, estimated_end_at = _estimate_placeholder_knockout_end(
         age_group,
@@ -2743,6 +2766,10 @@ def _placeholder_entries_for_knockout_phase(
             continue
         source_phase_name = str(source_phase.get("name") or "Fase precedente")
         num_groups = int(source_phase.get("num_groups") or 0)
+        if num_groups == 0:
+            # Fall back to inferring group count from group_sizes when num_groups is not set
+            _inferred_sizes = parse_group_sizes(source_phase.get("group_sizes"), 1, 0)
+            num_groups = len(_inferred_sizes)
         group_names = [_group_name_from_config(index, source_phase) for index in range(max(num_groups, 0))]
         for route in source_phase.get("advancement_routes", []) if isinstance(source_phase.get("advancement_routes"), list) else []:
             if not isinstance(route, dict) or route.get("target_phase_id") != target_phase_id:

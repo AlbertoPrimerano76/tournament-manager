@@ -5139,22 +5139,27 @@ function estimateKnockoutParticipants(
   phase: StructurePhase,
   fallbackParticipantCount: number,
 ): number {
-  const incomingRoutes = structure.phases
-    .flatMap((candidate) => candidate.advancement_routes)
-    .filter((route) => route.target_phase_id === phase.id)
-
-  const targetSlots = incomingRoutes.reduce((total, route) => {
-    const explicitSlots = route.target_slots.filter((slot) => slot.trim().length > 0).length
-    if (explicitSlots > 0) return total + explicitSlots
-    if (route.source_mode === 'best_extra') return total + Math.max(route.extra_count ?? 0, 0)
-    if (route.source_mode === 'group_rank') {
-      const groupCount = route.source_groups.length
-      const rankFrom = route.rank_from ?? 0
-      const rankTo = route.rank_to ?? 0
-      if (groupCount <= 0 || rankFrom <= 0 || rankTo < rankFrom) return total
-      return total + (groupCount * ((rankTo - rankFrom) + 1))
-    }
-    return total
+  // Iterate by source phase so we can fall back to that phase's num_groups when
+  // source_groups has not yet been configured on the route.
+  const targetSlots = structure.phases.reduce((total, sourcePhase) => {
+    const routes = sourcePhase.advancement_routes.filter((route) => route.target_phase_id === phase.id)
+    return routes.reduce((subtotal, route) => {
+      const explicitSlots = route.target_slots.filter((slot) => slot.trim().length > 0).length
+      if (explicitSlots > 0) return subtotal + explicitSlots
+      if (route.source_mode === 'best_extra') return subtotal + Math.max(route.extra_count ?? 0, 0)
+      if (route.source_mode === 'group_rank') {
+        const rankFrom = route.rank_from ?? 0
+        const rankTo = route.rank_to ?? 0
+        if (rankFrom <= 0 || rankTo < rankFrom) return subtotal
+        // When no specific source groups are selected, use all groups from the source phase.
+        const groupCount = route.source_groups.length > 0
+          ? route.source_groups.length
+          : Math.max(sourcePhase.num_groups ?? 0, parseGroupSizes(sourcePhase.group_sizes).length, 0)
+        if (groupCount <= 0) return subtotal
+        return subtotal + (groupCount * ((rankTo - rankFrom) + 1))
+      }
+      return subtotal
+    }, total)
   }, 0)
 
   if (targetSlots > 0) return targetSlots
