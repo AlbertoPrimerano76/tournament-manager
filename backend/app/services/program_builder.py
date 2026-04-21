@@ -30,7 +30,6 @@ from app.schemas.program import (
 _SEED_TYPE_KEY = "_seed"
 _LEGACY_SEED_PREFIX = "AUTOSEED::"
 _DEFAULT_TIMEZONE = "Europe/Rome"
-_PHASE_BREAK = timedelta(minutes=15)
 
 
 def _tournament_tz(age_group: TournamentAgeGroup) -> ZoneInfo:
@@ -787,6 +786,12 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
                         _base.date(), _parse_start_time(_explicit_st), tzinfo=_tournament_tz(age_group)
                     )
 
+    def _is_anchored_match(match: Match) -> bool:
+        if not match.phase_id or not match.scheduled_at:
+            return False
+        anchor = anchored_phase_starts.get(match.phase_id)
+        return anchor is not None and match.scheduled_at == anchor
+
     # ── 1. Group-stage matches (resolved independently by scheduled_at) ──────
     for match in group_stage_matches:
         if not match.scheduled_at or not match.field_name:
@@ -799,8 +804,7 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
             continue
         # If this match is at the phase's explicitly configured start time, honour it
         # as-is: the admin chose that time intentionally and it must not be displaced.
-        anchor = anchored_phase_starts.get(match.phase_id) if match.phase_id else None
-        if anchor is not None and match.scheduled_at == anchor:
+        if _is_anchored_match(match):
             occupied_slots[field_key].append((match.scheduled_at, match.scheduled_at + slot_delta))
             continue
         resolved = _find_free_slot(field_key, match.scheduled_at)
@@ -815,6 +819,8 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
         phase_matches.sort(key=lambda m: (m.bracket_round_order or 0, m.bracket_position or 0))
         phase_anchor = anchored_phase_starts.get(phase_id)
 
+        phase_anchor = anchored_phase_starts.get(phase_id)
+        first_round_order = phase_matches[0].bracket_round_order or 0 if phase_matches else 0
         prev_round_end: datetime | None = None
         idx = 0
         while idx < len(phase_matches):
@@ -863,6 +869,7 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
                     not match.scheduled_at
                     or _match_has_recorded_result(match)
                     or not match.field_name
+                    or _is_anchored_match(match)
                     or match.scheduled_at >= max_round_start
                 ):
                     continue
@@ -1778,7 +1785,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
         knockout_loser_entries: list[dict[str, Any]] = []
         match_position = 1
         knockout_lanes = _knockout_lanes(age_group, phase_config) or [{"field_name": None, "field_number": None}]
-        knockout_slot_index = 0
+        round_match_counts: dict[int, int] = defaultdict(int)
         created_knockout_matches: list[Match] = []
         knockout_progression = (phase.seeding_source or {}).get("knockout_progression", "full_bracket")
 
@@ -1842,8 +1849,10 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                         away_label = away_entry["label"] if away_entry else "Bye"
                         home_team_id = home_entry.get("tournament_team_id")
                         away_team_id = away_entry.get("tournament_team_id") if away_entry else None
-                        lane = knockout_lanes[knockout_slot_index % len(knockout_lanes)]
-                        scheduled_at = phase_start + (match_slot_length * (knockout_slot_index // len(knockout_lanes))) if phase_start else None
+                        round_match_index = round_match_counts[round_order]
+                        lane = knockout_lanes[round_match_index % len(knockout_lanes)]
+                        round_row = (round_order - 1) + (round_match_index // len(knockout_lanes))
+                        scheduled_at = phase_start + (match_slot_length * round_row) if phase_start else None
 
                         match = Match(
                             phase_id=phase.id,
@@ -1867,7 +1876,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                         match_position += 1
                         if scheduled_at:
                             phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
-                        knockout_slot_index += 1
+                        round_match_counts[round_order] += 1
                         winner_entry = {"label": f"Vincente {round_name} {pair_index + 1}"}
                         winners.append(winner_entry)
                         if stop_after_first_round:
@@ -2259,7 +2268,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
         knockout_loser_entries: list[dict[str, Any]] = []
         match_position = 1
         knockout_lanes = _knockout_lanes(age_group, phase_config) or [{"field_name": None, "field_number": None}]
-        knockout_slot_index = 0
+        round_match_counts: dict[int, int] = defaultdict(int)
         created_knockout_matches: list[Match] = []
         knockout_progression = (phase.seeding_source or {}).get("knockout_progression", "full_bracket")
 
@@ -2319,8 +2328,10 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                         away_label = away_entry["label"] if away_entry else "Bye"
                         home_team_id = home_entry.get("tournament_team_id")
                         away_team_id = away_entry.get("tournament_team_id") if away_entry else None
-                        lane = knockout_lanes[knockout_slot_index % len(knockout_lanes)]
-                        scheduled_at = phase_start + (match_slot_length * (knockout_slot_index // len(knockout_lanes))) if phase_start else None
+                        round_match_index = round_match_counts[round_order]
+                        lane = knockout_lanes[round_match_index % len(knockout_lanes)]
+                        round_row = (round_order - 1) + (round_match_index // len(knockout_lanes))
+                        scheduled_at = phase_start + (match_slot_length * round_row) if phase_start else None
                         match = Match(
                             phase_id=phase.id,
                             group_id=None,
@@ -2343,7 +2354,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                         match_position += 1
                         if scheduled_at:
                             phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
-                        knockout_slot_index += 1
+                        round_match_counts[round_order] += 1
                         winner_entry = {"label": f"Vincente {round_name} {pair_index + 1}"}
                         winners.append(winner_entry)
                         if stop_after_first_round:
