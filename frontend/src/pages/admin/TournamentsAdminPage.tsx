@@ -5120,7 +5120,7 @@ function estimatePhaseEndTime(structure: StructureConfig, phaseIndex: number, pa
   if (Number.isNaN(hours) || Number.isNaN(minutes)) return null
   const totalParticipants = phase.phase_type === 'GROUP_STAGE'
     ? participantCount
-    : Math.max(parseGroupSizes(phase.group_sizes).reduce((sum, value) => sum + value, 0), 0)
+    : estimateKnockoutParticipants(structure, phase, participantCount)
   const estimatedMatches = phase.phase_type === 'KNOCKOUT' && phase.bracket_mode !== 'group_blocks'
     ? Math.max(totalParticipants > 1 ? totalParticipants - 1 : 0, 0)
     : estimatePhaseMatches(phase)
@@ -5132,6 +5132,35 @@ function estimatePhaseEndTime(structure: StructureConfig, phaseIndex: number, pa
   const normalizedHours = Math.floor(endMinutes / 60)
   const normalizedMinutes = endMinutes % 60
   return `${String(normalizedHours).padStart(2, '0')}:${String(normalizedMinutes).padStart(2, '0')}`
+}
+
+function estimateKnockoutParticipants(
+  structure: StructureConfig,
+  phase: StructurePhase,
+  fallbackParticipantCount: number,
+): number {
+  const incomingRoutes = structure.phases
+    .flatMap((candidate) => candidate.advancement_routes)
+    .filter((route) => route.target_phase_id === phase.id)
+
+  const targetSlots = incomingRoutes.reduce((total, route) => {
+    const explicitSlots = route.target_slots.filter((slot) => slot.trim().length > 0).length
+    if (explicitSlots > 0) return total + explicitSlots
+    if (route.source_mode === 'best_extra') return total + Math.max(route.extra_count ?? 0, 0)
+    if (route.source_mode === 'group_rank') {
+      const groupCount = route.source_groups.length
+      const rankFrom = route.rank_from ?? 0
+      const rankTo = route.rank_to ?? 0
+      if (groupCount <= 0 || rankFrom <= 0 || rankTo < rankFrom) return total
+      return total + (groupCount * ((rankTo - rankFrom) + 1))
+    }
+    return total
+  }, 0)
+
+  if (targetSlots > 0) return targetSlots
+
+  const configuredGroupSize = Math.max(parseGroupSizes(phase.group_sizes).reduce((sum, value) => sum + value, 0), 0)
+  return configuredGroupSize > 0 ? configuredGroupSize : fallbackParticipantCount
 }
 
 function getPhaseLaneCount(phase: StructurePhase, fallbackLaneCount: number): number {
@@ -5919,12 +5948,12 @@ function StructurePreviewCard({
         <>
       <div className="mt-4 space-y-3 overflow-x-auto">
         {orderedRoots.map((phase) => (
-          <StructureFlowBranch key={phase.id} phase={phase} structure={structure} visited={new Set<string>()} />
+          <StructureFlowBranch key={phase.id} phase={phase} structure={structure} participantCount={participantCount} visited={new Set<string>()} />
         ))}
         {orphanPhases.length > 0 && (
           <div className="space-y-3 border-t border-slate-200 pt-3">
             {orphanPhases.map((phase) => (
-              <StructureFlowBranch key={`${phase.id}-orphan`} phase={phase} structure={structure} visited={new Set<string>()} />
+              <StructureFlowBranch key={`${phase.id}-orphan`} phase={phase} structure={structure} participantCount={participantCount} visited={new Set<string>()} />
             ))}
           </div>
         )}
@@ -5944,10 +5973,12 @@ function StructurePreviewCard({
 function StructureFlowBranch({
   phase,
   structure,
+  participantCount,
   visited,
 }: {
   phase: StructurePhase
   structure: StructureConfig
+  participantCount: number
   visited: Set<string>
 }) {
   if (visited.has(phase.id)) return null
@@ -5964,7 +5995,7 @@ function StructureFlowBranch({
   return (
     <div className="min-w-[280px] rounded-[1.4rem] border border-slate-200 bg-white/90 p-3">
       <div className="flex items-start gap-3">
-        <StructurePhaseMiniCard phase={phase} />
+        <StructurePhaseMiniCard phase={phase} structure={structure} participantCount={participantCount} />
         {children.length > 0 ? (
           <>
             <div className="flex min-h-[3.75rem] items-center text-slate-300">
@@ -5978,7 +6009,7 @@ function StructureFlowBranch({
                     <p className="mt-1 text-sm font-semibold text-slate-900">{describeRouteLabelForPreview(route, phase)}</p>
                   </div>
                   {targetPhase && (
-                    <StructureFlowBranch phase={targetPhase} structure={structure} visited={nextVisited} />
+                    <StructureFlowBranch phase={targetPhase} structure={structure} participantCount={participantCount} visited={nextVisited} />
                   )}
                 </div>
               ))}
@@ -5996,7 +6027,15 @@ function StructureFlowBranch({
   )
 }
 
-function StructurePhaseMiniCard({ phase }: { phase: StructurePhase }) {
+function StructurePhaseMiniCard({
+  phase,
+  structure,
+  participantCount,
+}: {
+  phase: StructurePhase
+  structure: StructureConfig
+  participantCount: number
+}) {
   const badgeClass = phase.phase_type === 'GROUP_STAGE' ? 'bg-sky-100 text-sky-700' : 'bg-rose-100 text-rose-700'
   const metaLabel = phase.phase_type === 'GROUP_STAGE'
     ? `${Math.max(phase.num_groups ?? 0, parseGroupSizes(phase.group_sizes).length, 1)} gironi`
@@ -6005,6 +6044,8 @@ function StructurePhaseMiniCard({ phase }: { phase: StructurePhase }) {
       : phase.knockout_progression === 'single_round'
         ? 'Turno singolo'
         : 'Tabellone'
+  const phaseIndex = structure.phases.findIndex((item) => item.id === phase.id)
+  const estimatedEnd = phaseIndex >= 0 ? estimatePhaseEndTime(structure, phaseIndex, participantCount) : null
 
   return (
     <div className="min-w-[220px] rounded-[1.1rem] border border-slate-200 bg-white px-3 py-3 shadow-sm">
@@ -6012,6 +6053,7 @@ function StructurePhaseMiniCard({ phase }: { phase: StructurePhase }) {
         <div className="min-w-0">
           <p className="truncate text-sm font-bold text-slate-900">{phase.name || 'Fase'}</p>
           <p className="mt-1 text-xs text-slate-500">{phase.phase_date || 'Data da definire'} · {phase.start_time || 'Ora da definire'}</p>
+          <p className="mt-1 text-xs text-slate-500">Fine stimata {estimatedEnd ?? 'da definire'}</p>
         </div>
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] ${badgeClass}`}>
           {phase.phase_type === 'GROUP_STAGE' ? 'Gironi' : 'Eliminazione'}
