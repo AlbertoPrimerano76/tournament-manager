@@ -786,11 +786,21 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
                         _base.date(), _parse_start_time(_explicit_st), tzinfo=_tournament_tz(age_group)
                     )
 
+    def _same_scheduled_time(left: datetime | None, right: datetime | None) -> bool:
+        if left is None or right is None:
+            return False
+        if left == right:
+            return True
+        try:
+            return abs(left.timestamp() - right.timestamp()) < 1
+        except (OSError, OverflowError, ValueError):
+            return False
+
     def _is_anchored_match(match: Match) -> bool:
         if not match.phase_id or not match.scheduled_at:
             return False
         anchor = anchored_phase_starts.get(match.phase_id)
-        return anchor is not None and match.scheduled_at == anchor
+        return anchor is not None and _same_scheduled_time(match.scheduled_at, anchor)
 
     # ── 1. Group-stage matches (resolved independently by scheduled_at) ──────
     for match in group_stage_matches:
@@ -818,8 +828,6 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
         phase_matches = knockout_by_phase[phase_id]
         phase_matches.sort(key=lambda m: (m.bracket_round_order or 0, m.bracket_position or 0))
         phase_anchor = anchored_phase_starts.get(phase_id)
-
-        phase_anchor = anchored_phase_starts.get(phase_id)
         first_round_order = phase_matches[0].bracket_round_order or 0 if phase_matches else 0
         prev_round_end: datetime | None = None
         idx = 0
@@ -846,7 +854,7 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
                 # Honour explicit knockout phase anchors on the opening round:
                 # if admin configured this phase to start at a specific time,
                 # keep that exact start and do not push it forward.
-                if prev_round_end is None and phase_anchor is not None and match.scheduled_at == phase_anchor:
+                if prev_round_end is None and phase_anchor is not None and _same_scheduled_time(match.scheduled_at, phase_anchor):
                     occupied_slots[field_key].append((match.scheduled_at, match.scheduled_at + slot_delta))
                     resolved_times.append(match.scheduled_at)
                     continue
@@ -873,7 +881,7 @@ async def _resolve_age_group_field_conflicts(age_group: TournamentAgeGroup, db: 
                     or match.scheduled_at >= max_round_start
                 ):
                     continue
-                if prev_round_end is None and phase_anchor is not None and match.scheduled_at == phase_anchor:
+                if prev_round_end is None and phase_anchor is not None and _same_scheduled_time(match.scheduled_at, phase_anchor):
                     continue
                 field_key = (match.field_name, match.field_number)
                 # Remove the previously placed slot for this match
