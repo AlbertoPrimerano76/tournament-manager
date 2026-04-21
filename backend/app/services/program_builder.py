@@ -1311,8 +1311,8 @@ def _ordered_group_block_rounds(
     lower_progression_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
     middle_single_finals: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
     standalone_single_finals: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]], bool]] = []
-    lower_third_place_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
-    lower_final_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
+    lower_third_place_rounds: list[tuple[int, int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
+    lower_final_rounds: list[tuple[int, int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
     top_third_place_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
     top_final_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
     only_single_finals = True
@@ -1326,19 +1326,23 @@ def _ordered_group_block_rounds(
             continue
         only_single_finals = False
         if len(block_rounds) >= 3:
-            target_third = top_third_place_rounds if bucket_name == top_bucket_name else lower_third_place_rounds
-            target_final = top_final_rounds if bucket_name == top_bucket_name else lower_final_rounds
             target_progression = top_progression_rounds if bucket_name == top_bucket_name else lower_progression_rounds
             for order, (round_name, pairs, _) in enumerate(block_rounds[:1], start=1):
                 target_progression.append((order, round_name, pairs))
-            target_third.append((2 if bucket_name != top_bucket_name else 4, block_rounds[1][0], block_rounds[1][1]))
-            target_final.append((3 if bucket_name != top_bucket_name else 5, block_rounds[2][0], block_rounds[2][1]))
+            if bucket_name == top_bucket_name:
+                top_third_place_rounds.append((4, block_rounds[1][0], block_rounds[1][1]))
+                top_final_rounds.append((5, block_rounds[2][0], block_rounds[2][1]))
+            else:
+                lower_third_place_rounds.append((start_rank, 2, block_rounds[1][0], block_rounds[1][1]))
+                lower_final_rounds.append((start_rank, 3, block_rounds[2][0], block_rounds[2][1]))
             continue
         target_progression = top_progression_rounds if bucket_name == top_bucket_name else lower_progression_rounds
         for order, (round_name, pairs, _) in enumerate(block_rounds[:-1], start=1):
             target_progression.append((order, round_name, pairs))
-        final_target = top_final_rounds if bucket_name == top_bucket_name else lower_final_rounds
-        final_target.append((len(block_rounds), block_rounds[-1][0], block_rounds[-1][1]))
+        if bucket_name == top_bucket_name:
+            top_final_rounds.append((len(block_rounds), block_rounds[-1][0], block_rounds[-1][1]))
+        else:
+            lower_final_rounds.append((start_rank, len(block_rounds), block_rounds[-1][0], block_rounds[-1][1]))
 
     ordered_rounds: list[tuple[int, str, list[tuple[dict[str, Any], dict[str, Any] | None]]]] = []
     max_progression_order = max(
@@ -1361,8 +1365,10 @@ def _ordered_group_block_rounds(
         middle_single_finals.extend((2, round_name, pairs) for _, round_name, pairs, _ in standalone_single_finals)
         ordered_rounds.extend(middle_single_finals)
 
-    ordered_rounds.extend(lower_third_place_rounds)
-    ordered_rounds.extend(lower_final_rounds)
+    lower_third_place_rounds.sort(key=lambda item: item[0], reverse=True)
+    lower_final_rounds.sort(key=lambda item: item[0], reverse=True)
+    ordered_rounds.extend((order, round_name, pairs) for _, order, round_name, pairs in lower_third_place_rounds)
+    ordered_rounds.extend((order, round_name, pairs) for _, order, round_name, pairs in lower_final_rounds)
     ordered_rounds.extend(top_third_place_rounds)
     ordered_rounds.extend(top_final_rounds)
     return ordered_rounds
@@ -1786,7 +1792,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             buckets: dict[int, list[dict[str, Any]]] = defaultdict(list)
             for entry in current_entries:
                 buckets[int(entry.get("rank") or 1)].append(entry)
-            ordered_ranks = sorted(buckets.keys())
+            ordered_ranks = sorted(buckets.keys(), reverse=True)
             carry_matches: list[tuple[str, int, int, list[dict[str, Any]]]] = []
             for rank in ordered_ranks:
                 bucket_entries = buckets[rank]
@@ -1841,7 +1847,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                         phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
                 round_slot_row += max((len(pairs) + len(knockout_lanes) - 1) // len(knockout_lanes), 1)
 
-        for bucket_name, _, _, bucket_entries in carry_matches:
+        for bucket_index, (bucket_name, _, _, bucket_entries) in enumerate(carry_matches):
             if not bucket_entries:
                 continue
             if bracket_mode != "group_blocks":
@@ -1856,19 +1862,21 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                 round_order = 1
                 stop_after_first_round = knockout_progression == "single_round"
 
+                bucket_round_order_offset = bucket_index * 10
                 while round_size >= 2:
                     pairs = direct_pairs if round_order == 1 else None
                     pairs = pairs or _pair_seed_entries(round_entries)
                     round_name = f"{bucket_name} · {_knockout_round_name(round_size)}" if bucket_name != "Tabellone principale" else _knockout_round_name(round_size)
+                    effective_round_order = bucket_round_order_offset + round_order
                     winners: list[dict[str, Any]] = []
                     for pair_index, (home_entry, away_entry) in enumerate(pairs):
                         home_label = home_entry["label"]
                         away_label = away_entry["label"] if away_entry else "Bye"
                         home_team_id = home_entry.get("tournament_team_id")
                         away_team_id = away_entry.get("tournament_team_id") if away_entry else None
-                        round_match_index = round_match_counts[round_order]
+                        round_match_index = round_match_counts[effective_round_order]
                         lane = knockout_lanes[round_match_index % len(knockout_lanes)]
-                        round_row = (round_order - 1) + (round_match_index // len(knockout_lanes))
+                        round_row = (effective_round_order - 1) + (round_match_index // len(knockout_lanes))
                         scheduled_at = phase_start + (match_slot_length * round_row) if phase_start else None
 
                         match = Match(
@@ -1876,7 +1884,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                             group_id=None,
                             bracket_round=round_name,
                             bracket_position=match_position,
-                            bracket_round_order=round_order,
+                            bracket_round_order=effective_round_order,
                             home_team_id=home_team_id if away_label != "Bye" else home_team_id,
                             away_team_id=away_team_id if away_label != "Bye" else None,
                             scheduled_at=scheduled_at,
@@ -1893,7 +1901,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                         match_position += 1
                         if scheduled_at:
                             phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
-                        round_match_counts[round_order] += 1
+                        round_match_counts[effective_round_order] += 1
                         winner_entry = {"label": f"Vincente {round_name} {pair_index + 1}"}
                         winners.append(winner_entry)
                         if stop_after_first_round:
@@ -2269,7 +2277,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
             buckets: dict[int, list[dict[str, Any]]] = defaultdict(list)
             for entry in current_entries:
                 buckets[int(entry.get("rank") or 1)].append(entry)
-            ordered_ranks = sorted(buckets.keys())
+            ordered_ranks = sorted(buckets.keys(), reverse=True)
             carry_matches: list[tuple[str, int, int, list[dict[str, Any]]]] = []
             for rank in ordered_ranks:
                 bucket_entries = buckets[rank]
@@ -2323,7 +2331,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                         phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
                 round_slot_row += max((len(pairs) + len(knockout_lanes) - 1) // len(knockout_lanes), 1)
 
-        for bucket_name, _, _, bucket_entries in carry_matches:
+        for bucket_index, (bucket_name, _, _, bucket_entries) in enumerate(carry_matches):
             if not bucket_entries:
                 continue
             if bracket_mode != "group_blocks":
@@ -2335,26 +2343,28 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                 round_order = 1
                 stop_after_first_round = knockout_progression == "single_round"
 
+                bucket_round_order_offset = bucket_index * 10
                 while round_size >= 2:
                     pairs = direct_pairs if round_order == 1 else None
                     pairs = pairs or _pair_seed_entries(round_entries)
                     round_name = f"{bucket_name} · {_knockout_round_name(round_size)}" if bucket_name != "Tabellone principale" else _knockout_round_name(round_size)
+                    effective_round_order = bucket_round_order_offset + round_order
                     winners: list[dict[str, Any]] = []
                     for pair_index, (home_entry, away_entry) in enumerate(pairs):
                         home_label = home_entry["label"]
                         away_label = away_entry["label"] if away_entry else "Bye"
                         home_team_id = home_entry.get("tournament_team_id")
                         away_team_id = away_entry.get("tournament_team_id") if away_entry else None
-                        round_match_index = round_match_counts[round_order]
+                        round_match_index = round_match_counts[effective_round_order]
                         lane = knockout_lanes[round_match_index % len(knockout_lanes)]
-                        round_row = (round_order - 1) + (round_match_index // len(knockout_lanes))
+                        round_row = (effective_round_order - 1) + (round_match_index // len(knockout_lanes))
                         scheduled_at = phase_start + (match_slot_length * round_row) if phase_start else None
                         match = Match(
                             phase_id=phase.id,
                             group_id=None,
                             bracket_round=round_name,
                             bracket_position=match_position,
-                            bracket_round_order=round_order,
+                            bracket_round_order=effective_round_order,
                             home_team_id=home_team_id if away_label != "Bye" else home_team_id,
                             away_team_id=away_team_id if away_label != "Bye" else None,
                             scheduled_at=scheduled_at,
@@ -2371,7 +2381,7 @@ async def regenerate_age_group_from_phase(age_group_id: str, phase_order: int, d
                         match_position += 1
                         if scheduled_at:
                             phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
-                        round_match_counts[round_order] += 1
+                        round_match_counts[effective_round_order] += 1
                         winner_entry = {"label": f"Vincente {round_name} {pair_index + 1}"}
                         winners.append(winner_entry)
                         if stop_after_first_round:
