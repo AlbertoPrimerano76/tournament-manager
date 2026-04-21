@@ -1367,10 +1367,17 @@ def _ordered_group_block_rounds(
 
     lower_third_place_rounds.sort(key=lambda item: item[0], reverse=True)
     lower_final_rounds.sort(key=lambda item: item[0], reverse=True)
-    ordered_rounds.extend((order, round_name, pairs) for _, order, round_name, pairs in lower_third_place_rounds)
-    ordered_rounds.extend((order, round_name, pairs) for _, order, round_name, pairs in lower_final_rounds)
-    ordered_rounds.extend(top_third_place_rounds)
-    ordered_rounds.extend(top_final_rounds)
+
+    # When a lower standalone final exists (e.g. 9-10), keep it strictly before
+    # lower 4-team consolation rounds (7-8, 5-6) by shifting subsequent orders.
+    # This avoids ties on bracket_round_order that can otherwise be displayed in
+    # a confusing sequence in generated schedules/PDFs.
+    order_shift = 1 if middle_single_finals else 0
+
+    ordered_rounds.extend((order + order_shift, round_name, pairs) for _, order, round_name, pairs in lower_third_place_rounds)
+    ordered_rounds.extend((order + order_shift, round_name, pairs) for _, order, round_name, pairs in lower_final_rounds)
+    ordered_rounds.extend((order + order_shift, round_name, pairs) for order, round_name, pairs in top_third_place_rounds)
+    ordered_rounds.extend((order + order_shift, round_name, pairs) for order, round_name, pairs in top_final_rounds)
     return ordered_rounds
 
 
