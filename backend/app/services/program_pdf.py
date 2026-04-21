@@ -573,6 +573,9 @@ def _build_schedule_table(
         ("BOTTOMPADDING", (0, 0),  (-1, -1), 6),
         ("LEFTPADDING",   (0, 0),  (-1, -1), 5),
         ("RIGHTPADDING",  (0, 0),  (-1, -1), 5),
+        # Keep the narrow "vs" column readable (avoid wrapping to "v" / "s")
+        ("LEFTPADDING",   (_C_VS, 0), (_C_VS, -1), 1),
+        ("RIGHTPADDING",  (_C_VS, 0), (_C_VS, -1), 1),
         # Center: time, field code, vs, score boxes
         ("ALIGN", (_C_ORA,   1), (_C_ORA,   -1), "CENTER"),
         ("ALIGN", (_C_FIELD, 1), (_C_FIELD, -1), "CENTER"),
