@@ -34,7 +34,7 @@ export default function SponsorBar({ images, accentColor, primaryColor }: Props)
               <img
                 src={src}
                 alt={`Sponsor ${i + 1}`}
-                className="h-14 w-[140px] object-contain grayscale transition-all duration-300 hover:grayscale-0"
+                className="h-14 w-[140px] object-contain scale-[1.35] grayscale transition-all duration-300 hover:grayscale-0"
               />
             </div>
           ))}
