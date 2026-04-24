@@ -1799,6 +1799,8 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             buckets: dict[int, list[dict[str, Any]]] = defaultdict(list)
             for entry in current_entries:
                 buckets[int(entry.get("rank") or 1)].append(entry)
+            # Worst placements (highest rank numbers) first so that, e.g., the
+            # 9th-10th place final is scheduled before the 7th-8th place final.
             ordered_ranks = sorted(buckets.keys(), reverse=True)
             carry_matches: list[tuple[str, int, int, list[dict[str, Any]]]] = []
             for rank in ordered_ranks:
@@ -1854,7 +1856,12 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                         phase_end = max(phase_end or scheduled_at, scheduled_at + match_slot_length)
                 round_slot_row += max((len(pairs) + len(knockout_lanes) - 1) // len(knockout_lanes), 1)
 
-        for bucket_index, (bucket_name, _, _, bucket_entries) in enumerate(carry_matches):
+        # For placement brackets each bucket is a separate placement final.
+        # Accumulating a round offset ensures each bucket gets a unique
+        # bracket_round_order range, so conflict-resolution treats them as
+        # independent sequential rounds rather than collapsing them into one.
+        placement_round_offset = 0
+        for bucket_name, _, _, bucket_entries in carry_matches:
             if not bucket_entries:
                 continue
             if bracket_mode != "group_blocks":
@@ -1876,6 +1883,7 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                     round_name = f"{bucket_name} · {_knockout_round_name(round_size)}" if bucket_name != "Tabellone principale" else _knockout_round_name(round_size)
                     effective_round_order = bucket_round_order_offset + round_order
                     winners: list[dict[str, Any]] = []
+                    effective_round_order = placement_round_offset + round_order if bracket_mode == "placement" else round_order
                     for pair_index, (home_entry, away_entry) in enumerate(pairs):
                         home_label = home_entry["label"]
                         away_label = away_entry["label"] if away_entry else "Bye"
@@ -1924,6 +1932,9 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
                         break
                     if round_size <= 1:
                         break
+
+                if bracket_mode == "placement":
+                    placement_round_offset += round_order - 1
 
             next_entries.extend(bucket_entries)
 
