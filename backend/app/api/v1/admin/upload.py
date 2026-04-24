@@ -23,8 +23,9 @@ def _supabase_configured() -> bool:
 def _process_image(data: bytes, max_dim: int) -> bytes:
     img = Image.open(io.BytesIO(data))
     img = img.convert("RGBA")
-    # Scale to fit within max_dim×max_dim (up or down)
-    img.thumbnail((max_dim, max_dim), Image.LANCZOS)
+    # Scale up or down to fill max_dim×max_dim, keeping aspect ratio
+    scale = min(max_dim / img.width, max_dim / img.height)
+    img = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
     # Pad to exact max_dim×max_dim square with white background
     canvas = Image.new("RGBA", (max_dim, max_dim), (255, 255, 255, 255))
     x = (max_dim - img.width) // 2
