@@ -436,23 +436,32 @@ async def enter_score(
                 loser_team_id = match.home_team_id
             _propagate_knockout_result(phase_matches, match, winner_team_id, loser_team_id)
 
+    # Capture before commit — ORM attributes expire after db.commit() and
+    # cannot be lazily loaded in an async session.
+    is_group_match = match.group_id is not None
+    phase_id_for_seed = match.phase_id
+    age_group_id_for_seed = match.phase.tournament_age_group_id if match.phase else None
+    final_status = match.status
+
     await db.commit()
 
-    # When a group match is completed, check if the whole group phase is done
-    # and if so resolve seed placeholders in the next knockout phase.
-    if not body.clear_result and match.group_id is not None and match.status == MatchStatus.COMPLETED:
-        age_group_id = match.phase.tournament_age_group_id if match.phase else None
-        phase_id = match.phase_id
-        if age_group_id:
-            remaining_result = await db.execute(
-                select(Match.id).where(
-                    Match.phase_id == phase_id,
-                    Match.group_id.is_not(None),
-                    Match.status.notin_([MatchStatus.COMPLETED, MatchStatus.CANCELLED]),
-                )
+    # When the last group match in a phase is completed, resolve seed
+    # placeholders ("1a Girone A" etc.) in the next knockout phase.
+    if (
+        not body.clear_result
+        and is_group_match
+        and final_status == MatchStatus.COMPLETED
+        and age_group_id_for_seed
+    ):
+        remaining_result = await db.execute(
+            select(Match.id).where(
+                Match.phase_id == phase_id_for_seed,
+                Match.group_id.is_not(None),
+                Match.status.notin_([MatchStatus.COMPLETED, MatchStatus.CANCELLED]),
             )
-            if not remaining_result.scalars().all():
-                await seed_next_phases_from_standings(age_group_id, db)
+        )
+        if not remaining_result.scalars().all():
+            await seed_next_phases_from_standings(age_group_id_for_seed, db)
 
     await db.refresh(match)
     return MatchResponse.from_match(match)
