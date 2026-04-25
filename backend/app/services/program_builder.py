@@ -3008,13 +3008,14 @@ async def seed_next_phases_from_standings(age_group_id: str, db: AsyncSession) -
     if not seed_label_to_team_id:
         return 0
 
-    # Find all knockout matches with NULL team slots in this age group
+    # Find all non-group-stage matches with NULL team slots in this age group
+    # (handles KNOCKOUT, PLAYOFF, FINAL, ROUND_ROBIN phase types)
     knockout_matches_result = await db.execute(
         select(Match)
         .join(Phase, Phase.id == Match.phase_id)
         .where(
             Phase.tournament_age_group_id == age_group_id,
-            Phase.phase_type == PhaseType.KNOCKOUT,
+            Phase.phase_type != PhaseType.GROUP_STAGE,
             Match.group_id.is_(None),
         )
     )
