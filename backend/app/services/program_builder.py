@@ -2947,3 +2947,76 @@ def _serialize_match(match: Match, phase_name: str, phase_type: str, group_name:
         notes=clean_notes,
         match_duration_minutes=match.match_duration_minutes if match.match_duration_minutes is not None else match_duration_minutes,
     )
+
+
+async def seed_next_phases_from_standings(age_group_id: str, db: AsyncSession) -> int:
+    """Resolve seed-label placeholders in knockout matches using group stage standings.
+
+    For each fully-completed GROUP_STAGE phase in the age group, builds a
+    label→team_id map (e.g. "1a Girone A" → tournament_team_id) and fills in
+    home_team_id / away_team_id on downstream KNOCKOUT matches that still have
+    NULL team IDs.  Returns the number of match slots updated.
+    """
+    age_group_result = await db.execute(
+        select(TournamentAgeGroup)
+        .options(
+            selectinload(TournamentAgeGroup.phases)
+            .selectinload(Phase.groups)
+            .selectinload(Group.group_teams),
+            selectinload(TournamentAgeGroup.phases)
+            .selectinload(Phase.matches),
+        )
+        .where(TournamentAgeGroup.id == age_group_id)
+    )
+    age_group = age_group_result.scalar_one_or_none()
+    if not age_group:
+        return 0
+
+    phases = sorted(age_group.phases, key=lambda p: p.phase_order)
+
+    # Build seed label → tournament_team_id from all completed group phases
+    seed_label_to_team_id: dict[str, str] = {}
+    for phase in phases:
+        if phase.phase_type != PhaseType.GROUP_STAGE:
+            continue
+        group_matches = [m for m in phase.matches if m.group_id is not None]
+        if not group_matches:
+            continue
+        all_done = all(
+            m.status in (MatchStatus.COMPLETED, MatchStatus.CANCELLED)
+            for m in group_matches
+        )
+        if not all_done:
+            continue
+
+        standings_by_group = await get_phase_standings(phase.id, db)
+        group_name_by_id = {g.id: g.name for g in phase.groups}
+        for group_id, group_standings in standings_by_group.items():
+            group_name = group_name_by_id.get(group_id, "")
+            for rank_index, team_stats in enumerate(group_standings):
+                label = f"{_ordinal_it(rank_index + 1)} {group_name}"
+                seed_label_to_team_id[label] = team_stats.team_id
+
+    if not seed_label_to_team_id:
+        return 0
+
+    # Apply resolved team IDs to knockout matches with NULL slots
+    updated = 0
+    for phase in phases:
+        if phase.phase_type != PhaseType.KNOCKOUT:
+            continue
+        for match in phase.matches:
+            if match.home_team_id is not None and match.away_team_id is not None:
+                continue
+            seed_home, seed_away, _ = decode_seed_note(match.notes)
+            if seed_home and match.home_team_id is None and seed_home in seed_label_to_team_id:
+                match.home_team_id = seed_label_to_team_id[seed_home]
+                updated += 1
+            if seed_away and match.away_team_id is None and seed_away in seed_label_to_team_id:
+                match.away_team_id = seed_label_to_team_id[seed_away]
+                updated += 1
+
+    if updated:
+        await db.commit()
+
+    return updated

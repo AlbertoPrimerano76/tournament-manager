@@ -2699,6 +2699,19 @@ function AgeGroupOperationsScreen({
 }) {
   const { data: ageGroups, isLoading } = useAdminTournamentAgeGroups(tournament.id)
   const ageGroup = ageGroups?.find((item) => item.id === ageGroupId) ?? null
+  const generateProgram = useGenerateAgeGroupProgram()
+  const [generateError, setGenerateError] = useState('')
+
+  async function handleGenerate() {
+    if (!ageGroup) return
+    setGenerateError('')
+    try {
+      await generateProgram.mutateAsync(ageGroup.id)
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setGenerateError(msg ?? 'Errore durante la generazione del programma')
+    }
+  }
   const orderedAgeGroups = AGE_GROUP_OPTIONS
     .map((option) => ageGroups?.find((item) => item.age_group === option.value) ?? null)
     .filter((item): item is AgeGroup => Boolean(item))
@@ -2739,6 +2752,18 @@ function AgeGroupOperationsScreen({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void handleGenerate()}
+              disabled={generateProgram.isPending}
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Sparkles className="h-4 w-4" />
+              {generateProgram.isPending ? 'Rigenerazione...' : 'Rigenera programma'}
+            </button>
+            {generateError && (
+              <p className="w-full text-xs font-semibold text-red-600">{generateError}</p>
+            )}
             <Link
               to={`/admin/tornei/${tournament.id}/categorie`}
               className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
