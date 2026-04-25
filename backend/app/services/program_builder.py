@@ -1563,7 +1563,11 @@ async def generate_age_group_program(age_group_id: str, db: AsyncSession) -> Tou
             await db.commit()
             await db.refresh(age_group)
             return age_group
-        return await _sync_future_age_group_matches(age_group, phases_config, db)
+        result = await _sync_future_age_group_matches(age_group, phases_config, db)
+        # Explicitly seed knockout placeholders — belt-and-suspenders in case
+        # the sync function missed any due to ORM state timing.
+        await seed_next_phases_from_standings(age_group_id, db)
+        return result
 
     for phase in list(age_group.phases):
         await db.delete(phase)
@@ -2956,41 +2960,45 @@ async def seed_next_phases_from_standings(age_group_id: str, db: AsyncSession) -
     label→team_id map (e.g. "1a Girone A" → tournament_team_id) and fills in
     home_team_id / away_team_id on downstream KNOCKOUT matches that still have
     NULL team IDs.  Returns the number of match slots updated.
+
+    Uses direct DB queries throughout to avoid stale ORM relationship state.
     """
-    age_group_result = await db.execute(
-        select(TournamentAgeGroup)
-        .options(
-            selectinload(TournamentAgeGroup.phases)
-            .selectinload(Phase.groups)
-            .selectinload(Group.group_teams),
-            selectinload(TournamentAgeGroup.phases)
-            .selectinload(Phase.matches),
-        )
-        .where(TournamentAgeGroup.id == age_group_id)
+    # Load all phases for this age group (ordered)
+    phases_result = await db.execute(
+        select(Phase)
+        .where(Phase.tournament_age_group_id == age_group_id)
+        .order_by(Phase.phase_order)
     )
-    age_group = age_group_result.scalar_one_or_none()
-    if not age_group:
+    phases = phases_result.scalars().all()
+    if not phases:
         return 0
 
-    phases = sorted(age_group.phases, key=lambda p: p.phase_order)
-
-    # Build seed label → tournament_team_id from all completed group phases
+    # Build seed label → tournament_team_id from all fully-completed group phases
     seed_label_to_team_id: dict[str, str] = {}
+
     for phase in phases:
         if phase.phase_type != PhaseType.GROUP_STAGE:
             continue
-        group_matches = [m for m in phase.matches if m.group_id is not None]
-        if not group_matches:
-            continue
-        all_done = all(
-            m.status in (MatchStatus.COMPLETED, MatchStatus.CANCELLED)
-            for m in group_matches
-        )
-        if not all_done:
-            continue
 
+        # Check if all group matches in this phase are done
+        remaining_result = await db.execute(
+            select(Match.id).where(
+                Match.phase_id == phase.id,
+                Match.group_id.is_not(None),
+                Match.status.notin_([MatchStatus.COMPLETED, MatchStatus.CANCELLED]),
+            )
+        )
+        if remaining_result.scalars().first() is not None:
+            continue  # Phase not fully complete yet
+
+        # Load group names for this phase
+        groups_result = await db.execute(
+            select(Group.id, Group.name).where(Group.phase_id == phase.id)
+        )
+        group_name_by_id: dict[str, str] = {row.id: row.name for row in groups_result.all()}
+
+        # Get standings (uses fresh DB queries internally)
         standings_by_group = await get_phase_standings(phase.id, db)
-        group_name_by_id = {g.id: g.name for g in phase.groups}
         for group_id, group_standings in standings_by_group.items():
             group_name = group_name_by_id.get(group_id, "")
             for rank_index, team_stats in enumerate(group_standings):
@@ -3000,21 +3008,30 @@ async def seed_next_phases_from_standings(age_group_id: str, db: AsyncSession) -
     if not seed_label_to_team_id:
         return 0
 
-    # Apply resolved team IDs to knockout matches with NULL slots
+    # Find all non-group-stage matches with NULL team slots in this age group
+    # (handles KNOCKOUT, PLAYOFF, FINAL, ROUND_ROBIN phase types)
+    knockout_matches_result = await db.execute(
+        select(Match)
+        .join(Phase, Phase.id == Match.phase_id)
+        .where(
+            Phase.tournament_age_group_id == age_group_id,
+            Phase.phase_type != PhaseType.GROUP_STAGE,
+            Match.group_id.is_(None),
+        )
+    )
+    knockout_matches = knockout_matches_result.scalars().all()
+
     updated = 0
-    for phase in phases:
-        if phase.phase_type != PhaseType.KNOCKOUT:
+    for match in knockout_matches:
+        if match.home_team_id is not None and match.away_team_id is not None:
             continue
-        for match in phase.matches:
-            if match.home_team_id is not None and match.away_team_id is not None:
-                continue
-            seed_home, seed_away, _ = decode_seed_note(match.notes)
-            if seed_home and match.home_team_id is None and seed_home in seed_label_to_team_id:
-                match.home_team_id = seed_label_to_team_id[seed_home]
-                updated += 1
-            if seed_away and match.away_team_id is None and seed_away in seed_label_to_team_id:
-                match.away_team_id = seed_label_to_team_id[seed_away]
-                updated += 1
+        seed_home, seed_away, _ = decode_seed_note(match.notes)
+        if seed_home and match.home_team_id is None and seed_home in seed_label_to_team_id:
+            match.home_team_id = seed_label_to_team_id[seed_home]
+            updated += 1
+        if seed_away and match.away_team_id is None and seed_away in seed_label_to_team_id:
+            match.away_team_id = seed_label_to_team_id[seed_away]
+            updated += 1
 
     if updated:
         await db.commit()
