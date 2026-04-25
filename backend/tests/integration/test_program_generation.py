@@ -18,6 +18,7 @@ from app.services.program_builder import (
     decode_seed_note,
     generate_age_group_program,
     get_age_group_program,
+    seed_next_phases_from_standings,
 )
 
 
@@ -2040,6 +2041,98 @@ async def test_schedule_update_keeps_seed_labels_for_placeholder_matches(client:
     seed_home, seed_away, _ = decode_seed_note(refreshed_match.notes)
     assert seed_home == "1a Girone Bianco"
     assert seed_away == "1a Girone Verde"
+
+
+@pytest.mark.asyncio
+async def test_seed_next_phases_assigns_group_stage_slots_and_group_teams(db: AsyncSession):
+    _, age_group = await create_tournament_with_teams(
+        db,
+        slug_suffix=f"group-seeding-{uuid.uuid4().hex[:6]}",
+        structure_config={
+            "expected_teams": 4,
+            "notes": "",
+            "schedule": {
+                "start_time": "09:30",
+                "match_duration_minutes": 12,
+                "interval_minutes": 8,
+                "playing_fields": [
+                    {"field_name": "Impianto Nord", "field_number": 1},
+                ],
+            },
+            "phases": [
+                {
+                    "id": "phase-1",
+                    "name": "Gironi iniziali",
+                    "phase_type": "GROUP_STAGE",
+                    "num_groups": 2,
+                    "group_sizes": "2,2",
+                    "advancement_routes": [
+                        {
+                            "target_phase_id": "phase-2",
+                            "source_mode": "group_rank",
+                            "source_groups": [],
+                            "rank_from": 1,
+                            "rank_to": 1,
+                            "target_slots": ["A1", "A2"],
+                        },
+                    ],
+                    "group_field_assignments": {
+                        "Girone A": [{"field_name": "Impianto Nord", "field_number": 1}],
+                        "Girone B": [{"field_name": "Impianto Nord", "field_number": 1}],
+                    },
+                },
+                {
+                    "id": "phase-2",
+                    "name": "Finale a girone",
+                    "phase_type": "GROUP_STAGE",
+                    "num_groups": 1,
+                    "group_sizes": "2",
+                    "group_field_assignments": {
+                        "Girone A": [{"field_name": "Impianto Nord", "field_number": 1}],
+                    },
+                },
+            ],
+        },
+    )
+
+    await generate_age_group_program(age_group.id, db)
+
+    phase_result = await db.execute(
+        select(Phase)
+        .options(selectinload(Phase.matches), selectinload(Phase.groups))
+        .where(Phase.tournament_age_group_id == age_group.id)
+        .order_by(Phase.phase_order.asc())
+    )
+    first_phase, second_phase = phase_result.scalars().all()
+    first_phase_matches = [match for match in first_phase.matches if match.group_id is not None]
+    assert first_phase_matches
+
+    for match in first_phase_matches:
+        match.home_score = 1
+        match.away_score = 0
+        match.home_tries = 1
+        match.away_tries = 0
+        match.status = MatchStatus.COMPLETED
+    await db.commit()
+
+    seeded_slots = await seed_next_phases_from_standings(age_group.id, db)
+    assert seeded_slots >= 2
+
+    second_phase_result = await db.execute(
+        select(Phase)
+        .options(selectinload(Phase.matches), selectinload(Phase.groups).selectinload(Group.group_teams))
+        .where(Phase.id == second_phase.id)
+    )
+    refreshed_second_phase = second_phase_result.scalar_one()
+    seeded_match = next(match for match in refreshed_second_phase.matches if match.group_id is not None)
+    assert seeded_match.home_team_id is not None
+    assert seeded_match.away_team_id is not None
+    assert seeded_match.home_team_id != seeded_match.away_team_id
+
+    seeded_group = refreshed_second_phase.groups[0]
+    seeded_group_team_ids = {group_team.tournament_team_id for group_team in seeded_group.group_teams}
+    assert seeded_match.home_team_id in seeded_group_team_ids
+    assert seeded_match.away_team_id in seeded_group_team_ids
 
 
 @pytest.mark.asyncio

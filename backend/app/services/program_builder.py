@@ -2954,12 +2954,13 @@ def _serialize_match(match: Match, phase_name: str, phase_type: str, group_name:
 
 
 async def seed_next_phases_from_standings(age_group_id: str, db: AsyncSession) -> int:
-    """Resolve seed-label placeholders in knockout matches using group stage standings.
+    """Resolve seed-label placeholders in downstream matches using group standings.
 
     For each fully-completed GROUP_STAGE phase in the age group, builds a
     label→team_id map (e.g. "1a Girone A" → tournament_team_id) and fills in
-    home_team_id / away_team_id on downstream KNOCKOUT matches that still have
-    NULL team IDs.  Returns the number of match slots updated.
+    home_team_id / away_team_id on downstream matches that still have NULL team
+    IDs. Also synchronizes GroupTeam memberships for seeded GROUP_STAGE matches.
+    Returns the number of match slots updated.
 
     Uses direct DB queries throughout to avoid stale ORM relationship state.
     """
@@ -3008,32 +3009,62 @@ async def seed_next_phases_from_standings(age_group_id: str, db: AsyncSession) -
     if not seed_label_to_team_id:
         return 0
 
-    # Find all non-group-stage matches with NULL team slots in this age group
-    # (handles KNOCKOUT, PLAYOFF, FINAL, ROUND_ROBIN phase types)
-    knockout_matches_result = await db.execute(
+    # Find all downstream matches in this age group and resolve placeholders
+    seeded_matches_result = await db.execute(
         select(Match)
         .join(Phase, Phase.id == Match.phase_id)
         .where(
             Phase.tournament_age_group_id == age_group_id,
-            Phase.phase_type != PhaseType.GROUP_STAGE,
-            Match.group_id.is_(None),
         )
     )
-    knockout_matches = knockout_matches_result.scalars().all()
+    seeded_matches = seeded_matches_result.scalars().all()
 
     updated = 0
-    for match in knockout_matches:
+    affected_group_ids: set[str] = set()
+    for match in seeded_matches:
         if match.home_team_id is not None and match.away_team_id is not None:
             continue
         seed_home, seed_away, _ = decode_seed_note(match.notes)
+        match_updated = False
         if seed_home and match.home_team_id is None and seed_home in seed_label_to_team_id:
             match.home_team_id = seed_label_to_team_id[seed_home]
             updated += 1
+            match_updated = True
         if seed_away and match.away_team_id is None and seed_away in seed_label_to_team_id:
             match.away_team_id = seed_label_to_team_id[seed_away]
             updated += 1
+            match_updated = True
+        if match_updated and match.group_id:
+            affected_group_ids.add(match.group_id)
 
-    if updated:
+    created_group_teams = 0
+    if affected_group_ids:
+        existing_group_teams_result = await db.execute(
+            select(GroupTeam.group_id, GroupTeam.tournament_team_id).where(GroupTeam.group_id.in_(affected_group_ids))
+        )
+        existing_pairs = {
+            (group_id, tournament_team_id)
+            for group_id, tournament_team_id in existing_group_teams_result.all()
+        }
+
+        seeded_group_matches_result = await db.execute(
+            select(Match.group_id, Match.home_team_id, Match.away_team_id)
+            .where(Match.group_id.in_(affected_group_ids))
+        )
+        for group_id, home_team_id, away_team_id in seeded_group_matches_result.all():
+            if not group_id:
+                continue
+            for team_id in (home_team_id, away_team_id):
+                if not team_id:
+                    continue
+                pair = (group_id, team_id)
+                if pair in existing_pairs:
+                    continue
+                db.add(GroupTeam(group_id=group_id, tournament_team_id=team_id))
+                existing_pairs.add(pair)
+                created_group_teams += 1
+
+    if updated or created_group_teams:
         await db.commit()
 
     return updated
