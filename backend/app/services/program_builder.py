@@ -8,7 +8,7 @@ import re
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -3008,32 +3008,52 @@ async def seed_next_phases_from_standings(age_group_id: str, db: AsyncSession) -
     if not seed_label_to_team_id:
         return 0
 
-    # Find all non-group-stage matches with NULL team slots in this age group
-    # (handles KNOCKOUT, PLAYOFF, FINAL, ROUND_ROBIN phase types)
-    knockout_matches_result = await db.execute(
+    # Find ALL matches in this age group with at least one NULL team slot.
+    # This covers KNOCKOUT phases AND any subsequent GROUP_STAGE phases
+    # that are seeded from a previous phase's standings.
+    all_matches_result = await db.execute(
         select(Match)
         .join(Phase, Phase.id == Match.phase_id)
         .where(
             Phase.tournament_age_group_id == age_group_id,
-            Phase.phase_type != PhaseType.GROUP_STAGE,
-            Match.group_id.is_(None),
+            or_(Match.home_team_id.is_(None), Match.away_team_id.is_(None)),
         )
     )
-    knockout_matches = knockout_matches_result.scalars().all()
+    all_matches = all_matches_result.scalars().all()
 
     updated = 0
-    for match in knockout_matches:
-        if match.home_team_id is not None and match.away_team_id is not None:
-            continue
+    # Track (group_id, team_id) pairs that need GroupTeam records.
+    # When a seeded GROUP_STAGE phase gets its match team IDs filled in,
+    # the corresponding group membership records must also be created so
+    # that standings calculation works for that phase.
+    pending_group_teams: dict[str, set[str]] = {}
+
+    for match in all_matches:
         seed_home, seed_away, _ = decode_seed_note(match.notes)
         if seed_home and match.home_team_id is None and seed_home in seed_label_to_team_id:
             match.home_team_id = seed_label_to_team_id[seed_home]
             updated += 1
+            if match.group_id:
+                pending_group_teams.setdefault(match.group_id, set()).add(match.home_team_id)
         if seed_away and match.away_team_id is None and seed_away in seed_label_to_team_id:
             match.away_team_id = seed_label_to_team_id[seed_away]
             updated += 1
+            if match.group_id:
+                pending_group_teams.setdefault(match.group_id, set()).add(match.away_team_id)
 
-    if updated:
+    # Create missing GroupTeam records so standings work for seeded group phases
+    if pending_group_teams:
+        existing_gt_result = await db.execute(
+            select(GroupTeam.group_id, GroupTeam.tournament_team_id)
+            .where(GroupTeam.group_id.in_(list(pending_group_teams.keys())))
+        )
+        existing_gt = {(row.group_id, row.tournament_team_id) for row in existing_gt_result.all()}
+        for group_id, team_ids in pending_group_teams.items():
+            for team_id in team_ids:
+                if (group_id, team_id) not in existing_gt:
+                    db.add(GroupTeam(group_id=group_id, tournament_team_id=team_id))
+
+    if updated or pending_group_teams:
         await db.commit()
 
     return updated
