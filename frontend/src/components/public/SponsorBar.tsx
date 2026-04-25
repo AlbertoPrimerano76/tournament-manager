@@ -28,13 +28,13 @@ export default function SponsorBar({ images, accentColor, primaryColor }: Props)
           {loopedImages.map((src, i) => (
             <div
               key={`${src}-${i}`}
-              className="flex h-16 min-w-[150px] items-center justify-center rounded-2xl bg-white px-5 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.45)]"
+              className="flex h-20 items-center justify-center rounded-2xl bg-white px-5 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.45)]"
               style={{ border: `1px solid ${primary}14` }}
             >
               <img
                 src={src}
                 alt={`Sponsor ${i + 1}`}
-                className="h-10 w-[120px] object-contain grayscale transition-all duration-300 hover:grayscale-0"
+                className="h-12 w-auto max-w-[160px] grayscale transition-all duration-300 hover:grayscale-0"
               />
             </div>
           ))}

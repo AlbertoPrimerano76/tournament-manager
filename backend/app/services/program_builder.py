@@ -16,6 +16,7 @@ from app.models.match import Match, MatchStatus
 from app.models.phase import Group, GroupTeam, Phase, PhaseType
 from app.models.team import TournamentTeam, Team
 from app.models.tournament import Tournament, TournamentAgeGroup
+from app.services.phase_engine import get_phase_standings
 from app.schemas.program import (
     AgeGroupProgramResponse,
     ProgramDayResponse,
@@ -1385,6 +1386,9 @@ def _ordered_group_block_rounds(
 
 async def _sync_future_age_group_matches(age_group: TournamentAgeGroup, phases_config: list[dict[str, Any]], db: AsyncSession) -> TournamentAgeGroup:
     previous_phase_end: datetime | None = None
+    # Maps seed labels like "1a Girone A" to tournament_team_id so knockout
+    # matches without assigned teams can be resolved once group results exist.
+    seed_label_to_team_id: dict[str, str] = {}
 
     for phase_index, phase in enumerate(sorted(age_group.phases, key=lambda item: item.phase_order)):
         phase_config = phases_config[phase_index] if phase_index < len(phases_config) and isinstance(phases_config[phase_index], dict) else {}
@@ -1451,12 +1455,30 @@ async def _sync_future_age_group_matches(age_group: TournamentAgeGroup, phases_c
                                 phase_lane_slot_counters[lane_counter_key] = slot_index + 1
                         if stagger_groups:
                             global_slot_offset += 1
+            # Build seed label → team_id map from group standings so knockout
+            # matches can be assigned real teams on next sync.
+            standings_by_group = await get_phase_standings(phase.id, db)
+            group_name_by_id = {group.id: group.name for group in phase.groups}
+            for group_id, group_standings in standings_by_group.items():
+                group_name = group_name_by_id.get(group_id, "")
+                for rank_index, team_stats in enumerate(group_standings):
+                    label = f"{_ordinal_it(rank_index + 1)} {group_name}"
+                    seed_label_to_team_id[label] = team_stats.team_id
         else:
             lanes = _knockout_lanes(age_group, phase_config) or [{"field_name": None, "field_number": None}]
             matches = sorted(
                 [item for item in phase.matches if item.group_id is None],
                 key=lambda item: (item.bracket_round_order or 0, item.bracket_position or 0),
             )
+            # Resolve placeholder seed labels into actual team IDs now that
+            # group stage results are available.
+            for match in matches:
+                if match.home_team_id is None or match.away_team_id is None:
+                    seed_home, seed_away, _ = decode_seed_note(match.notes)
+                    if seed_home and match.home_team_id is None and seed_home in seed_label_to_team_id:
+                        match.home_team_id = seed_label_to_team_id[seed_home]
+                    if seed_away and match.away_team_id is None and seed_away in seed_label_to_team_id:
+                        match.away_team_id = seed_label_to_team_id[seed_away]
             for match_index, match in enumerate(matches):
                 if _match_has_recorded_result(match):
                     if match.scheduled_at:

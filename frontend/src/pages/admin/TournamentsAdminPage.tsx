@@ -1620,8 +1620,8 @@ function TournamentFormDrawer({
                     </div>
                     <div className="mt-4 flex flex-wrap gap-3 px-4">
                     {form.sponsor_images.filter((image) => image.trim().length > 0).map((image, index) => (
-                      <div key={`sponsor-preview-${index}`} className="flex h-16 w-36 items-center justify-center rounded-2xl border border-slate-100 bg-slate-50 px-4">
-                        <img src={image} alt={`Sponsor ${index + 1}`} className="max-h-10 max-w-full object-contain" />
+                      <div key={`sponsor-preview-${index}`} className="flex h-20 items-center justify-center rounded-2xl border border-slate-100 bg-slate-50 px-4">
+                        <img src={image} alt={`Sponsor ${index + 1}`} className="h-12 w-auto max-w-[150px]" />
                       </div>
                     ))}
                     </div>

@@ -22,14 +22,17 @@ def _supabase_configured() -> bool:
 
 def _process_image(data: bytes, max_dim: int) -> bytes:
     img = Image.open(io.BytesIO(data))
-    if img.mode in ("RGBA", "P"):
-        img = img.convert("RGBA")
-    else:
-        img = img.convert("RGB")
-    if img.width > max_dim or img.height > max_dim:
-        img.thumbnail((max_dim, max_dim), Image.LANCZOS)
+    img = img.convert("RGBA")
+    # Scale up or down to fill max_dim×max_dim, keeping aspect ratio
+    scale = min(max_dim / img.width, max_dim / img.height)
+    img = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
+    # Pad to exact max_dim×max_dim square with white background
+    canvas = Image.new("RGBA", (max_dim, max_dim), (255, 255, 255, 255))
+    x = (max_dim - img.width) // 2
+    y = (max_dim - img.height) // 2
+    canvas.paste(img, (x, y), img)
     buf = io.BytesIO()
-    img.save(buf, format="WEBP", quality=85)
+    canvas.convert("RGB").save(buf, format="WEBP", quality=85)
     buf.seek(0)
     return buf.read()
 
